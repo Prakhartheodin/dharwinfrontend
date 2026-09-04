@@ -22,19 +22,79 @@ export interface ListUsersParams {
   search?: string;
   role?: string;
   status?: string;
+  sortBy?: string;
   limit?: number;
   page?: number;
+  names?: string[];
+  domains?: string[];
+  education?: string[];
+  locations?: string[];
+  email?: string;
+}
+
+export type ListRecruitersParams = Omit<ListUsersParams, 'role'>;
+
+export interface RecruiterFilterOptions {
+  names: string[];
+  domains: string[];
+  education: string[];
+  locations: string[];
+  emails: string[];
+}
+
+function serializeUserListParams(
+  params?: ListUsersParams
+): Record<string, string | number> | undefined {
+  if (!params) return undefined;
+  const query: Record<string, string | number> = {};
+  if (params.search) query.search = params.search;
+  if (params.role) query.role = params.role;
+  if (params.status) query.status = params.status;
+  if (params.sortBy) query.sortBy = params.sortBy;
+  if (params.limit != null) query.limit = params.limit;
+  if (params.page != null) query.page = params.page;
+  if (params.email) query.email = params.email;
+  if (params.names?.length) query.names = params.names.join(',');
+  if (params.domains?.length) query.domains = params.domains.join(',');
+  if (params.education?.length) query.education = params.education.join(',');
+  if (params.locations?.length) query.locations = params.locations.join(',');
+  return query;
 }
 
 /** List recruiters – GET /users?role=recruiter */
-export async function listRecruiters(params?: Omit<ListUsersParams, "role">): Promise<UsersListResponse> {
-  return listUsers({ ...params, role: "recruiter" });
+export async function listRecruiters(params?: ListRecruitersParams): Promise<UsersListResponse> {
+  return listUsers({ ...params, role: 'recruiter' });
+}
+
+/** Distinct sidebar filter values for recruiters. */
+export async function getRecruiterFilterOptions(
+  params?: Pick<ListRecruitersParams, 'search'>
+): Promise<RecruiterFilterOptions> {
+  const { data } = await apiClient.get<RecruiterFilterOptions>('/users/filter-options', {
+    params: {
+      role: 'recruiter',
+      ...(params?.search?.trim() ? { search: params.search.trim() } : {}),
+    },
+  });
+  return data;
 }
 
 /** Export recruiters to Excel – GET /recruiters/export/excel */
-export async function exportRecruitersToExcel(): Promise<Blob> {
-  const { data } = await apiClient.get<Blob>("/recruiters/export/excel", { responseType: "blob" });
-  return data;
+export async function exportRecruitersToExcel(
+  params: ListRecruitersParams = {}
+): Promise<{ blob: Blob; capped: boolean; totalResults?: number; exportMax?: number }> {
+  const res = await apiClient.get<Blob>('/recruiters/export/excel', {
+    params: serializeUserListParams(params),
+    responseType: 'blob',
+  });
+  const capped = res.headers['x-export-capped'] === 'true';
+  const totalResults = res.headers['x-export-total-results']
+    ? Number(res.headers['x-export-total-results'])
+    : undefined;
+  const exportMax = res.headers['x-export-max-rows']
+    ? Number(res.headers['x-export-max-rows'])
+    : undefined;
+  return { blob: res.data, capped, totalResults, exportMax };
 }
 
 /** Download recruiter Excel template – GET /recruiters/template/excel */
@@ -80,7 +140,9 @@ export function getCompanyAssignedEmail(u: User): string {
 }
 
 export async function listUsers(params?: ListUsersParams): Promise<UsersListResponse> {
-  const { data } = await apiClient.get<UsersListResponse>("/users", { params });
+  const { data } = await apiClient.get<UsersListResponse>('/users', {
+    params: serializeUserListParams(params),
+  });
   return data;
 }
 

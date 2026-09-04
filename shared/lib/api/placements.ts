@@ -78,6 +78,7 @@ export interface PlacementsListParams {
   /** Queue: 'preBoarding' or 'onboarding'. Owns the offerStatus + stage-discriminator filter; `status` narrows within it. */
   stage?: "preBoarding" | "onboarding";
   preBoardingStatus?: PreBoardingStatus;
+  search?: string;
   sortBy?: string;
   limit?: number;
   page?: number;

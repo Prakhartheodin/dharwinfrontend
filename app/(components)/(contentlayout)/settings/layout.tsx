@@ -282,7 +282,8 @@ export default function SettingsLayout({
     <div className="container mx-auto w-full min-w-0 max-w-full">
       <div className="mb-[3rem] grid min-w-0 grid-cols-12 gap-6">
         <div className="col-span-12 min-w-0 xl:col-span-12">
-          <div className="box min-w-0 overflow-hidden">
+          {/* overflow-x-clip clips wide content without a scrollport; overflow-hidden would trap descendant sticky. */}
+          <div className="box min-w-0 overflow-x-clip">
             <div className="box-header !flex !justify-start min-w-0 max-w-full !pb-0">
               <nav
                 ref={navRef}
@@ -392,7 +393,7 @@ export default function SettingsLayout({
                 </Link>
               </nav>
             </div>
-            <div className="min-w-0 max-w-full overflow-x-hidden">{children}</div>
+            <div className="min-w-0 max-w-full overflow-x-clip">{children}</div>
           </div>
         </div>
       </div>

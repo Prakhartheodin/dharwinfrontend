@@ -3,7 +3,7 @@
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import React, { Fragment, useCallback, useEffect, useState } from "react";
+import React, { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/shared/contexts/auth-context";
 import {
   listJobApplications,
@@ -11,7 +11,7 @@ import {
   type JobApplication,
   type JobApplicationStatus,
 } from "@/shared/lib/api/jobApplications";
-import { listJobs, type Job } from "@/shared/lib/api/jobs";
+import { getJobFilterOptions, type JobFilterOptionItem } from "@/shared/lib/api/jobs";
 import {
   isPublicEmail,
   isInternalRelayEmail,
@@ -23,6 +23,24 @@ import {
   isInterviewSchedulingBlocked,
   REJECTED_REOPEN_STATUSES,
 } from "@/shared/lib/ats/applicationPipeline";
+import { YmdFilterDateInput } from "@/shared/components/filters/YmdFilterDateInput";
+import { getReferralLeadsDateRangeError } from "@/shared/lib/ymd-filter-date-input.util";
+
+const APPLIED_TO_INPUT_ID = "applications-applied-to";
+
+const FILTER_LABEL =
+  "form-label text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50 mb-1 block";
+const FILTER_CONTROL_HEIGHT = "!h-[2.75rem] sm:!h-9";
+// ti-form-select ships py-3; inside a fixed 2.75rem/9 height that clips text vertically and
+// can make short labels look like ellipsis. Match ReferralLeads: form-select + zero vertical
+// padding with line-height equal to control height.
+const FILTER_CONTROL_TYPO =
+  "!py-0 !px-3 !leading-[2.75rem] sm:!leading-9 !text-[0.875rem] sm:!text-[0.8125rem]";
+const FILTER_SELECT = `form-select form-select-sm w-full min-w-0 ${FILTER_CONTROL_HEIGHT} ${FILTER_CONTROL_TYPO} !pe-9`;
+const FILTER_INPUT = `ti-form-control form-control-sm w-full min-w-0 ${FILTER_CONTROL_HEIGHT} ${FILTER_CONTROL_TYPO}`;
+const FILTER_DATE_INPUT = `ti-form-control form-control-sm w-full min-w-0 ${FILTER_CONTROL_HEIGHT} ${FILTER_CONTROL_TYPO} !rounded-xl`;
+const FILTER_DATE_WRAPPER =
+  "min-w-0 w-full [&_.react-datepicker-wrapper]:w-full [&_.react-datepicker__input-container]:w-full [&_.react-datepicker__input-container_input]:!h-[2.75rem] sm:[&_.react-datepicker__input-container_input]:!h-9 [&_.react-datepicker__input-container_input]:!py-0 [&_.react-datepicker__input-container_input]:!leading-[2.75rem] sm:[&_.react-datepicker__input-container_input]:!leading-9";
 
 const PIPELINE_STATUSES: JobApplicationStatus[] = [
   "Applied",
@@ -221,7 +239,7 @@ function ApplicationRowActions({
 }) {
   const scheduleBlocked = isInterviewSchedulingBlocked(appStatus);
   return (
-    <div className="inline-flex flex-wrap items-center gap-1 justify-end">
+    <div className="inline-flex flex-wrap items-center gap-1 justify-start">
       <Link
         href={meta.profileHref}
         title="View candidate"
@@ -289,7 +307,9 @@ export default function ApplicationsPage() {
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const pageSize = 20;
 
-  const [jobOptions, setJobOptions] = useState<Job[]>([]);
+  const [jobOptions, setJobOptions] = useState<JobFilterOptionItem[]>([]);
+  const [jobOptionsLoading, setJobOptionsLoading] = useState(false);
+  const jobOptionsLoadedRef = useRef(false);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -299,10 +319,19 @@ export default function ApplicationsPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  useEffect(() => {
-    listJobs({ limit: 500 })
-      .then((res) => setJobOptions(res.results ?? []))
-      .catch(() => setJobOptions([]));
+  const loadJobOptions = useCallback(async () => {
+    if (jobOptionsLoadedRef.current) return;
+    jobOptionsLoadedRef.current = true;
+    setJobOptionsLoading(true);
+    try {
+      const options = await getJobFilterOptions();
+      setJobOptions(options.jobs ?? []);
+    } catch {
+      jobOptionsLoadedRef.current = false;
+      setJobOptions([]);
+    } finally {
+      setJobOptionsLoading(false);
+    }
   }, []);
 
   const fetchApplications = useCallback(() => {
@@ -399,6 +428,8 @@ export default function ApplicationsPage() {
     setDateTo("");
     setPage(1);
   };
+
+  const dateRangeError = getReferralLeadsDateRangeError(dateFrom, dateTo);
 
   const activeFilterCount =
     (search ? 1 : 0) +
@@ -548,38 +579,43 @@ export default function ApplicationsPage() {
 
             <div
               id="applications-advanced-filters"
-              className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 ${filtersExpanded ? "" : "hidden xl:grid"}`}
+              className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-2 items-end ${filtersExpanded ? "" : "hidden xl:grid"}`}
             >
-              <div>
-                <label className="text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50 mb-1 block">
+              <div className="min-w-0">
+                <label className={FILTER_LABEL} htmlFor="applications-job-filter">
                   Job
                 </label>
                 <select
+                  id="applications-job-filter"
                   value={jobFilter}
+                  onFocus={() => {
+                    void loadJobOptions();
+                  }}
                   onChange={(e) => {
                     setJobFilter(e.target.value);
                     setPage(1);
                   }}
-                  className="ti-form-select form-select-sm w-full min-h-[2.75rem] sm:min-h-[2.125rem]"
+                  className={FILTER_SELECT}
                   aria-label="Filter by job"
+                  aria-busy={jobOptionsLoading}
                 >
-                  <option value="">All jobs</option>
-                  {jobOptions.map((j) => {
-                    const id = String(j._id ?? j.id ?? "");
-                    return (
-                      <option key={id} value={id}>
-                        {j.title ?? "Untitled"}
-                      </option>
-                    );
-                  })}
+                  <option value="">
+                    {jobOptionsLoading ? "Loading jobs…" : "All jobs"}
+                  </option>
+                  {jobOptions.map((j) => (
+                    <option key={j.id} value={j.id}>
+                      {j.title}
+                    </option>
+                  ))}
                 </select>
               </div>
 
-              <div>
-                <label className="text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50 mb-1 block">
+              <div className="min-w-0">
+                <label className={FILTER_LABEL} htmlFor="applications-department-filter">
                   Department
                 </label>
                 <input
+                  id="applications-department-filter"
                   type="text"
                   value={departmentFilter}
                   onChange={(e) => setDepartmentFilter(e.target.value)}
@@ -593,54 +629,56 @@ export default function ApplicationsPage() {
                   }}
                   placeholder="e.g. Engineering"
                   aria-label="Filter by department"
-                  className="ti-form-control form-control-sm w-full min-h-[2.75rem] sm:min-h-[2.125rem]"
+                  className={FILTER_INPUT}
                 />
               </div>
 
-              <div>
-                <label className="text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50 mb-1 block">
-                  Applied from
-                </label>
-                <input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => {
-                    setDateFrom(e.target.value);
-                    setPage(1);
-                  }}
-                  aria-label="Date from"
-                  className="ti-form-control form-control-sm w-full min-h-[2.75rem] sm:min-h-[2.125rem]"
-                />
-              </div>
+              <YmdFilterDateInput
+                label="Applied from"
+                labelClassName={FILTER_LABEL}
+                value={dateFrom}
+                maxDate={dateTo || undefined}
+                rangeError={dateRangeError}
+                onCommit={(sanitized) => {
+                  setDateFrom(sanitized);
+                  setPage(1);
+                }}
+                portalId="applications-datepicker-portal-from"
+                popperClassName="!z-[9999]"
+                wrapperClassName={FILTER_DATE_WRAPPER}
+                inputClassName={FILTER_DATE_INPUT}
+              />
 
-              <div>
-                <label className="text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50 mb-1 block">
-                  Applied to
-                </label>
-                <input
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => {
-                    setDateTo(e.target.value);
-                    setPage(1);
-                  }}
-                  aria-label="Date to"
-                  className="ti-form-control form-control-sm w-full min-h-[2.75rem] sm:min-h-[2.125rem]"
-                />
-              </div>
+              <YmdFilterDateInput
+                label="Applied to"
+                labelClassName={FILTER_LABEL}
+                inputId={APPLIED_TO_INPUT_ID}
+                value={dateTo}
+                minDate={dateFrom || undefined}
+                rangeError={dateRangeError}
+                onCommit={(sanitized) => {
+                  setDateTo(sanitized);
+                  setPage(1);
+                }}
+                portalId="applications-datepicker-portal-to"
+                popperClassName="!z-[9999]"
+                wrapperClassName={FILTER_DATE_WRAPPER}
+                inputClassName={FILTER_DATE_INPUT}
+              />
 
-              <div>
-                <label className="text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50 mb-1 block">
+              <div className="min-w-0">
+                <label className={FILTER_LABEL} htmlFor="applications-sort-filter">
                   Sort
                 </label>
                 <select
+                  id="applications-sort-filter"
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
-                  className="ti-form-select form-select-sm w-full min-h-[2.75rem] sm:min-h-[2.125rem]"
+                  className={FILTER_SELECT}
                   aria-label="Sort"
                 >
-                  <option value="createdAt:desc">Newest first</option>
-                  <option value="createdAt:asc">Oldest first</option>
+                  <option value="createdAt:desc">Newest</option>
+                  <option value="createdAt:asc">Oldest</option>
                   <option value="updatedAt:desc">Recently updated</option>
                   <option value="status:asc">Status (A–Z)</option>
                 </select>
@@ -795,12 +833,12 @@ export default function ApplicationsPage() {
                     <thead>
                       <tr>
                         <th scope="col" className="!text-start min-w-[14rem]">Applicant</th>
-                        <th scope="col" className="!text-start min-w-[12rem]">Applied Job</th>
+                        <th scope="col" className="!text-start min-w-[14rem] max-w-[20rem]">Applied Job</th>
                         <th scope="col" className="!text-start min-w-[8rem]">Department</th>
                         <th scope="col" className="!text-start min-w-[11rem]">Status</th>
                         <th scope="col" className="!text-start whitespace-nowrap">Applied Date</th>
                         <th scope="col" className="!text-start whitespace-nowrap">Resume</th>
-                        <th scope="col" className="!text-end min-w-[11rem]">Actions</th>
+                        <th scope="col" className="!text-start min-w-[11rem]">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -831,12 +869,15 @@ export default function ApplicationsPage() {
                                 </div>
                               </div>
                             </td>
-                            <td className="align-middle whitespace-nowrap">
-                              <span className="block truncate max-w-[12rem]" title={meta.jobTitle}>
+                            <td className="align-middle min-w-0 max-w-[20rem]">
+                              <span className="block truncate min-w-0" title={meta.jobTitle}>
                                 {meta.jobTitle}
                               </span>
                               {meta.orgName && (
-                                <span className="block text-[0.6875rem] text-[#8c9097] dark:text-white/50 truncate max-w-[12rem]">
+                                <span
+                                  className="block text-[0.6875rem] text-[#8c9097] dark:text-white/50 truncate min-w-0"
+                                  title={meta.orgName}
+                                >
                                   {meta.orgName}
                                 </span>
                               )}
@@ -870,7 +911,7 @@ export default function ApplicationsPage() {
                                 <span className="text-[#8c9097]/60 text-xs">—</span>
                               )}
                             </td>
-                            <td className="!text-end align-middle whitespace-nowrap">
+                            <td className="!text-start align-middle whitespace-nowrap">
                               <ApplicationRowActions
                                 meta={meta}
                                 appStatus={app.status}

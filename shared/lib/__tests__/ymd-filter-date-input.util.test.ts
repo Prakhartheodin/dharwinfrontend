@@ -164,6 +164,9 @@ describe("referral leads date range validation", () => {
     expect(isReferralLeadsDateRangeInvalid("", "2026-01-31")).toBe(false);
     expect(getReferralLeadsDateRangeError("2026-01-01", "")).toBeNull();
     expect(getReferralLeadsDateRangeError("", "2026-01-31")).toBeNull();
+    expect(isReferralLeadsDateRangeInvalid(undefined, undefined)).toBe(false);
+    expect(getReferralLeadsDateRangeError(undefined, "2026-01-31")).toBeNull();
+    expect(getReferralLeadsDateRangeError("2026-01-01", null)).toBeNull();
   });
 
   it("accepts From on or before To", () => {

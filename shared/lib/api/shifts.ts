@@ -96,3 +96,39 @@ export async function updateShift(
 export async function deleteShift(shiftId: string): Promise<void> {
   await apiClient.delete(`${BASE}/${shiftId}`);
 }
+
+export interface ShiftAssigneePerson {
+  studentId: string;
+  candidateId: string;
+  employeeId: string;
+  name: string;
+  email: string;
+  type: "Training" | "Employee";
+}
+
+export interface ShiftAssigneesResponse {
+  shiftId: string;
+  people: ShiftAssigneePerson[];
+  count: number;
+  page: number;
+  limit: number;
+  totalResults: number;
+  totalPages: number;
+}
+
+export async function listShiftAssignees(
+  shiftId: string,
+  options: { page?: number; limit?: number; search?: string } = {}
+): Promise<ShiftAssigneesResponse> {
+  const { data } = await apiClient.get<{ success: boolean; data: ShiftAssigneesResponse }>(
+    `${BASE}/${shiftId}/assignees`,
+    {
+      params: {
+        page: options.page ?? 1,
+        limit: options.limit ?? 25,
+        ...(options.search?.trim() ? { search: options.search.trim() } : {}),
+      },
+    }
+  );
+  return data.data;
+}

@@ -162,6 +162,15 @@ export const ACTION_PERMISSIONS: Record<string, ActionRule> = Object.freeze({
     prefixes: ["training.students", "students"],
     anyOf: ["create", "edit", "delete"],
   },
+
+  view_recruiters: {
+    prefixes: ["ats.recruiters", "recruiters"],
+    anyOf: ["view", "create", "edit", "delete"],
+  },
+  manage_recruiters: {
+    prefixes: ["ats.recruiters", "recruiters"],
+    anyOf: ["create", "edit", "delete"],
+  },
 });
 
 /**

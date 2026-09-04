@@ -2034,7 +2034,7 @@ export default function StudentAttendancePage() {
                   </div>
                 </div>
                 <div className="mb-4">
-                  <label className="block text-xs font-medium text-defaulttextcolor mb-1">Timezone (candidate&apos;s)</label>
+                  <label className="block text-xs font-medium text-defaulttextcolor mb-1">Timezone</label>
                   <div className="w-full px-3 py-2 border border-defaultborder rounded bg-black/5 dark:bg-white/5 text-defaulttextcolor text-sm">{requestForm.timezone || candidateTimezone}</div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">

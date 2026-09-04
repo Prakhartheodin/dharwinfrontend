@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { ROUTES } from "@/shared/lib/constants";
 import { useAuth } from "@/shared/contexts/auth-context";
+import { hasAttendanceAssign, hasStudentsManage } from "@/shared/lib/attendance-access";
 
 const sidebarStyles = (
   <style>{`
@@ -10,6 +11,9 @@ const sidebarStyles = (
     .attendance-sidebar { font-family: 'Figtree', ui-sans-serif, system-ui, sans-serif; }
   `}</style>
 );
+
+/** App header is 3.75rem; sit just below it when the header pins. */
+const STICKY_TOP = "top-[4.75rem]";
 
 const NAV_ICONS: Record<string, string> = {
   [ROUTES.settingsAttendanceWeekOff]: "ri-calendar-schedule-line",
@@ -24,25 +28,6 @@ const NAV_ICONS: Record<string, string> = {
   [ROUTES.settingsAttendanceBackdated]: "ri-calendar-2-line",
 };
 
-/** attendance.assign = students.manage OR attendance.manage - agent-visible links */
-function hasAttendanceAssign(permissions: string[], isAdministrator: boolean): boolean {
-  if (isAdministrator) return true;
-  const hasStudentsManage = permissions.some((p) => p === "students.manage" || p.startsWith("students.manage"));
-  const hasAttendanceManage = permissions.some(
-    (p) =>
-      p === "attendance.manage" ||
-      p === "training.attendance:view,create,edit" ||
-      ((p.includes("training.attendance") || p.includes("settings.attendance")) &&
-        (p.includes("create") || p.includes("edit") || p.includes("view")))
-  );
-  return hasStudentsManage || hasAttendanceManage;
-}
-
-/** Admin only: students.manage - system-level config (holidays list, student groups, manage shifts) */
-function hasStudentsManage(permissions: string[], isAdministrator: boolean): boolean {
-  if (isAdministrator) return true;
-  return permissions.some((p) => p === "students.manage" || p.startsWith("students.manage"));
-}
 
 const ATTENDANCE_LINKS: {
   href: string;
@@ -61,6 +46,14 @@ const ATTENDANCE_LINKS: {
   { href: ROUTES.settingsAttendanceBackdated, label: "Backdated Attendance", access: "assign" },
 ];
 
+function pathMatches(pathname: string, href: string): boolean {
+  return pathname === href || pathname.replace(/\/$/, "") === href.replace(/\/$/, "");
+}
+
+function goToAttendancePage(href: string) {
+  window.location.assign(href);
+}
+
 export default function SettingsAttendanceLayout({
   children,
 }: {
@@ -74,79 +67,100 @@ export default function SettingsAttendanceLayout({
   const visibleLinks = ATTENDANCE_LINKS.filter((link) =>
     link.access === "assign" ? canAssign : canAdmin
   );
+  const activeHref =
+    visibleLinks.find((link) => pathMatches(pathname, link.href))?.href ?? visibleLinks[0]?.href ?? "";
 
   return (
     <>
       {sidebarStyles}
-      <div className="grid grid-cols-12 gap-6 attendance-sidebar">
-        {/*
-          Sub-nav sits above page content but BELOW any dialog/modal/Swal/menu portal
-          so it never occludes confirmation dialogs (Swal default z-1060) or shift/leave success modals.
-        */}
-        <div className="xl:col-span-3 col-span-12 relative z-30 min-w-0">
-          <aside
-            className="pointer-events-auto rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-sm shadow-black/[0.03] dark:shadow-none overflow-hidden sticky top-4 isolate"
-            aria-label="Attendance navigation"
-          >
-            <div className="px-5 py-4 border-b border-defaultborder/50 bg-gradient-to-r from-slate-50/90 to-white dark:from-white/[0.03] dark:to-transparent">
-              <div className="flex items-center gap-3">
-                <span
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/10 dark:ring-primary/20"
-                  aria-hidden
-                >
-                  <i className="ri-calendar-line text-xl" />
-                </span>
-                <h2 className="text-base font-semibold text-defaulttextcolor dark:text-white tracking-tight">
-                  Attendance
-                </h2>
-              </div>
+      <div className="attendance-sidebar">
+        {visibleLinks.length > 0 && (
+          <div className={`xl:hidden sticky ${STICKY_TOP} z-30 mb-4`}>
+            <div className="rounded-2xl border border-defaultborder/70 bg-white px-3 py-2 shadow-sm dark:bg-bodybg">
+              <label htmlFor="attendance-page-switcher" className="mb-1.5 block text-xs font-semibold text-defaulttextcolor/70">
+                Attendance
+              </label>
+              <select
+                id="attendance-page-switcher"
+                value={activeHref}
+                onChange={(e) => goToAttendancePage(e.currentTarget.value)}
+                className="ti-form-control min-h-11 w-full text-sm"
+              >
+                {visibleLinks.map(({ href, label }) => (
+                  <option key={href} value={href}>
+                    {label}
+                  </option>
+                ))}
+              </select>
             </div>
-            <nav className="pointer-events-auto relative z-40 p-2 pb-2.5" aria-label="Attendance settings">
-              {/*
-                Native <a> forces a full document navigation. Next.js <Link> soft navigation
-                can fail to swap the page slot in this nested settings layout; full navigation is reliable.
-              */}
-              {visibleLinks.map(({ href, label }) => {
-                const isActive =
-                  pathname === href || pathname.replace(/\/$/, "") === href.replace(/\/$/, "");
-                const icon = NAV_ICONS[href] ?? "ri-arrow-right-s-line";
-                return (
-                  <a
-                    key={href}
-                    href={href}
-                    onClick={(e) => {
-                      if (e.defaultPrevented) return;
-                      if (e.button !== 0) return;
-                      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-                      e.preventDefault();
-                      window.location.assign(href);
-                    }}
-                    className={`relative z-0 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 pointer-events-auto ${
-                      isActive
-                        ? "bg-primary/10 text-primary shadow-sm"
-                        : "text-defaulttextcolor/80 hover:bg-slate-50 dark:hover:bg-white/5 hover:text-defaulttextcolor"
-                    }`}
+          </div>
+        )}
+
+        <div className="grid grid-cols-12 gap-6">
+          {/*
+            Sub-nav sits above page content but BELOW any dialog/modal/Swal/menu portal
+            so it never occludes confirmation dialogs (Swal default z-1060) or shift/leave success modals.
+          */}
+          <div className="relative z-30 hidden min-w-0 self-stretch xl:col-span-3 xl:block">
+            <aside
+              className={`pointer-events-auto sticky ${STICKY_TOP} max-h-[calc(100dvh-5.75rem)] isolate overflow-y-auto rounded-2xl border border-defaultborder/70 bg-white shadow-sm shadow-black/[0.03] dark:bg-bodybg dark:shadow-none`}
+              aria-label="Attendance navigation"
+            >
+              <div className="border-b border-defaultborder/50 bg-gradient-to-r from-slate-50/90 to-white px-5 py-4 dark:from-white/[0.03] dark:to-transparent">
+                <div className="flex items-center gap-3">
+                  <span
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/10 dark:ring-primary/20"
+                    aria-hidden
                   >
-                    <i
-                      className={`${icon} text-lg shrink-0 ${
-                        isActive ? "text-primary" : "text-defaulttextcolor/60"
+                    <i className="ri-calendar-line text-xl" />
+                  </span>
+                  <h2 className="text-base font-semibold tracking-tight text-defaulttextcolor dark:text-white">
+                    Attendance
+                  </h2>
+                </div>
+              </div>
+              <nav className="pointer-events-auto relative z-40 p-2 pb-2.5" aria-label="Attendance settings">
+                {/*
+                  Native <a> forces a full document navigation. Next.js <Link> soft navigation
+                  can fail to swap the page slot in this nested settings layout; full navigation is reliable.
+                */}
+                {visibleLinks.map(({ href, label }) => {
+                  const isActive = pathMatches(pathname, href);
+                  const icon = NAV_ICONS[href] ?? "ri-arrow-right-s-line";
+                  return (
+                    <a
+                      key={href}
+                      href={href}
+                      aria-current={isActive ? "page" : undefined}
+                      onClick={(e) => {
+                        if (e.defaultPrevented) return;
+                        if (e.button !== 0) return;
+                        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                        e.preventDefault();
+                        goToAttendancePage(href);
+                      }}
+                      className={`relative z-0 flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 pointer-events-auto ${
+                        isActive
+                          ? "bg-primary/10 text-primary shadow-sm"
+                          : "text-defaulttextcolor/80 hover:bg-slate-50 hover:text-defaulttextcolor dark:hover:bg-white/5"
                       }`}
-                    />
-                    <span className="truncate">{label}</span>
-                    {isActive && (
-                      <span
-                        className="ml-auto h-1.5 w-1.5 rounded-full bg-primary shrink-0"
-                        aria-hidden
+                    >
+                      <i
+                        className={`${icon} shrink-0 text-lg ${
+                          isActive ? "text-primary" : "text-defaulttextcolor/60"
+                        }`}
                       />
-                    )}
-                  </a>
-                );
-              })}
-            </nav>
-          </aside>
-        </div>
-        <div className="xl:col-span-9 col-span-12 min-w-0">
-          {children}
+                      <span className="truncate">{label}</span>
+                      {isActive && (
+                        <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
+                      )}
+                    </a>
+                  );
+                })}
+              </nav>
+            </aside>
+          </div>
+          <div className="col-span-12 min-w-0 xl:col-span-9">{children}</div>
         </div>
       </div>
     </>

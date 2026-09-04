@@ -16,7 +16,7 @@ import StudentRowActions from './_components/StudentRowActions'
 import StudentColumnHeaderFilter from './_components/StudentColumnHeaderFilter'
 import { getInitials } from '@/shared/lib/initials'
 import { buildStudentProfileShareUrl } from '@/shared/lib/training/student-share'
-import { buildPageWindow } from '@/shared/lib/pagination-items'
+import ListPagination from '@/shared/components/ListPagination'
 import { downloadStudentProfileXlsx } from '@/shared/lib/student-profile-export'
 import {
   MISSING_PROFILE_VALUE,
@@ -125,9 +125,6 @@ const Students = () => {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StudentStatusFilter>('active')
   const [currentPage, setCurrentPage] = useState(1)
-  // Draft text of the "Go to page" field. Deliberately separate from currentPage so a
-  // half-typed number never triggers a fetch — the jump happens on submit.
-  const [gotoPageInput, setGotoPageInput] = useState('')
   const [pageSize, setPageSize] = useState(10)
   const [totalResults, setTotalResults] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
@@ -1540,109 +1537,14 @@ const Students = () => {
               </div>
             </div>
             <div className="box-footer !border-t-0">
-              <div className="flex items-center flex-wrap gap-4">
-                <div>
-                  Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, totalResults)} of {totalResults} entries{' '}
-                  <i className="bi bi-arrow-right ms-2 font-semibold"></i>
-                </div>
-                {/* Pagination + "Go to page" travel together: the strip is capped at five
-                    numbers, so the input is the only way to reach a page outside it. */}
-                <div className="ms-auto flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <nav aria-label="Page navigation" className="pagination-style-4">
-                    <ul className="ti-pagination mb-0">
-                      <li className={`page-item ${currentPage === 1 ? 'disabled' : ''}`}>
-                        <button
-                          className="page-link px-3 py-[0.375rem]"
-                          onClick={() => setCurrentPage(currentPage - 1)}
-                          disabled={currentPage === 1}
-                        >
-                          Prev
-                        </button>
-                      </li>
-                      {/* Was: a first-page anchor, an ellipsis, a five-wide window, another
-                          ellipsis and a last-page anchor — up to SEVEN numbers on screen
-                          (1 … 2 3 4 5 6 … 22), which is what made this hard to scan. It
-                          also double-rendered page 1 at currentPage === 3, where the anchor
-                          fired but the ellipsis between it and the window did not.
-                          buildPageWindow returns a clamped, contiguous run of at most five,
-                          so the strip is a fixed width at every page and slides by one as
-                          you move. */}
-                      {buildPageWindow(currentPage, totalPages, 5).map((page) => (
-                        <li
-                          key={page}
-                          className={`page-item ${currentPage === page ? 'active' : ''}`}
-                        >
-                          <button
-                            className="page-link px-3 py-[0.375rem]"
-                            onClick={() => setCurrentPage(page)}
-                            aria-current={currentPage === page ? 'page' : undefined}
-                            aria-label={`Go to page ${page}`}
-                          >
-                            {page}
-                          </button>
-                        </li>
-                      ))}
-                      <li className={`page-item ${currentPage === totalPages || totalPages === 0 ? 'disabled' : ''}`}>
-                        <button
-                          className="page-link px-3 py-[0.375rem] text-primary"
-                          onClick={() => setCurrentPage(currentPage + 1)}
-                          disabled={currentPage === totalPages || totalPages === 0}
-                        >
-                          Next
-                        </button>
-                      </li>
-                    </ul>
-                  </nav>
-
-                  {/* A real <form>, so Enter submits with no keydown handler of our own.
-                      Hidden at one page, where there is nowhere to jump to. */}
-                  {totalPages > 1 && (
-                    <form
-                      className="flex items-center gap-2"
-                      onSubmit={(e) => {
-                        e.preventDefault()
-                        const raw = gotoPageInput.trim()
-                        if (!raw) return
-                        const parsed = Number(raw)
-                        if (!Number.isFinite(parsed)) return
-                        // Clamp rather than reject: typing 99 on a 22-page list means "the
-                        // end", and an error message for that would be pedantic. min/max
-                        // below let the browser hint the same bounds.
-                        setCurrentPage(Math.min(Math.max(Math.trunc(parsed), 1), totalPages))
-                        setGotoPageInput('')
-                      }}
-                    >
-                      <label
-                        htmlFor="students-goto-page"
-                        className="whitespace-nowrap text-[0.8125rem] text-[#8c9097] dark:text-white/60"
-                      >
-                        Go to page
-                      </label>
-                      <input
-                        id="students-goto-page"
-                        type="number"
-                        inputMode="numeric"
-                        min={1}
-                        max={totalPages}
-                        value={gotoPageInput}
-                        onChange={(e) => setGotoPageInput(e.currentTarget.value)}
-                        placeholder={String(currentPage)}
-                        aria-describedby="students-goto-page-hint"
-                        className="ti-form-control form-control-sm !w-[4.5rem] !py-[0.375rem]"
-                      />
-                      <span id="students-goto-page-hint" className="sr-only">
-                        Enter a page number between 1 and {totalPages}
-                      </span>
-                      <button
-                        type="submit"
-                        className="ti-btn ti-btn-primary ti-btn-sm !mb-0 !py-[0.375rem]"
-                      >
-                        Go
-                      </button>
-                    </form>
-                  )}
-                </div>
-              </div>
+              <ListPagination
+                page={currentPage}
+                totalPages={totalPages}
+                totalResults={totalResults}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                gotoInputId="students-goto-page"
+              />
             </div>
           </div>
         </div>

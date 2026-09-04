@@ -1,9 +1,9 @@
 "use client"
 
 import Seo from '@/shared/layout-components/seo/seo'
-import React, { Fragment, useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import React, { Fragment, useState, useEffect, useRef, useCallback } from 'react'
 import pipelineStyles from '../ats-pipeline-list.module.css'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import { listPlacements, updatePlacement, getPlacementById } from '@/shared/lib/api/placements'
 import type { Placement, BGVStatus } from '@/shared/lib/api/placements'
 import { getPlacementStatusActorSummary } from '@/shared/lib/ats/placementActorText'
@@ -12,6 +12,15 @@ import Link from 'next/link'
 import { useModalBehavior } from '@/shared/hooks/useModalBehavior'
 import ConfirmDiscardDialog from '@/shared/components/ConfirmDiscardDialog'
 import PreBoardingDocumentsModal from './modals/PreBoardingDocumentsModal'
+import ListPagination from '@/shared/components/ListPagination'
+
+/** Same default as Jobs / Students / Recruiters. */
+const LIST_PAGE_SIZE = 10
+
+function parseListPage(raw: string | null | undefined): number {
+  const n = Number.parseInt(String(raw ?? ''), 10)
+  return Number.isInteger(n) && n >= 1 ? n : 1
+}
 
 const BGV_OPTIONS: BGVStatus[] = ['Pending', 'In Progress', 'Completed', 'Verified']
 type PlacementQueueFilter = '' | 'Pending' | 'Deferred' | 'Cancelled'
@@ -47,6 +56,7 @@ const PreBoarding = () => {
   const { canView, canEdit, canCreate, canDelete } = useFeaturePermissions('ats.pre-boarding')
   const searchParams = useSearchParams()
   const router = useRouter()
+  const pathname = usePathname()
   const deepLinkDone = useRef(false)
   const [placements, setPlacements] = useState<Placement[]>([])
   const [loading, setLoading] = useState(true)
@@ -54,6 +64,13 @@ const PreBoarding = () => {
   /** Filter by placement status (row-level). Empty = all of Pending, Deferred, Cancelled. */
   const [placementStatusFilter, setPlacementStatusFilter] = useState<PlacementQueueFilter>('')
   const [listSearch, setListSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [apiPage, setApiPage] = useState(() => parseListPage(searchParams.get('page')))
+  const [totalResults, setTotalResults] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
+  const fetchGenerationRef = useRef(0)
+  const prevDebouncedSearchRef = useRef(debouncedSearch)
+  const prevStatusFilterRef = useRef(placementStatusFilter)
   const [editModal, setEditModal] = useState<Placement | null>(null)
   const [editForm, setEditForm] = useState<{
     placementStatus: 'Pending' | 'Onboarding' | 'Deferred' | 'Cancelled'
@@ -77,23 +94,71 @@ const PreBoarding = () => {
   }, [feedbackDialog])
 
   const fetchPlacements = useCallback(() => {
+    if (!canView) return
+    const generation = ++fetchGenerationRef.current
     setLoading(true)
     setError(null)
     // Stage owns the queue (offerStatus=Accepted, not-yet-onboarding); dropdown narrows within it.
     listPlacements({
       stage: 'preBoarding',
       ...(placementStatusFilter ? { status: placementStatusFilter } : {}),
-      limit: 100,
-      page: 1,
+      limit: LIST_PAGE_SIZE,
+      page: apiPage,
+      ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
     })
-      .then((res) => setPlacements(res.results ?? []))
-      .catch((err) => setError(err?.response?.data?.message || err?.message || 'Failed to load placements'))
-      .finally(() => setLoading(false))
+      .then((res) => {
+        if (generation !== fetchGenerationRef.current) return
+        setPlacements(res.results ?? [])
+        setTotalResults(res.totalResults ?? 0)
+        setTotalPages(res.totalPages ?? 0)
+      })
+      .catch((err) => {
+        if (generation !== fetchGenerationRef.current) return
+        setError(err?.response?.data?.message || err?.message || 'Failed to load placements')
+        setPlacements([])
+        setTotalResults(0)
+        setTotalPages(0)
+      })
+      .finally(() => {
+        if (generation === fetchGenerationRef.current) setLoading(false)
+      })
+  }, [canView, placementStatusFilter, apiPage, debouncedSearch])
+
+  useEffect(() => {
+    const fromUrl = parseListPage(searchParams.get('page'))
+    setApiPage((prev) => (prev === fromUrl ? prev : fromUrl))
+  }, [searchParams])
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    const urlPage = parseListPage(params.get('page'))
+    if (urlPage === apiPage) return
+    if (apiPage <= 1) params.delete('page')
+    else params.set('page', String(apiPage))
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [apiPage, pathname, router, searchParams])
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedSearch(listSearch), 300)
+    return () => window.clearTimeout(t)
+  }, [listSearch])
+
+  useEffect(() => {
+    if (prevDebouncedSearchRef.current === debouncedSearch) return
+    prevDebouncedSearchRef.current = debouncedSearch
+    setApiPage(1)
+  }, [debouncedSearch])
+
+  useEffect(() => {
+    if (prevStatusFilterRef.current === placementStatusFilter) return
+    prevStatusFilterRef.current = placementStatusFilter
+    setApiPage(1)
   }, [placementStatusFilter])
 
   useEffect(() => {
-    if (canView) fetchPlacements()
-  }, [canView, fetchPlacements])
+    fetchPlacements()
+  }, [fetchPlacements])
 
   const openEdit = useCallback((p: Placement) => {
     setEditModal(p)
@@ -136,16 +201,7 @@ const PreBoarding = () => {
     })
   }, [])
 
-  const filteredPlacements = useMemo(() => {
-    const q = listSearch.trim().toLowerCase()
-    if (!q) return placements
-    return placements.filter((p) => {
-      const name = (p.candidate?.fullName || '').toLowerCase()
-      const email = (p.candidate?.email || '').toLowerCase()
-      const job = (p.job?.title || '').toLowerCase()
-      return name.includes(q) || email.includes(q) || job.includes(q)
-    })
-  }, [placements, listSearch])
+  const hasSearch = Boolean(debouncedSearch.trim())
 
   useEffect(() => {
     if (!canView || deepLinkDone.current) return
@@ -311,9 +367,9 @@ const PreBoarding = () => {
                 </span>
                 <span
                   className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle tabular-nums"
-                  title="Count after search and filters"
+                  title="Total matching this queue"
                 >
-                  {filteredPlacements.length}
+                  {totalResults}
                 </span>
               </div>
               <div
@@ -388,7 +444,7 @@ const PreBoarding = () => {
                 </div>
               </div>
             </div>
-            <div className="box-body !p-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-x-clip">
+            <div className="box-body !p-0 flex min-h-0 min-w-0 flex-1 flex-col">
               {loading ? (
                 <div
                   className="flex flex-col items-center justify-center gap-4 px-6 py-10"
@@ -409,23 +465,23 @@ const PreBoarding = () => {
                 </div>
               ) : error ? (
                 <div className="px-6 py-8 text-center text-danger">{error}</div>
-              ) : filteredPlacements.length === 0 ? (
+              ) : placements.length === 0 ? (
                 <div className="flex flex-col items-center justify-center px-6 py-16 text-center text-gray-500 dark:text-gray-400">
                   <i className="ri-inbox-line mb-3 block text-4xl opacity-50" aria-hidden />
                   <p className="mb-1 text-base font-medium text-gray-700 dark:text-gray-200">
-                    {placements.length > 0 ? 'No matches' : 'No placements in pre-boarding'}
+                    {hasSearch || placementStatusFilter ? 'No matches' : 'No placements in pre-boarding'}
                   </p>
                   <p className="mb-0 max-w-md text-sm">
-                    {placements.length > 0
+                    {hasSearch || placementStatusFilter
                       ? 'Try a different search, or clear the search box.'
                       : 'Use the first filter for placement status (Pending, Deferred, Cancelled). The second filter is the pre-boarding workflow (In Progress, etc.). Joined hires appear under Onboarding. If you are not an admin, you only see jobs you created or placements you own.'}
                   </p>
                 </div>
               ) : (
                 <div
-                  className={`table-responsive min-w-0 max-w-full ${pipelineStyles.tableCard} ${pipelineStyles.tableWrap}`}
+                  className={`table-responsive min-w-0 max-w-full ${pipelineStyles.tableCard} ${pipelineStyles.tableWrap} ${pipelineStyles.tableScroll}`}
                 >
-                  <table className={`table whitespace-nowrap text-[0.8125rem] text-defaulttextcolor dark:text-white/80 ${pipelineStyles.tableWideLg}`}>
+                  <table className={`table border-separate border-spacing-0 whitespace-nowrap text-[0.8125rem] text-defaulttextcolor dark:text-white/80 ${pipelineStyles.tableGrow}`}>
                     <thead>
                       <tr className="border-b border-slate-200/90 dark:border-white/10">
                         <th
@@ -473,19 +529,19 @@ const PreBoarding = () => {
                         </th>
                         <th
                           scope="col"
-                          className="sticky top-0 z-10 border-b border-slate-200/90 bg-slate-100/90 px-2 py-2 text-end align-bottom text-[0.625rem] font-semibold uppercase leading-tight tracking-tight text-slate-500 shadow-sm first:pl-2.5 last:pr-2.5 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:px-2.5 sm:text-[0.65rem] sm:leading-snug"
+                          className={`${pipelineStyles.stickyEnd} sticky top-0 z-30 border-b border-slate-200/90 bg-white px-2 py-2 pe-14 text-end align-bottom text-[0.625rem] font-semibold uppercase leading-tight tracking-tight text-slate-500 dark:border-white/10 dark:bg-slate-900 dark:text-slate-400 sm:px-2.5 sm:pe-14 sm:text-[0.65rem] sm:leading-snug`}
                         >
                           Actions
                         </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredPlacements.map((p, index) => {
+                      {placements.map((p, index) => {
                         const placementId = (p as { _id?: string; id?: string })._id ?? p.id ?? ''
                         return (
                           <tr
                             key={placementId ? `${placementId}-${index}` : `preboarding-placement-${index}`}
-                            className={`border-b border-slate-200/80 transition-colors duration-150 ease-out last:border-b-0 hover:bg-slate-50/90 dark:border-white/10 dark:hover:bg-white/[0.04] ${pipelineStyles.rowIn}`}
+                            className={`group border-b border-slate-200/80 transition-colors duration-150 ease-out last:border-b-0 hover:bg-slate-50/90 dark:border-white/10 dark:hover:bg-white/[0.04] ${pipelineStyles.rowIn}`}
                             style={{ animationDelay: `${Math.min(index, 16) * 45}ms` }}
                           >
                             <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100">
@@ -550,7 +606,7 @@ const PreBoarding = () => {
                             <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100">
                               {(p.itAccess || []).length} system(s)
                             </td>
-                            <td className="whitespace-nowrap px-2.5 py-2 text-end align-middle text-[12px] sm:px-3 sm:py-2.5 sm:text-[13px]">
+                            <td className={`${pipelineStyles.stickyEnd} z-20 whitespace-nowrap bg-white px-2.5 py-2 pe-14 text-end align-middle text-[12px] sm:px-3 sm:py-2.5 sm:pe-14 sm:text-[13px] dark:bg-slate-900`}>
                               <div className="flex flex-wrap items-center justify-end gap-2">
                                 {canEdit && (
                                   <button
@@ -591,16 +647,17 @@ const PreBoarding = () => {
               )}
             </div>
             <div className="box-footer border-t border-defaultborder/60 dark:border-white/5 !px-3 !py-2 sm:!px-4">
-              <div className="text-xs text-gray-600 sm:text-sm dark:text-gray-400">
-                {loading || error ? null : (
-                  <span>
-                    {filteredPlacements.length} placement{filteredPlacements.length !== 1 ? 's' : ''} shown
-                    {listSearch.trim() && placements.length !== filteredPlacements.length
-                      ? ` (filtered from ${placements.length})`
-                      : ''}
-                  </span>
-                )}
-              </div>
+              {loading || error ? null : (
+                <ListPagination
+                  page={apiPage}
+                  totalPages={totalPages}
+                  totalResults={totalResults}
+                  pageSize={LIST_PAGE_SIZE}
+                  onPageChange={setApiPage}
+                  ariaLabel="Pre-boarding page navigation"
+                  gotoInputId="preboarding-goto-page"
+                />
+              )}
             </div>
           </div>
         </div>

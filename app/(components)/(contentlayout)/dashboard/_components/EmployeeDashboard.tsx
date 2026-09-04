@@ -394,11 +394,8 @@ export default function EmployeeDashboard(): JSX.Element {
               onBlockedPunchClick={() => {
                 if (punchEligibility.allowed === false) setBlockedOverlay(punchEligibility);
               }}
-              onBackdatedEntry={
-                identity && punchEligibility.allowed !== false
-                  ? () => setShowBackdatedModal(true)
-                  : undefined
-              }
+              // Past dates, not today — a blocked today must not hide the way to fix last week.
+              onBackdatedEntry={identity ? () => setShowBackdatedModal(true) : undefined}
             />
             <LeaveCard
               requests={leave}

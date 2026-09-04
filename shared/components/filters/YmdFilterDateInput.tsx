@@ -98,7 +98,7 @@ export function YmdFilterDateInput({
     });
   };
 
-  const digitCount = (text: string) => text.replace(/\D+/g, "").length;
+  const digitCount = (text: string) => (text ?? "").replace(/\D+/g, "").length;
 
   const handleChange = (date: Date | null) => {
     if (!date) {
@@ -114,14 +114,18 @@ export function YmdFilterDateInput({
   // react-datepicker calls onChangeRaw before it parses, and then reads event.target.value
   // again, so rewriting the value here is what puts the separators on screen as you type.
   const handleChangeRaw = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const input = event.target;
+    const input = event?.target;
+    if (!input) return;
+    const raw = input.value ?? "";
+    // Month/year dropdowns and some calendar clicks fire onChangeRaw without a string value.
+    if (!raw && !lastRawRef.current) return;
     // A paste or a mid-string edit would have its caret thrown to the end by the rewrite,
     // so only punctuate while typing at the end -- the case the separators are for.
-    if (input.selectionStart !== null && input.selectionStart < input.value.length) return;
-    const masked = maskDmyInput(input.value, lastRawRef.current);
+    if (input.selectionStart !== null && input.selectionStart < raw.length) return;
+    const masked = maskDmyInput(raw, lastRawRef.current);
     const before = digitCount(lastRawRef.current);
     lastRawRef.current = masked;
-    if (masked !== input.value) input.value = masked;
+    if (masked !== raw) input.value = masked;
 
     // Judge a segment only on the keystroke that completes it -- day at 2 digits, month at
     // 4, year at 8. Checking every keystroke would fire on the "3" of a perfectly good 31,
@@ -138,7 +142,7 @@ export function YmdFilterDateInput({
   };
 
   const handleBlur = (event: React.FocusEvent<HTMLInputElement>) => {
-    const raw = event.target.value;
+    const raw = event.target.value ?? "";
     if (!raw.trim()) {
       setInputError(null);
       if (value !== "") onCommit("");
@@ -168,7 +172,7 @@ export function YmdFilterDateInput({
   };
 
   return (
-    <div className={wrapperClassName}>
+    <div className={["ymd-filter-date-input", "[&_.react-datepicker__input-container_input]:!rounded-xl", wrapperClassName].filter(Boolean).join(" ")}>
       <label htmlFor={inputId} className={hideLabel ? "sr-only" : labelClassName ?? "form-label text-xs"}>
         {label}
       </label>

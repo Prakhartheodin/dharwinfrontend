@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 export type BriefFeedbackRating = "up" | "down";
 
@@ -40,23 +40,27 @@ export function BriefEnhancedReviewModal({
   const [refinement, setRefinement] = useState("");
   const [feedbackRating, setFeedbackRating] = useState<BriefFeedbackRating | null>(null);
   const [feedbackComment, setFeedbackComment] = useState("");
+  const panelRef = useRef<HTMLDivElement>(null);
+  const didFocusOnOpenRef = useRef(false);
 
   useEffect(() => {
     if (!open) {
+      didFocusOnOpenRef.current = false;
       setRefinement("");
       setFeedbackRating(null);
       setFeedbackComment("");
+      return;
     }
-  }, [open]);
-
-  useEffect(() => {
-    if (!open || busy) return;
+    if (!didFocusOnOpenRef.current) {
+      didFocusOnOpenRef.current = true;
+      panelRef.current?.focus();
+    }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, busy, onClose]);
+  }, [open, onClose]);
 
   const handleRegenerate = useCallback(async () => {
     await onRegenerate({
@@ -68,21 +72,10 @@ export function BriefEnhancedReviewModal({
 
   if (!open) return null;
 
-  const ctxBlock =
-    contextLines.length > 0 ? (
-      <p className="mb-2 text-start text-[0.72rem] leading-snug text-slate-500 dark:text-white/55">
-        {contextLines.map((line, i) => (
-          <React.Fragment key={i}>
-            {i > 0 ? " · " : null}
-            {line}
-          </React.Fragment>
-        ))}
-      </p>
-    ) : (
-      <p className="mb-2 text-start text-[0.72rem] leading-snug text-slate-500 dark:text-white/55">
-        No Overview fields filled yet — the model only sees an empty editor and will draft a generic starter brief.
-      </p>
-    );
+  const ctxSummary =
+    contextLines.length > 0
+      ? contextLines.join(" · ")
+      : "No Overview fields filled yet — the model only sees an empty editor and will draft a generic starter brief.";
 
   const oldPanel =
     plainCurrent.length > 0 ? (
@@ -106,13 +99,19 @@ export function BriefEnhancedReviewModal({
           if (!busy) onClose();
         }}
       />
-      <div className="relative flex max-h-[92vh] w-full max-w-[960px] flex-col overflow-hidden rounded-2xl border border-defaultborder/80 bg-bodybg shadow-2xl dark:border-white/10 motion-safe:animate-pm-panel-in motion-reduce:animate-none">
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        className="relative flex max-h-[92vh] w-full max-w-[960px] flex-col overflow-hidden rounded-2xl border border-defaultborder/80 bg-bodybg shadow-2xl dark:border-white/10 motion-safe:animate-pm-panel-in motion-reduce:animate-none outline-none"
+      >
         <div className="flex items-start justify-between gap-3 border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/95 to-white px-4 py-3 dark:border-white/10 dark:from-white/[0.04] dark:to-transparent sm:px-5 sm:py-4">
           <div className="min-w-0">
             <h2 id="pm-brief-review-title" className="m-0 text-[1.05rem] font-semibold text-defaulttextcolor">
               {title}
             </h2>
-            <div className="mt-1">{ctxBlock}</div>
+            <p className="mb-0 mt-1 text-start text-[0.72rem] leading-snug text-slate-500 dark:text-white/55">
+              {ctxSummary}
+            </p>
           </div>
           <button
             type="button"

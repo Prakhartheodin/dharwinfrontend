@@ -321,6 +321,7 @@ export default function EditRecruiterClient() {
                         name="profileSummary"
                         id="profileSummary"
                         rows={4}
+                        maxLength={4000}
                         value={formData.profileSummary}
                         onChange={handleChange}
                         className="form-control w-full !rounded-md"

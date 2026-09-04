@@ -15,6 +15,7 @@ import {
   formatOfferLetterSaveError,
   getOfferById,
   getOfferLetterDefaults,
+  listOffers,
   type Offer,
   type OfferLetterJobType,
 } from "@/shared/lib/api/offers";
@@ -22,9 +23,19 @@ import { buildCreateOfferPayloadFromLetterForm } from "../../build-create-offer-
 import { buildOfferLetterUpdatePayload } from "../../build-offer-letter-update-payload";
 import { confirmCompensationChange } from "../../confirm-compensation-change";
 import { detectEligibilityPreset } from "../../offer-letter-generator-data";
-import { combinedJobPostingDocText, resolveOfferLetterRolesHtml, resolveOfferLetterTrainingHtml } from "../../job-posting-doc";
+import {
+  combinedJobPostingDocText,
+  resolveOfferLetterRolesHtml,
+  resolveOfferLetterTrainingHtml,
+} from "../../job-posting-doc";
 import { roleResponsibilitiesLinesToHtml } from "@/shared/lib/ats/jobDescriptionHtml";
 import { letterDateStampYmd } from "../../letter-date-stamp";
+import { listJobApplications, type JobApplication } from "@/shared/lib/api/jobApplications";
+import {
+  isJobApplicationEligibleForOffer,
+  jobApplicationRecordId,
+} from "@/shared/lib/ats/offer-application-eligibility";
+import { findJobApplicationById, resolveOfferInterviewBypassAck } from "@/shared/lib/ats/resolve-offer-interview-bypass";
 
 function formatCandidateAddress(c: { address?: Offer["candidate"]["address"] } | null | undefined) {
   const a = c?.address;
@@ -41,8 +52,8 @@ function getOfferRecordId(o: { _id?: string; id?: string } | null | undefined): 
 }
 
 /**
- * Standalone letter: save fields via POST `/offers/:id/generate-letter` (validation + persistence). Print/Save as PDF uses the browser only.
- * Open with `?offerId=` to continue an offer, or fill the form and save to create an offer record (no job application required).
+ * Offer letter linked to a job application (required on first save).
+ * Open with `?offerId=` to continue an existing offer.
  */
 export default function NewOfferLetterPage() {
   const router = useRouter();
@@ -54,6 +65,10 @@ export default function NewOfferLetterPage() {
   const [linkedOffer, setLinkedOffer] = useState<Offer | null>(null);
   const [letterBusy, setLetterBusy] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [jobApplications, setJobApplications] = useState<JobApplication[]>([]);
+  const [applicationsLoading, setApplicationsLoading] = useState(true);
+  const [selectedCandidateId, setSelectedCandidateId] = useState("");
+  const [jobApplicationId, setJobApplicationId] = useState("");
 
   useEffect(() => {
     if (!offerIdParam || !/^[0-9a-fA-F]{24}$/.test(offerIdParam)) {
@@ -146,6 +161,128 @@ export default function NewOfferLetterPage() {
     };
   }, [offerIdParam]);
 
+  useEffect(() => {
+    if (offerIdParam) return;
+    let cancelled = false;
+    setApplicationsLoading(true);
+    Promise.all([listJobApplications({ limit: 500 }), listOffers({ limit: 500 })])
+      .then(([appsRes, offersRes]) => {
+        if (cancelled) return;
+        const appIdsWithOffer = new Set(
+          (offersRes.results ?? [])
+            .map((o) => String(o.jobApplication || "").trim())
+            .filter(Boolean)
+        );
+        setJobApplications(
+          (appsRes.results ?? []).filter((ja) =>
+            isJobApplicationEligibleForOffer(ja.status, jobApplicationRecordId(ja), appIdsWithOffer)
+          )
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setJobApplications([]);
+      })
+      .finally(() => {
+        if (!cancelled) setApplicationsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [offerIdParam]);
+
+  const candidateOptions = useMemo(() => {
+    const byId = new Map<string, { id: string; label: string }>();
+    for (const ja of jobApplications) {
+      const cid =
+        (ja.candidate as { _id?: string; id?: string } | undefined)?._id ??
+        (ja.candidate as { id?: string } | undefined)?.id;
+      if (!cid) continue;
+      const id = String(cid);
+      if (byId.has(id)) continue;
+      const name = ja.candidate?.fullName || "Candidate";
+      const email = ja.candidate?.email || "";
+      byId.set(id, { id, label: email ? `${name} (${email})` : name });
+    }
+    return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }, [jobApplications]);
+
+  const applicationsForCandidate = useMemo(() => {
+    if (!selectedCandidateId) return [];
+    return jobApplications.filter((ja) => {
+      const cid =
+        (ja.candidate as { _id?: string; id?: string } | undefined)?._id ??
+        (ja.candidate as { id?: string } | undefined)?.id;
+      return cid != null && String(cid) === selectedCandidateId;
+    });
+  }, [jobApplications, selectedCandidateId]);
+
+  const applicationOptions = useMemo(
+    () =>
+      applicationsForCandidate.map((ja) => ({
+        id: jobApplicationRecordId(ja),
+        label: `${ja.job?.title || "Job"} (${ja.status})`,
+      })),
+    [applicationsForCandidate]
+  );
+
+  const handleCandidateChange = useCallback(
+    (candidateId: string) => {
+      setSelectedCandidateId(candidateId);
+      setJobApplicationId("");
+      const ja = candidateId
+        ? jobApplications.find((j) => {
+            const cid =
+              (j.candidate as { _id?: string; id?: string } | undefined)?._id ??
+              (j.candidate as { id?: string } | undefined)?.id;
+            return cid != null && String(cid) === candidateId;
+          })
+        : undefined;
+      setLetterForm((prev) => ({
+        ...prev,
+        letterFullName: ja?.candidate?.fullName || "",
+        letterAddress: ja ? formatCandidateAddress(ja.candidate) : "",
+        positionTitle: "",
+        rolesText: "",
+        trainingText: "",
+      }));
+    },
+    [jobApplications]
+  );
+
+  const applyApplicationToLetter = useCallback(async (applicationId: string) => {
+    setJobApplicationId(applicationId);
+    if (!applicationId) return;
+    const ja = jobApplications.find((j) => jobApplicationRecordId(j) === applicationId);
+    if (!ja) return;
+    const positionTitle = ja.job?.title || "";
+    const jobId =
+      (ja.job as { _id?: string; id?: string } | undefined)?._id ??
+      (ja.job as { id?: string } | undefined)?.id;
+    const letterAddress = formatCandidateAddress(ja.candidate);
+    const letterFullName = ja.candidate?.fullName || "";
+    let rolesText = "";
+    let trainingText = "";
+    try {
+      const d = await getOfferLetterDefaults(positionTitle, jobId);
+      rolesText =
+        String(d.positionOverviewHtml ?? "").trim() ||
+        roleResponsibilitiesLinesToHtml(d.roleResponsibilities);
+      trainingText =
+        String(d.trainingOutcomesHtml ?? "").trim() ||
+        roleResponsibilitiesLinesToHtml(d.trainingOutcomes);
+    } catch {
+      // optional
+    }
+    setLetterForm((prev) => ({
+      ...prev,
+      letterFullName: letterFullName || prev.letterFullName,
+      letterAddress: letterAddress || prev.letterAddress,
+      positionTitle: positionTitle || prev.positionTitle,
+      rolesText: prev.rolesText.trim() ? prev.rolesText : rolesText,
+      trainingText: prev.trainingText.trim() ? prev.trainingText : trainingText,
+    }));
+  }, [jobApplications]);
+
   const handleSaveLetter = useCallback(async () => {
     const isIntern = letterForm.jobType === "INTERN_UNPAID";
     const g = Number(String(letterForm.annualGrossCtc).replace(/,/g, ""));
@@ -194,9 +331,24 @@ export default function NewOfferLetterPage() {
       alert("Set annual gross in Compensation before saving a paid offer letter.");
       return;
     }
+    if (!jobApplicationId) {
+      alert("Select a candidate and job applied for before saving.");
+      return;
+    }
+    if (!/^[0-9a-fA-F]{24}$/.test(jobApplicationId)) {
+      alert("Invalid job application selected.");
+      return;
+    }
+    const selectedApp = findJobApplicationById(jobApplications, jobApplicationId);
+    const bypassAck = await resolveOfferInterviewBypassAck(selectedApp, confirm);
+    if (bypassAck === false) return;
+
     setLetterBusy(true);
     try {
-      const created = await createOffer(buildCreateOfferPayloadFromLetterForm("", "", "", 0, 0, letterForm));
+      const created = await createOffer({
+        ...buildCreateOfferPayloadFromLetterForm(jobApplicationId, "", "", 0, 0, letterForm),
+        ...(bypassAck ? { ackBypassInterview: true } : {}),
+      });
       const id = getOfferRecordId(created);
       if (!id) {
         throw new Error("Create offer returned no id");
@@ -211,7 +363,7 @@ export default function NewOfferLetterPage() {
     } finally {
       setLetterBusy(false);
     }
-  }, [letterForm, linkedOffer, offerIdParam, router, confirm]);
+  }, [letterForm, linkedOffer, offerIdParam, router, confirm, jobApplicationId, jobApplications]);
 
   const standaloneLetterJobPostingDoc = useMemo(
     () => combinedJobPostingDocText(linkedOffer?.job) ?? null,
@@ -219,8 +371,9 @@ export default function NewOfferLetterPage() {
   );
 
   const loadingOfferFromId = Boolean(offerIdParam && letterBusy && !loadError);
-  const formPanelLinkOffer =
-    !linkedOffer && (loadingOfferFromId || (loadError && offerIdParam)) ? (
+  const showApplicationPicker = !linkedOffer && !offerIdParam;
+
+  const formPanelLinkOffer = !linkedOffer && (loadingOfferFromId || (loadError && offerIdParam)) ? (
       <div className="px-0 pb-1 space-y-2">
         {loadingOfferFromId ? (
           <p className="text-sm text-slate-600 dark:text-slate-400">Loading offer…</p>
@@ -251,6 +404,21 @@ export default function NewOfferLetterPage() {
           onClose={() => router.push("/ats/offers-placement")}
           onSaveLetter={() => void handleSaveLetter()}
           formPanelTop={formPanelLinkOffer}
+          applicationPicker={
+            showApplicationPicker
+              ? {
+                  loading: applicationsLoading,
+                  candidateOptions,
+                  applicationOptions,
+                  selectedCandidateId,
+                  selectedApplicationId: jobApplicationId,
+                  onCandidateChange: handleCandidateChange,
+                  onApplicationChange: (id) => void applyApplicationToLetter(id),
+                  emptyHint:
+                    "No eligible applications. Candidate must be Applied, Screening, Interview, Shortlisted, or Offered without an existing offer.",
+                }
+              : null
+          }
         />
       </div>
     </Fragment>

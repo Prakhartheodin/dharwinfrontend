@@ -11,6 +11,8 @@ import {
   type AssignPersonRow,
 } from "@/shared/lib/attendance-assign-people-options";
 import { assignLeavesToStudents } from "@/shared/lib/api/attendance";
+import { YmdFilterDateInput } from "@/shared/components/filters/YmdFilterDateInput";
+import { getReferralLeadsDateRangeError } from "@/shared/lib/ymd-filter-date-input.util";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import dynamic from "next/dynamic";
@@ -18,18 +20,363 @@ import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-ac
 import { SopAssignChecklistNotice, useSopPreselectStudents } from "@/shared/hooks/use-sop-assign-deeplink";
 import { dispatchSopStripRefresh } from "@/shared/lib/sop-strip-preferences";
 import { usePmReactSelectStyles } from "@/shared/hooks/usePmReactSelectStyles";
-import { formatUtcCalendarDate } from "@/shared/lib/attendance-display";
+import { formatUtcCalendarDate, getUtcCalendarDateKey } from "@/shared/lib/attendance-display";
 import { getAllHolidays, type Holiday } from "@/shared/lib/api/holidays";
 import {
+  addCalendarDaysYmd,
   buildHolidayDateKeySet,
   expandLeaveDatesInRange,
-  isWeekOffDayLocal,
+  inclusiveCalendarSpanDays,
   parseYmdLocal,
+  unionWeekOffDayNames,
 } from "@/shared/lib/leave-date-range";
+
+const SELECT_ALL = "__all_students__";
+// ponytail: 90 calendar-day ceiling; server {from,to} + insertMany if year-long bulk is needed
+const MAX_ASSIGN_LEAVE_SPAN_DAYS = 90;
+const VIEW_DATES_PREVIEW = 50;
+
+const LEAVE_TYPE_OPTIONS = [
+  { value: "casual" as const, label: "Casual" },
+  { value: "sick" as const, label: "Sick" },
+  { value: "unpaid" as const, label: "Unpaid" },
+];
+
+const DATE_INPUT_CLASS =
+  "w-full rounded-lg border border-defaultborder/80 bg-white px-4 py-2.5 text-sm text-defaulttextcolor dark:text-white focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all dark:bg-white/5";
+const DATE_LABEL_CLASS =
+  "mb-1.5 block text-sm font-medium text-defaulttextcolor/80 dark:text-white/70";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
-const SELECT_ALL = "__all_students__";
+function warn(title: string, text?: string) {
+  return Swal.fire({
+    icon: "warning",
+    title,
+    ...(text != null ? { text } : {}),
+    confirmButtonText: "OK",
+  });
+}
+
+function errorMessage(err: unknown, fallback: string): string {
+  const e = err as { response?: { data?: { message?: string } }; message?: string };
+  return e.response?.data?.message ?? e.message ?? fallback;
+}
+
+type JoinDateViolation = { name: string; joinYmd: string };
+type ResignDateViolation = { name: string; resignYmd: string };
+
+function joiningDateYmd(person: AssignPersonRow): string | null {
+  const raw =
+    person.kind === "student" ? person.student.joiningDate : person.joiningDate ?? null;
+  if (raw == null || String(raw).trim() === "") return null;
+  const key = getUtcCalendarDateKey(String(raw));
+  return key || null;
+}
+
+function resignDateYmd(person: AssignPersonRow): string | null {
+  const raw = person.resignDate ?? null;
+  if (raw == null || String(raw).trim() === "") return null;
+  const key = getUtcCalendarDateKey(String(raw));
+  return key || null;
+}
+
+function laterYmd(a: string | undefined, b: string | undefined): string | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  return a >= b ? a : b;
+}
+
+function earlierYmd(a: string | undefined, b: string | undefined): string | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  return a <= b ? a : b;
+}
+
+function joinMinDateFromPeople(people: AssignPersonRow[]): string | undefined {
+  let max: string | null = null;
+  for (const person of people) {
+    const joinYmd = joiningDateYmd(person);
+    if (!joinYmd) continue;
+    if (!max || joinYmd > max) max = joinYmd;
+  }
+  return max ?? undefined;
+}
+
+function resignMaxDateFromPeople(people: AssignPersonRow[]): string | undefined {
+  let min: string | null = null;
+  for (const person of people) {
+    const resignYmd = resignDateYmd(person);
+    if (!resignYmd) continue;
+    if (!min || resignYmd < min) min = resignYmd;
+  }
+  return min ?? undefined;
+}
+
+function personDisplayName(person: AssignPersonRow): string {
+  return person.kind === "student"
+    ? person.student.user?.name ?? "Unknown"
+    : person.fullName || "Unknown";
+}
+
+function findJoinDateViolations(fromYmd: string, people: AssignPersonRow[]): JoinDateViolation[] {
+  if (!fromYmd) return [];
+  const violations: JoinDateViolation[] = [];
+  for (const person of people) {
+    const joinYmd = joiningDateYmd(person);
+    if (!joinYmd || fromYmd >= joinYmd) continue;
+    violations.push({ name: personDisplayName(person), joinYmd });
+  }
+  return violations;
+}
+
+function joinDateViolationMessage(violations: JoinDateViolation[]): { title: string; text: string } {
+  if (violations.length === 1) {
+    const v = violations[0];
+    const formatted = formatUtcCalendarDate(v.joinYmd);
+    return {
+      title: "Before joining date",
+      text: `${v.name} joined on ${formatted}. Choose a From date on or after their joining date.`,
+    };
+  }
+  const lines = violations.map((v) => `${v.name} joined on ${formatUtcCalendarDate(v.joinYmd)}`);
+  return {
+    title: "Before joining date",
+    text: `${lines.join(". ")}. Choose a From date on or after each person's joining date.`,
+  };
+}
+
+function findResignDateViolations(toYmd: string, people: AssignPersonRow[]): ResignDateViolation[] {
+  if (!toYmd) return [];
+  const violations: ResignDateViolation[] = [];
+  for (const person of people) {
+    const resignYmd = resignDateYmd(person);
+    if (!resignYmd || toYmd <= resignYmd) continue;
+    violations.push({ name: personDisplayName(person), resignYmd });
+  }
+  return violations;
+}
+
+function resignDateViolationMessage(violations: ResignDateViolation[]): { title: string; text: string } {
+  if (violations.length === 1) {
+    const v = violations[0];
+    const formatted = formatUtcCalendarDate(v.resignYmd);
+    return {
+      title: "After resign date",
+      text: `${v.name} resigned on ${formatted}. Choose a To date on or before their resign date.`,
+    };
+  }
+  const lines = violations.map((v) => `${v.name} resigned on ${formatUtcCalendarDate(v.resignYmd)}`);
+  return {
+    title: "After resign date",
+    text: `${lines.join(". ")}. Choose a To date on or before each person's resign date.`,
+  };
+}
+
+function excludedCountPhrase(weekOff: number, holiday: number): string | null {
+  if (weekOff <= 0 && holiday <= 0) return null;
+  const parts: string[] = [];
+  if (weekOff > 0) parts.push(`${weekOff} week-off${weekOff === 1 ? "" : "s"}`);
+  if (holiday > 0) parts.push(`${holiday} holiday${holiday === 1 ? "" : "s"}`);
+  return `(${parts.join(", ")} excluded)`;
+}
+
+type AssignLeaveDateRangeFieldsetProps = {
+  fromDate: string;
+  toDate: string;
+  onFromDateChange: (next: string) => void;
+  onToDateChange: (next: string) => void;
+  spanExceeded: boolean;
+  joinDateError: string | null;
+  resignDateError: string | null;
+  joinMinDate?: string;
+  resignMaxDate?: string;
+  selectedDates: string[];
+  excludedWeekOff: number;
+  excludedHoliday: number;
+  removedDates: Set<string>;
+  onRestoreDate: (date: string) => void;
+  onRemoveDate: (date: string) => void;
+  viewDatesOpen: boolean;
+  onToggleViewDates: () => void;
+  onAssign: () => void;
+  assigning: boolean;
+  hasPeople: boolean;
+};
+
+function AssignLeaveDateRangeFieldset({
+  fromDate,
+  toDate,
+  onFromDateChange,
+  onToDateChange,
+  spanExceeded,
+  joinDateError,
+  resignDateError,
+  joinMinDate,
+  resignMaxDate,
+  selectedDates,
+  excludedWeekOff,
+  excludedHoliday,
+  removedDates,
+  onRestoreDate,
+  onRemoveDate,
+  viewDatesOpen,
+  onToggleViewDates,
+  onAssign,
+  assigning,
+  hasPeople,
+}: AssignLeaveDateRangeFieldsetProps) {
+  const maxStartDate = toDate
+    ? addCalendarDaysYmd(toDate, 1 - MAX_ASSIGN_LEAVE_SPAN_DAYS) ?? undefined
+    : undefined;
+  const maxEndDate = fromDate
+    ? addCalendarDaysYmd(fromDate, MAX_ASSIGN_LEAVE_SPAN_DAYS - 1) ?? undefined
+    : undefined;
+  const fromMinDate = laterYmd(maxStartDate, joinMinDate);
+  const toMaxDate = earlierYmd(maxEndDate, resignMaxDate);
+  const excludedPhrase = excludedCountPhrase(excludedWeekOff, excludedHoliday);
+  const previewDates = selectedDates.slice(0, VIEW_DATES_PREVIEW);
+  const hiddenCount = selectedDates.length - previewDates.length;
+  const dateRangeError = getReferralLeadsDateRangeError(fromDate, toDate);
+  const fromDateError = joinDateError ?? dateRangeError;
+  const toDateError = resignDateError ?? dateRangeError;
+
+  return (
+    <fieldset className="p-5 border border-defaultborder/70 rounded-xl bg-slate-50/60 dark:bg-white/[0.04] dark:border-defaultborder/50">
+      <legend className="text-sm font-semibold text-defaulttextcolor dark:text-white px-1">
+        Date range <span className="text-danger">*</span>
+      </legend>
+      <p className="text-sm text-defaulttextcolor/60 dark:text-white/50 mb-3 leading-relaxed">
+        Select a start and end date. Only <strong>working days</strong> in the range are included; week-offs and holidays are skipped automatically.
+      </p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <YmdFilterDateInput
+          label="From"
+          inputId="assign-leave-from-date"
+          portalId="assign-leave-datepicker-portal-from"
+          value={fromDate}
+          minDate={fromMinDate}
+          maxDate={toDate || undefined}
+          rangeError={fromDateError}
+          onCommit={onFromDateChange}
+          wrapperClassName="w-full"
+          inputClassName={DATE_INPUT_CLASS}
+          labelClassName={DATE_LABEL_CLASS}
+        />
+        <YmdFilterDateInput
+          label="To"
+          inputId="assign-leave-to-date"
+          portalId="assign-leave-datepicker-portal-to"
+          value={toDate}
+          minDate={fromDate || undefined}
+          maxDate={toMaxDate}
+          rangeError={toDateError}
+          onCommit={onToDateChange}
+          wrapperClassName="w-full"
+          inputClassName={DATE_INPUT_CLASS}
+          labelClassName={DATE_LABEL_CLASS}
+        />
+      </div>
+      {spanExceeded && (
+        <p className="mt-3 text-sm text-danger" role="alert">
+          Choose a range of at most {MAX_ASSIGN_LEAVE_SPAN_DAYS} calendar days.
+        </p>
+      )}
+      {fromDate && toDate && (
+        <p className="mt-3 text-sm font-semibold text-defaulttextcolor dark:text-white">
+          {formatUtcCalendarDate(fromDate)} – {formatUtcCalendarDate(toDate)}
+        </p>
+      )}
+      {fromDate && toDate && !spanExceeded && (
+        <>
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-defaulttextcolor/65 dark:text-white/60" aria-live="polite">
+              {selectedDates.length > 0 ? (
+                <>
+                  <span className="font-semibold text-defaulttextcolor dark:text-white">{selectedDates.length}</span> working day
+                  {selectedDates.length === 1 ? "" : "s"} selected
+                  {excludedPhrase && <> {excludedPhrase}</>}
+                  {removedDates.size > 0 && (
+                    <>
+                      {" "}
+                      · {removedDates.size} day{removedDates.size === 1 ? "" : "s"} removed
+                    </>
+                  )}
+                </>
+              ) : (
+                "No working days in this range after excluding week-offs and holidays."
+              )}
+            </p>
+            <button
+              type="button"
+              onClick={onAssign}
+              disabled={assigning || !hasPeople || selectedDates.length === 0 || joinDateError != null || resignDateError != null}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary/90 hover:shadow-md transition-all disabled:opacity-60 disabled:pointer-events-none shrink-0"
+            >
+              {assigning ? (
+                <><i className="ri-loader-4-line animate-spin text-lg" /> Assigning…</>
+              ) : (
+                <><i className="ri-calendar-check-line text-lg" /> Assign Leave</>
+              )}
+            </button>
+          </div>
+          {removedDates.size > 0 && (
+            <ul className="mt-3 flex flex-wrap gap-2">
+              {[...removedDates].sort().map((d) => (
+                <li key={d}>
+                  <button
+                    type="button"
+                    onClick={() => onRestoreDate(d)}
+                    className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-defaultborder/80 bg-white px-3 text-sm text-defaulttextcolor dark:bg-white/5 dark:text-white"
+                  >
+                    Restore {formatUtcCalendarDate(d)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {selectedDates.length > 0 && (
+            <div className="mt-3">
+              <button
+                type="button"
+                aria-expanded={viewDatesOpen}
+                onClick={onToggleViewDates}
+                className="inline-flex min-h-11 items-center text-sm font-medium text-primary"
+              >
+                {viewDatesOpen ? "Hide Dates" : "View Dates"}
+              </button>
+              {viewDatesOpen && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {previewDates.map((d) => (
+                    <span
+                      key={d}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 text-primary border border-primary/20 pl-3 text-sm font-medium dark:bg-primary/20 dark:border-primary/30"
+                    >
+                      {formatUtcCalendarDate(d)}
+                      <button
+                        type="button"
+                        onClick={() => onRemoveDate(d)}
+                        className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full hover:bg-primary/20 dark:hover:bg-primary/30 transition-colors"
+                        aria-label={`Remove ${formatUtcCalendarDate(d)}`}
+                      >
+                        <i className="ri-close-line text-sm" />
+                      </button>
+                    </span>
+                  ))}
+                  {hiddenCount > 0 && (
+                    <span className="inline-flex min-h-11 items-center text-sm text-defaulttextcolor/70 dark:text-white/60">
+                      and {hiddenCount} more
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </fieldset>
+  );
+}
 
 export default function SettingsAttendanceAssignLeavePage() {
   const searchParams = useSearchParams();
@@ -42,6 +389,7 @@ export default function SettingsAttendanceAssignLeavePage() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [removedDates, setRemovedDates] = useState<Set<string>>(() => new Set());
+  const [viewDatesOpen, setViewDatesOpen] = useState(false);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(true);
@@ -99,37 +447,57 @@ export default function SettingsAttendanceAssignLeavePage() {
 
   const holidayDateKeys = useMemo(() => buildHolidayDateKeySet(holidays), [holidays]);
 
-  const isWeekOffForSelectedPeople = useCallback(
-    (date: Date) => {
-      if (chosenPeople.length === 0) return isWeekOffDayLocal(date, []);
-      return chosenPeople.some((person) => {
-        const weekOff =
-          person.kind === "student" && person.student.weekOff?.length
-            ? person.student.weekOff
-            : [];
-        return isWeekOffDayLocal(date, weekOff);
-      });
-    },
+  const weekOffDayNames = useMemo(
+    () =>
+      unionWeekOffDayNames(
+        chosenPeople.map((person) => (person.kind === "student" ? person.student.weekOff : undefined))
+      ),
     [chosenPeople]
   );
 
+  const spanDays = fromDate && toDate ? inclusiveCalendarSpanDays(fromDate, toDate) : null;
+  const spanExceeded = spanDays != null && spanDays > MAX_ASSIGN_LEAVE_SPAN_DAYS;
+
   const rangeExpansion = useMemo(() => {
-    if (!fromDate || !toDate) {
+    if (!fromDate || !toDate || spanExceeded) {
       return { dates: [] as string[], excludedWeekOff: 0, excludedHoliday: 0 };
     }
     return expandLeaveDatesInRange(fromDate, toDate, {
       holidayDateKeys,
-      isWeekOff: isWeekOffForSelectedPeople,
+      weekOffDayNames,
     });
-  }, [fromDate, toDate, holidayDateKeys, isWeekOffForSelectedPeople]);
+  }, [fromDate, toDate, spanExceeded, holidayDateKeys, weekOffDayNames]);
 
   useEffect(() => {
-    setRemovedDates(new Set());
+    setRemovedDates((prev) => (prev.size === 0 ? prev : new Set()));
   }, [fromDate, toDate]);
 
   const selectedDates = useMemo(
     () => rangeExpansion.dates.filter((d) => !removedDates.has(d)),
     [rangeExpansion.dates, removedDates]
+  );
+
+  const joinDateViolations = useMemo(
+    () => findJoinDateViolations(fromDate, chosenPeople),
+    [fromDate, chosenPeople]
+  );
+
+  const joinDateError = useMemo(
+    () => (joinDateViolations.length > 0 ? joinDateViolationMessage(joinDateViolations).text : null),
+    [joinDateViolations]
+  );
+
+  const joinMinDate = useMemo(() => joinMinDateFromPeople(chosenPeople), [chosenPeople]);
+  const resignMaxDate = useMemo(() => resignMaxDateFromPeople(chosenPeople), [chosenPeople]);
+
+  const resignDateViolations = useMemo(
+    () => findResignDateViolations(toDate, chosenPeople),
+    [toDate, chosenPeople]
+  );
+
+  const resignDateError = useMemo(
+    () => (resignDateViolations.length > 0 ? resignDateViolationMessage(resignDateViolations).text : null),
+    [resignDateViolations]
   );
 
   const personOptions = people.length
@@ -140,112 +508,148 @@ export default function SettingsAttendanceAssignLeavePage() {
     setRemovedDates((prev) => new Set(prev).add(d));
   };
 
+  const restoreDate = (d: string) => {
+    setRemovedDates((prev) => {
+      if (!prev.has(d)) return prev;
+      const next = new Set(prev);
+      next.delete(d);
+      return next;
+    });
+  };
+
+  const onToDateChange = (next: string) => {
+    setToDate(next);
+    if (next) {
+      const violations = findResignDateViolations(next, chosenPeople);
+      if (violations.length > 0) {
+        const { title, text } = resignDateViolationMessage(violations);
+        void warn(title, text);
+      }
+    }
+    if (!next || !fromDate) return;
+    if (next < fromDate) {
+      setFromDate(next);
+      return;
+    }
+    const maxEnd = addCalendarDaysYmd(fromDate, MAX_ASSIGN_LEAVE_SPAN_DAYS - 1) ?? undefined;
+    const cappedTo = earlierYmd(maxEnd, resignMaxDate);
+    if (cappedTo && next > cappedTo) setToDate(cappedTo);
+  };
+
+  const onFromDateChange = (next: string) => {
+    setFromDate(next);
+    if (next) {
+      const violations = findJoinDateViolations(next, chosenPeople);
+      if (violations.length > 0) {
+        const { title, text } = joinDateViolationMessage(violations);
+        void warn(title, text);
+      }
+    }
+    if (!next || !toDate) return;
+    if (toDate < next) {
+      setToDate(next);
+      return;
+    }
+    const maxEnd = addCalendarDaysYmd(next, MAX_ASSIGN_LEAVE_SPAN_DAYS - 1) ?? undefined;
+    const cappedTo = earlierYmd(maxEnd, resignMaxDate);
+    if (cappedTo && toDate > cappedTo) setToDate(cappedTo);
+  };
+
   const handleAssign = async () => {
     if (selectedPeople.length === 0) {
-      await Swal.fire({
-        icon: "warning",
-        title: "No one selected",
-        text: "Select at least one training profile or employee",
-        confirmButtonText: "OK",
-      });
+      await warn("No one selected", "Select at least one training profile or employee");
       return;
     }
     if (!fromDate || !toDate) {
-      await Swal.fire({
-        icon: "warning",
-        title: "Date range required",
-        text: "Select a start date and end date.",
-        confirmButtonText: "OK",
-      });
+      await warn("Date range required", "Select a start date and end date.");
+      return;
+    }
+    const joinViolations = findJoinDateViolations(fromDate, chosenPeople);
+    if (joinViolations.length > 0) {
+      const { title, text } = joinDateViolationMessage(joinViolations);
+      await warn(title, text);
+      return;
+    }
+    const resignViolations = findResignDateViolations(toDate, chosenPeople);
+    if (resignViolations.length > 0) {
+      const { title, text } = resignDateViolationMessage(resignViolations);
+      await warn(title, text);
       return;
     }
     const from = parseYmdLocal(fromDate);
     const to = parseYmdLocal(toDate);
     if (!from || !to) {
-      await Swal.fire({ icon: "warning", title: "Invalid dates", confirmButtonText: "OK" });
+      await warn("Invalid dates");
       return;
     }
     if (to < from) {
-      await Swal.fire({
-        icon: "warning",
-        title: "Invalid range",
-        text: "End date must be on or after start date.",
-        confirmButtonText: "OK",
-      });
+      await warn("Invalid range", "End date must be on or after start date.");
+      return;
+    }
+    const span = inclusiveCalendarSpanDays(fromDate, toDate);
+    if (span != null && span > MAX_ASSIGN_LEAVE_SPAN_DAYS) {
+      await warn("Range too long", `Choose a range of at most ${MAX_ASSIGN_LEAVE_SPAN_DAYS} calendar days.`);
       return;
     }
     if (selectedDates.length === 0) {
-      await Swal.fire({
-        icon: "warning",
-        title: "No working days",
-        text: "The selected range has no working days after excluding week-offs and holidays.",
-        confirmButtonText: "OK",
-      });
+      await warn(
+        "No working days",
+        "The selected range has no working days after excluding week-offs and holidays."
+      );
       return;
     }
     setAssigning(true);
     setError(null);
     try {
-      const chosen = selectedPeople.some((s) => s.value === SELECT_ALL)
-        ? people
-        : selectedPeople.filter((s) => s.value !== SELECT_ALL);
-      if (chosen.length === 0) {
-        await Swal.fire({
-          icon: "warning",
-          title: "No one selected",
-          text: "Select at least one training profile or employee",
-          confirmButtonText: "OK",
-        });
-        setAssigning(false);
+      if (chosenPeople.length === 0) {
+        await warn("No one selected", "Select at least one training profile or employee");
         return;
       }
       let ids: string[];
       try {
-        ids = await resolveStudentIdsForHolidayAssign(chosen);
+        ids = await resolveStudentIdsForHolidayAssign(chosenPeople);
       } catch (resolveErr: unknown) {
-        const msg =
-          (resolveErr as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ??
-          (resolveErr as { message?: string })?.message ??
-          "Could not resolve training profiles. Candidates need the Student role and permission to create a training profile.";
+        const msg = errorMessage(
+          resolveErr,
+          "Could not resolve training profiles. Candidates need the Student role and permission to create a training profile."
+        );
         setError(msg);
         await Swal.fire({ icon: "error", title: "Cannot assign leave", text: msg, confirmButtonText: "OK" });
-        setAssigning(false);
         return;
       }
       if (ids.length === 0) {
-        await Swal.fire({
-          icon: "warning",
-          title: "Nothing to assign",
-          text: "Select at least one training profile or employee",
-          confirmButtonText: "OK",
-        });
-        setAssigning(false);
+        await warn("Nothing to assign", "Select at least one training profile or employee");
         return;
       }
-      const datesIso = selectedDates.map((d) => new Date(d + "T00:00:00.000Z").toISOString());
-      const result = await assignLeavesToStudents(ids, datesIso, leaveType, notes || undefined);
+      const result = await assignLeavesToStudents(ids, [], leaveType, notes || undefined, {
+        from: fromDate,
+        to: toDate,
+        excludedDates: removedDates.size > 0 ? [...removedDates] : undefined,
+      });
+      const created = result?.data?.attendanceRecordsCreated;
+      if (created === 0) {
+        await warn("No records created", result?.message ?? "No leave records were created.");
+        return;
+      }
       await Swal.fire({
         icon: "success",
         title: "Success",
-        text: result?.data?.attendanceRecordsCreated != null
-          ? `Created ${result.data.attendanceRecordsCreated} leave record(s).`
-          : "Leave assigned.",
+        text: created != null ? `Created ${created} leave record(s).` : "Leave assigned.",
         confirmButtonText: "OK",
       });
       dispatchSopStripRefresh();
       setFromDate("");
       setToDate("");
       setRemovedDates(new Set());
+      setViewDatesOpen(false);
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ?? (err as { message?: string })?.message ?? "Failed to assign leave";
+      const msg = errorMessage(err, "Failed to assign leave");
       setError(msg);
       await Swal.fire({ icon: "error", title: "Error", text: msg, confirmButtonText: "OK" });
     } finally {
       setAssigning(false);
     }
   };
-
-  const formatDate = (d: string) => formatUtcCalendarDate(d);
 
   if (isAdmin === null) {
     return (
@@ -332,16 +736,35 @@ export default function SettingsAttendanceAssignLeavePage() {
                       getOptionLabel={(o) => (o as AssignPersonRow).label}
                       onChange={(sel: unknown) => {
                         const value = (sel as AssignPersonRow[] | null) ?? [];
+                        let nextSelected: AssignPersonRow[];
                         if (!value.length) {
                           setSelectedPeople([]);
                           return;
                         }
                         const hasAll = value.some((o) => o.value === SELECT_ALL);
                         if (hasAll) {
-                          if (selectedPeople.length === people.length) setSelectedPeople([]);
-                          else setSelectedPeople(people);
+                          nextSelected =
+                            selectedPeople.length === people.length ? [] : [...people];
                         } else {
-                          setSelectedPeople(value);
+                          nextSelected = value;
+                        }
+                        setSelectedPeople(nextSelected);
+                        const nextChosen = nextSelected.some((s) => s.value === SELECT_ALL)
+                          ? people
+                          : nextSelected.filter((s) => s.value !== SELECT_ALL);
+                        if (fromDate && nextChosen.length > 0) {
+                          const violations = findJoinDateViolations(fromDate, nextChosen);
+                          if (violations.length > 0) {
+                            const { title, text } = joinDateViolationMessage(violations);
+                            void warn(title, text);
+                          }
+                        }
+                        if (toDate && nextChosen.length > 0) {
+                          const resignViolations = findResignDateViolations(toDate, nextChosen);
+                          if (resignViolations.length > 0) {
+                            const { title, text } = resignDateViolationMessage(resignViolations);
+                            void warn(title, text);
+                          }
                         }
                       }}
                       placeholder="Training profiles and employees…"
@@ -364,102 +787,43 @@ export default function SettingsAttendanceAssignLeavePage() {
                 <div>
                   <label className="block text-sm font-semibold text-defaulttextcolor mb-2">Leave Type <span className="text-danger">*</span></label>
                   <div className="inline-flex rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 p-1">
-                    {(["casual", "sick", "unpaid"] as const).map((type) => (
+                    {LEAVE_TYPE_OPTIONS.map(({ value, label }) => (
                       <button
-                        key={type}
+                        key={value}
                         type="button"
-                        onClick={() => setLeaveType(type)}
+                        onClick={() => setLeaveType(value)}
                         className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 shrink-0 ${
-                          leaveType === type ? "bg-primary text-white shadow-sm" : "text-defaulttextcolor hover:text-primary"
+                          leaveType === value ? "bg-primary text-white shadow-sm" : "text-defaulttextcolor hover:text-primary"
                         }`}
                       >
-                        {type === "casual" ? "Casual" : type === "sick" ? "Sick" : "Unpaid"}
+                        {label}
                       </button>
                     ))}
                   </div>
                 </div>
 
-                <div className="p-5 border border-defaultborder/70 rounded-xl bg-slate-50/60 dark:bg-white/[0.04] dark:border-defaultborder/50">
-                  <label className="block text-sm font-semibold text-defaulttextcolor mb-2">
-                    Date range <span className="text-danger">*</span>
-                  </label>
-                  <p className="text-xs text-defaulttextcolor/60 mb-3 leading-relaxed">
-                    Select a start and end date. Only <strong>working days</strong> in the range are included; week-offs and holidays are skipped automatically.
-                  </p>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                      <label htmlFor="assign-leave-from-date" className="mb-1.5 block text-xs font-medium text-defaulttextcolor/80">
-                        Start date <span className="text-danger">*</span>
-                      </label>
-                      <input
-                        id="assign-leave-from-date"
-                        type="date"
-                        value={fromDate}
-                        onChange={(e) => setFromDate(e.target.value)}
-                        className="w-full rounded-lg border border-defaultborder/80 bg-white px-4 py-2.5 text-sm text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all dark:bg-white/5"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="assign-leave-to-date" className="mb-1.5 block text-xs font-medium text-defaulttextcolor/80">
-                        End date <span className="text-danger">*</span>
-                      </label>
-                      <input
-                        id="assign-leave-to-date"
-                        type="date"
-                        value={toDate}
-                        min={fromDate || undefined}
-                        onChange={(e) => setToDate(e.target.value)}
-                        className="w-full rounded-lg border border-defaultborder/80 bg-white px-4 py-2.5 text-sm text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all dark:bg-white/5"
-                      />
-                    </div>
-                  </div>
-                  {fromDate && toDate && (
-                    <p className="mt-3 text-xs text-defaulttextcolor/65">
-                      {selectedDates.length > 0 ? (
-                        <>
-                          <span className="font-semibold text-defaulttextcolor">{selectedDates.length}</span> working day
-                          {selectedDates.length === 1 ? "" : "s"} selected
-                          {(rangeExpansion.excludedWeekOff > 0 || rangeExpansion.excludedHoliday > 0) && (
-                            <>
-                              {" "}
-                              (
-                              {rangeExpansion.excludedWeekOff > 0 && (
-                                <>{rangeExpansion.excludedWeekOff} week-off{rangeExpansion.excludedWeekOff === 1 ? "" : "s"}</>
-                              )}
-                              {rangeExpansion.excludedWeekOff > 0 && rangeExpansion.excludedHoliday > 0 && ", "}
-                              {rangeExpansion.excludedHoliday > 0 && (
-                                <>{rangeExpansion.excludedHoliday} holiday{rangeExpansion.excludedHoliday === 1 ? "" : "s"}</>
-                              )}{" "}
-                              excluded)
-                            </>
-                          )}
-                        </>
-                      ) : (
-                        "No working days in this range after excluding week-offs and holidays."
-                      )}
-                    </p>
-                  )}
-                  {selectedDates.length > 0 && (
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {selectedDates.map((d) => (
-                        <span
-                          key={d}
-                          className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 text-primary border border-primary/20 px-3 py-1.5 text-xs font-medium dark:bg-primary/20 dark:border-primary/30"
-                        >
-                          {formatDate(d)}
-                          <button
-                            type="button"
-                            onClick={() => removeDate(d)}
-                            className="p-0.5 rounded-full hover:bg-primary/20 dark:hover:bg-primary/30 transition-colors"
-                            aria-label={`Remove ${formatDate(d)}`}
-                          >
-                            <i className="ri-close-line text-sm" />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <AssignLeaveDateRangeFieldset
+                  fromDate={fromDate}
+                  toDate={toDate}
+                  onFromDateChange={onFromDateChange}
+                  onToDateChange={onToDateChange}
+                  spanExceeded={spanExceeded}
+                  joinDateError={joinDateError}
+                  resignDateError={resignDateError}
+                  joinMinDate={joinMinDate}
+                  resignMaxDate={resignMaxDate}
+                  selectedDates={selectedDates}
+                  excludedWeekOff={rangeExpansion.excludedWeekOff}
+                  excludedHoliday={rangeExpansion.excludedHoliday}
+                  removedDates={removedDates}
+                  onRestoreDate={restoreDate}
+                  onRemoveDate={removeDate}
+                  viewDatesOpen={viewDatesOpen}
+                  onToggleViewDates={() => setViewDatesOpen((open) => !open)}
+                  onAssign={handleAssign}
+                  assigning={assigning}
+                  hasPeople={selectedPeople.length > 0}
+                />
 
                 <div>
                   <label className="block text-sm font-semibold text-defaulttextcolor mb-2">Notes (optional)</label>
@@ -470,21 +834,6 @@ export default function SettingsAttendanceAssignLeavePage() {
                     placeholder="Optional notes…"
                     className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-4 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/45 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                   />
-                </div>
-
-                <div className="flex gap-3 pt-1">
-                  <button
-                    type="button"
-                    onClick={handleAssign}
-                    disabled={assigning || selectedPeople.length === 0 || selectedDates.length === 0}
-                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary/90 hover:shadow-md transition-all disabled:opacity-60 disabled:pointer-events-none"
-                  >
-                    {assigning ? (
-                      <><i className="ri-loader-4-line animate-spin text-lg" /> Assigning…</>
-                    ) : (
-                      <><i className="ri-calendar-check-line text-lg" /> Assign Leave</>
-                    )}
-                  </button>
                 </div>
               </>
             )}

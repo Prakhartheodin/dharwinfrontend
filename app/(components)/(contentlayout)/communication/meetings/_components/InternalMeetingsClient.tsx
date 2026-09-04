@@ -5,7 +5,8 @@ import React, { Fragment, useMemo, useState, useEffect, useCallback, useRef } fr
 import { useAuth } from "@/shared/contexts/auth-context"
 import { appendJoinIdentityToUrl } from "@/shared/lib/join-room-url"
 import { wallClockToUtc, utcInstantToWallClock, getViewerTimezone, localDateKey, wallClockDateKey, formatDateInZone } from "@/shared/lib/timezone"
-import { useTable, useSortBy, usePagination } from "react-table"
+import { useTable, useSortBy } from "react-table"
+import ListPagination from "@/shared/components/ListPagination"
 import {
   createInternalMeeting,
   listInternalMeetings,
@@ -93,6 +94,35 @@ function formatDurationMinutes(totalMinutes: number): string {
   return `${minutes}m`
 }
 
+function sortOptionToApi(sortOption: string): string {
+  switch (sortOption) {
+    case "date-asc":
+      return "scheduledAt:asc"
+    case "date-desc":
+      return "scheduledAt:desc"
+    case "status-asc":
+      return "status:asc"
+    case "status-desc":
+      return "status:desc"
+    default:
+      return "scheduledAt:desc"
+  }
+}
+
+function statusFilterToApi(statusFilter: "all" | "scheduled" | "completed" | "cancelled"): string | undefined {
+  if (statusFilter === "all") return undefined
+  return statusFilter
+}
+
+function weekRangeIso(weekStart: Date): { dateFrom: string; dateTo: string } {
+  const start = new Date(weekStart)
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(weekStart)
+  end.setDate(end.getDate() + 6)
+  end.setHours(23, 59, 59, 999)
+  return { dateFrom: start.toISOString(), dateTo: end.toISOString() }
+}
+
 function meetingToRow(m: InternalMeeting, index: number): InternalMeetingRow {
   const baseId = String(m.id ?? m._id ?? m.meetingId ?? "")
   return {
@@ -138,6 +168,12 @@ export default function InternalMeetingsClient() {
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
   const [selectedSort, setSelectedSort] = useState<string>("")
   const [statusFilter, setStatusFilter] = useState<"all" | "scheduled" | "completed" | "cancelled">("all")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [totalResults, setTotalResults] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
+  const [sortBy, setSortBy] = useState("scheduledAt:desc")
+  const fetchGenerationRef = useRef(0)
 
   const [createdMeeting, setCreatedMeeting] = useState<InternalMeeting | null>(null)
   const [hosts, setHosts] = useState<{ nameOrRole: string; email: string }[]>([{ nameOrRole: "", email: "" }])
@@ -147,7 +183,9 @@ export default function InternalMeetingsClient() {
   const [scheduledInternalMeetingAt, setScheduledInternalMeetingAt] = useState<Date | null>(null)
 
   const [meetings, setMeetings] = useState<InternalMeeting[]>([])
+  const [weekMeetings, setWeekMeetings] = useState<InternalMeeting[]>([])
   const [meetingsLoading, setMeetingsLoading] = useState(true)
+  const [weekMeetingsLoading, setWeekMeetingsLoading] = useState(false)
   const [meetingsError, setMeetingsError] = useState<string | null>(null)
 
   const [recordingsModalMeetingId, setRecordingsModalMeetingId] = useState<string | null>(null)
@@ -196,28 +234,74 @@ export default function InternalMeetingsClient() {
     return monday
   })
 
+  const listQueryInput = useMemo(
+    () => ({
+      page: currentPage,
+      limit: pageSize,
+      sortBy,
+      status: statusFilterToApi(statusFilter),
+    }),
+    [currentPage, pageSize, sortBy, statusFilter]
+  )
+
   const fetchMeetings = useCallback(async () => {
+    const generation = ++fetchGenerationRef.current
     setMeetingsLoading(true)
     setMeetingsError(null)
     try {
-      // Fetch every page so the table holds the full history (the Show 10/25/50/100
-      // dropdown paginates client-side over the complete set).
+      const res = await listInternalMeetings(listQueryInput)
+      if (generation !== fetchGenerationRef.current) return
+      setMeetings(res.results || [])
+      setTotalResults(res.totalResults ?? 0)
+      setTotalPages(res.totalPages ?? 0)
+    } catch (err: any) {
+      if (generation !== fetchGenerationRef.current) return
+      setMeetingsError(err?.response?.data?.message || err?.message || "Failed to load meetings")
+      setMeetings([])
+      setTotalResults(0)
+      setTotalPages(0)
+    } finally {
+      if (generation === fetchGenerationRef.current) {
+        setMeetingsLoading(false)
+      }
+    }
+  }, [listQueryInput])
+
+  const fetchWeekMeetings = useCallback(async () => {
+    setWeekMeetingsLoading(true)
+    setMeetingsError(null)
+    try {
+      const { dateFrom, dateTo } = weekRangeIso(weekStart)
       const all: InternalMeeting[] = []
       let page = 1
       for (;;) {
-        const res = await listInternalMeetings({ limit: 500, page })
+        const res = await listInternalMeetings({
+          page,
+          limit: 500,
+          sortBy: "scheduledAt:asc",
+          status: statusFilterToApi(statusFilter),
+          dateFrom,
+          dateTo,
+        })
         all.push(...(res.results || []))
         if (page >= (res.totalPages || 1) || !(res.results || []).length) break
         page += 1
       }
-      setMeetings(all)
+      setWeekMeetings(all)
     } catch (err: any) {
       setMeetingsError(err?.response?.data?.message || err?.message || "Failed to load meetings")
-      setMeetings([])
+      setWeekMeetings([])
     } finally {
-      setMeetingsLoading(false)
+      setWeekMeetingsLoading(false)
     }
-  }, [])
+  }, [weekStart, statusFilter])
+
+  const refreshMeetingsList = useCallback(async () => {
+    await fetchMeetings()
+    if (viewMode === "week") {
+      await fetchWeekMeetings()
+    }
+  }, [fetchMeetings, fetchWeekMeetings, viewMode])
 
   const copyMeetingLink = useCallback(
     async (row: InternalMeetingRow) => {
@@ -293,6 +377,17 @@ export default function InternalMeetingsClient() {
   useEffect(() => {
     fetchMeetings()
   }, [fetchMeetings])
+
+  useEffect(() => {
+    if (viewMode !== "week") return
+    void fetchWeekMeetings()
+  }, [viewMode, fetchWeekMeetings])
+
+  useEffect(() => {
+    if (totalPages > 0 && currentPage > totalPages) {
+      setCurrentPage(totalPages)
+    }
+  }, [currentPage, totalPages])
 
   useEffect(() => {
     if (!recordingsModalMeetingId) return
@@ -411,14 +506,14 @@ export default function InternalMeetingsClient() {
       try {
         const meeting = await createInternalMeeting(payload)
         setCreatedMeeting(meeting)
-        fetchMeetings()
+        refreshMeetingsList()
       } catch (err: any) {
         setFormError(err?.response?.data?.message || err?.message || "Failed to create meeting")
       } finally {
         setFormLoading(false)
       }
     },
-    [hosts, emailInvites, fetchMeetings]
+    [hosts, emailInvites, refreshMeetingsList]
   )
 
   const loadEditUsers = useCallback(async () => {
@@ -527,7 +622,7 @@ export default function InternalMeetingsClient() {
       try {
         // Series occurrences pass the chosen scope; one-off meetings omit mode.
         await updateInternalMeeting(editMeetingId, payload, editMeeting.seriesId ? editSeriesMode : undefined)
-        await fetchMeetings()
+        await refreshMeetingsList()
         closeEditModal()
       } catch (err: any) {
         setEditError(err?.response?.data?.message || err?.message || "Failed to update meeting")
@@ -535,7 +630,7 @@ export default function InternalMeetingsClient() {
         setEditSaving(false)
       }
     },
-    [editMeetingId, editMeeting, editEmailInvites, editSeriesMode, fetchMeetings, closeEditModal]
+    [editMeetingId, editMeeting, editEmailInvites, editSeriesMode, refreshMeetingsList, closeEditModal]
   )
 
   const handleDeleteEntireSeries = useCallback(
@@ -557,12 +652,12 @@ export default function InternalMeetingsClient() {
       if (!ok) return
       try {
         await deleteInternalMeeting(row.id, "series", { purge: true })
-        await fetchMeetings()
+        await refreshMeetingsList()
       } catch (err: any) {
         alert(err?.response?.data?.message || err?.message || "Failed to delete series")
       }
     },
-    [confirm, fetchMeetings]
+    [confirm, refreshMeetingsList]
   )
 
   const handleCancelMeeting = useCallback(
@@ -582,7 +677,7 @@ export default function InternalMeetingsClient() {
         if (!scope) return
         try {
           await deleteInternalMeeting(row.id, scope)
-          await fetchMeetings()
+          await refreshMeetingsList()
         } catch (err: any) {
           alert(err?.response?.data?.message || err?.message || "Failed to cancel")
         }
@@ -600,12 +695,12 @@ export default function InternalMeetingsClient() {
         // Dedicated cancel endpoint (not updateInternalMeeting) — backend gates it on
         // DELETE, matching the Cancel-icon's permission tier instead of EDIT.
         await cancelInternalMeeting(row.id)
-        await fetchMeetings()
+        await refreshMeetingsList()
       } catch (err: any) {
         alert(err?.response?.data?.message || err?.message || "Failed to cancel")
       }
     },
-    [pickScope, fetchMeetings]
+    [pickScope, refreshMeetingsList]
   )
 
   const handleRowSelect = (id: string) => {
@@ -617,16 +712,16 @@ export default function InternalMeetingsClient() {
     })
   }
 
-  const filteredMeetings = useMemo(() => {
-    if (statusFilter === "all") return meetings
-    return meetings.filter((meeting) => {
-      const raw = (meeting.status || "").toLowerCase()
-      if (statusFilter === "completed") return raw === "ended" || raw === "completed"
-      return raw === statusFilter
-    })
-  }, [meetings, statusFilter])
+  const displayMeetings = useMemo(() => {
+    if (!selectedSort.startsWith("participants")) return meetings
+    const dir = selectedSort.endsWith("desc") ? -1 : 1
+    return [...meetings].sort(
+      (a, b) => dir * participantsSummary(a).localeCompare(participantsSummary(b), undefined, { sensitivity: "base" })
+    )
+  }, [meetings, selectedSort])
 
-  const tableData = useMemo(() => filteredMeetings.map((m, i) => meetingToRow(m, i)), [filteredMeetings])
+  const tableData = useMemo(() => displayMeetings.map((m, i) => meetingToRow(m, i)), [displayMeetings])
+  const weekTableData = useMemo(() => weekMeetings.map((m, i) => meetingToRow(m, i)), [weekMeetings])
 
   const columns = useMemo(
     () => [
@@ -841,24 +936,22 @@ export default function InternalMeetingsClient() {
     weekDays.forEach((day) => {
       map[day.key] = []
     })
-    data.forEach((row) => {
+    weekTableData.forEach((row) => {
       if (map[row.dateKey]) map[row.dateKey].push(row)
     })
     return map
-  }, [data, weekDays])
+  }, [weekTableData, weekDays])
 
   const tableInstance: any = useTable(
     {
       columns,
       data,
-      initialState: { pageIndex: 0, pageSize: 100 },
-      // ponytail: keep the user on their current page after a refetch (cancel/edit).
-      // react-table resets pageIndex to 0 on every data change unless disabled.
+      manualPagination: true,
+      manualSortBy: true,
       autoResetPage: false,
       autoResetSortBy: false,
     },
-    useSortBy,
-    usePagination
+    useSortBy
   )
 
   const {
@@ -866,58 +959,34 @@ export default function InternalMeetingsClient() {
     getTableBodyProps,
     headerGroups,
     prepareRow,
-    state,
-    page,
-    nextPage,
-    previousPage,
-    canNextPage,
-    canPreviousPage,
-    pageOptions,
-    gotoPage,
-    pageCount,
-    setPageSize,
-    setSortBy,
+    rows,
   } = tableInstance
-
-  const { pageIndex, pageSize } = state
-
-  // ponytail: autoResetPage=false can strand the user on a now-empty last page
-  // (cancel the only row on the final page). Clamp back to the last real page.
-  useEffect(() => {
-    if (pageCount > 0 && pageIndex > pageCount - 1) gotoPage(pageCount - 1)
-  }, [pageCount, pageIndex, gotoPage])
 
   const handleSortChange = useCallback(
     (sortOption: string) => {
       setSelectedSort(sortOption)
       switch (sortOption) {
         case "date-asc":
-          setSortBy([{ id: "meetingInfo", desc: false }])
-          break
         case "date-desc":
-          setSortBy([{ id: "meetingInfo", desc: true }])
+        case "status-asc":
+        case "status-desc":
+          setSortBy(sortOptionToApi(sortOption))
+          setCurrentPage(1)
           break
         case "participants-asc":
-          setSortBy([{ id: "participantsSummary", desc: false }])
-          break
         case "participants-desc":
-          setSortBy([{ id: "participantsSummary", desc: true }])
-          break
-        case "status-asc":
-          setSortBy([{ id: "status", desc: false }])
-          break
-        case "status-desc":
-          setSortBy([{ id: "status", desc: true }])
+          setCurrentPage(1)
           break
         case "clear-sort":
-          setSortBy([])
+          setSortBy("scheduledAt:desc")
           setSelectedSort("")
+          setCurrentPage(1)
           break
         default:
-          setSortBy([])
+          setSortBy("scheduledAt:desc")
       }
     },
-    [setSortBy]
+    []
   )
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -926,6 +995,7 @@ export default function InternalMeetingsClient() {
   }
 
   const isAllSelected = selectedRows.size === data.length && data.length > 0
+  const showPagination = !meetingsLoading && !meetingsError && viewMode === "table" && totalResults > 0
 
   return (
     <Fragment>
@@ -936,7 +1006,7 @@ export default function InternalMeetingsClient() {
             <div className="box-header relative z-20 flex shrink-0 flex-col gap-2.5 overflow-visible border-b border-defaultborder/70 bg-gradient-to-b from-gray-50/90 via-white to-white px-3 py-3 dark:border-defaultborder/20 dark:from-black/25 dark:via-black/15 dark:to-black/10 sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-3.5">
               <div className="box-title text-sm sm:text-base">
                 Meetings
-                <span className="badge bg-light text-default ms-1 rounded-full align-middle text-[0.7rem] sm:ms-2 sm:text-[0.75rem]">{data.length}</span>
+                <span className="badge bg-light text-default ms-1 rounded-full align-middle text-[0.7rem] sm:ms-2 sm:text-[0.75rem]">{totalResults}</span>
               </div>
               <div className="flex w-full min-w-0 max-w-full flex-col gap-2 xl:w-auto xl:flex-row xl:flex-wrap xl:items-center xl:gap-2 [&_.form-control]:shrink-0 [&_.ti-btn]:shrink-0">
                 <div className="flex flex-wrap items-center gap-1.5 sm:contents sm:gap-2">
@@ -945,7 +1015,10 @@ export default function InternalMeetingsClient() {
                   aria-label="Rows per page"
                   className="form-control select-show-page-size !w-auto !min-w-[6.5rem] !max-w-[8rem] !py-1.5 !ps-3 !pe-8 !text-[0.75rem]"
                   value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value))
+                    setCurrentPage(1)
+                  }}
                 >
                   {[10, 25, 50, 100].map((size) => (
                     <option key={size} value={size}>
@@ -958,7 +1031,10 @@ export default function InternalMeetingsClient() {
                   aria-label="Filter meetings by status"
                   className="form-control !w-auto !min-w-[9.5rem] !max-w-[11rem] !py-1.5 !ps-3 !pe-8 !text-[0.75rem]"
                   value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value as "all" | "scheduled" | "completed" | "cancelled")}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value as "all" | "scheduled" | "completed" | "cancelled")
+                    setCurrentPage(1)
+                  }}
                 >
                   <option value="all">All status</option>
                   <option value="scheduled">Scheduled</option>
@@ -1041,7 +1117,7 @@ export default function InternalMeetingsClient() {
               </div>
             </div>
             <div className="box-body relative z-0 !p-0 flex-1 min-w-0 flex flex-col overflow-hidden">
-              {meetingsLoading ? (
+              {meetingsLoading || (viewMode === "week" && weekMeetingsLoading) ? (
                 <div className="flex flex-col items-center justify-center py-16 px-4">
                   <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent mb-4"></div>
                   <p className="text-sm text-gray-500">Loading meetings...</p>
@@ -1049,7 +1125,7 @@ export default function InternalMeetingsClient() {
               ) : meetingsError ? (
                 <div className="flex flex-col items-center justify-center py-16 px-4">
                   <p className="text-sm text-danger mb-3">{meetingsError}</p>
-                  <button type="button" className="ti-btn ti-btn-primary !py-2 !px-4 !text-sm" onClick={() => fetchMeetings()}>
+                  <button type="button" className="ti-btn ti-btn-primary !py-2 !px-4 !text-sm" onClick={() => void refreshMeetingsList()}>
                     Try again
                   </button>
                 </div>
@@ -1144,7 +1220,7 @@ export default function InternalMeetingsClient() {
                         })}
                       </thead>
                       <tbody {...getTableBodyProps()}>
-                        {page.map((row: any) => {
+                        {rows.map((row: any) => {
                           prepareRow(row)
                           const { key: rowKey, ...rowRest } = row.getRowProps()
                           return (
@@ -1166,52 +1242,17 @@ export default function InternalMeetingsClient() {
                 </div>
               )}
             </div>
-            {!meetingsLoading && !meetingsError && viewMode === "table" && (
-              <div className="box-footer shrink-0 border-t border-defaultborder/70 bg-gray-50/90 px-3 py-3 dark:border-defaultborder/20 dark:bg-black/25 sm:px-4">
-                <div className="flex flex-col items-center gap-3 sm:flex-row sm:flex-wrap sm:justify-between">
-                  <span className="w-full text-center text-xs text-defaulttextcolor/70 sm:w-auto sm:text-left sm:text-sm">
-                    Page {pageIndex + 1} of {pageCount || 1}
-                  </span>
-                  <nav aria-label="Page navigation" className="flex w-full justify-center sm:w-auto sm:shrink-0">
-                    <div className="m-0 inline-flex flex-nowrap items-center gap-1 rounded-lg border border-defaultborder/70 bg-white p-1 shadow-sm dark:border-defaultborder/20 dark:bg-black/20">
-                      <span className={!canPreviousPage ? "opacity-50" : ""}>
-                        <button
-                          type="button"
-                          className="inline-flex min-w-[2.25rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-medium text-defaulttextcolor transition-colors hover:bg-gray-100 disabled:cursor-not-allowed dark:text-white/80 dark:hover:bg-white/10"
-                          onClick={() => previousPage()}
-                          disabled={!canPreviousPage}
-                        >
-                          Prev
-                        </button>
-                      </span>
-                      {pageOptions.map((p: number) => (
-                        <span key={p}>
-                          <button
-                            type="button"
-                            className={`inline-flex min-w-[2rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
-                              pageIndex === p
-                                ? "bg-primary text-white shadow-sm"
-                                : "text-defaulttextcolor hover:bg-gray-100 dark:text-white/80 dark:hover:bg-white/10"
-                            }`}
-                            onClick={() => gotoPage(p)}
-                          >
-                            {p + 1}
-                          </button>
-                        </span>
-                      ))}
-                      <span className={!canNextPage ? "opacity-50" : ""}>
-                        <button
-                          type="button"
-                          className="inline-flex min-w-[2.25rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed"
-                          onClick={() => nextPage()}
-                          disabled={!canNextPage}
-                        >
-                          Next
-                        </button>
-                      </span>
-                    </div>
-                  </nav>
-                </div>
+            {showPagination && (
+              <div className="box-footer shrink-0 !border-t-0 bg-white dark:bg-bodybg">
+                <ListPagination
+                  page={currentPage}
+                  totalPages={totalPages}
+                  totalResults={totalResults}
+                  pageSize={pageSize}
+                  onPageChange={setCurrentPage}
+                  ariaLabel="Meetings page navigation"
+                  gotoInputId="meetings-goto-page"
+                />
               </div>
             )}
           </div>

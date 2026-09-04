@@ -37,10 +37,11 @@ export interface ProjectFormFieldConfig {
   intake?: boolean;
 }
 
+// Stored values unchanged — labels match STATUS_LABEL on project list/detail.
 export const PROJECT_STATUS_OPTIONS: SelectOption[] = [
-  { value: "Inprogress", label: "Inprogress" },
+  { value: "Inprogress", label: "In progress" },
   { value: "On hold", label: "On hold" },
-  { value: "completed", label: "completed" },
+  { value: "completed", label: "Completed" },
 ];
 
 export const PROJECT_PRIORITY_OPTIONS: SelectOption[] = [

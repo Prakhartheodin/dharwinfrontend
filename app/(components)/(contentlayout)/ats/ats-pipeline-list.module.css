@@ -26,6 +26,76 @@
   overscroll-behavior-x: contain;
 }
 
+/* Beat _tables.scss .table-responsive { overflow-y: visible !important } so this wrap is the scrollport. */
+.tableWrap.tableScroll {
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+}
+
+.tableGrow {
+  width: max-content !important;
+  min-width: 100% !important;
+}
+
+/* Onboarding fitted table — fills the card; no mid-table horizontal bar. */
+.tableNoHScroll {
+  overflow-x: hidden !important;
+  overflow-y: visible !important;
+}
+
+.tableFit {
+  width: 100% !important;
+  min-width: 0 !important;
+  table-layout: fixed;
+}
+
+.jobClamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.stickyStart,
+.stickyEnd {
+  position: sticky;
+  background-color: #fff;
+}
+
+:global(.dark) .stickyStart,
+:global(.dark) .stickyEnd {
+  background-color: #0f172a;
+}
+
+.stickyStart {
+  left: 0;
+  box-shadow: 4px 0 8px -4px rgba(15, 23, 42, 0.12);
+}
+
+:global(.dark) .stickyStart {
+  box-shadow: 4px 0 8px -4px rgba(0, 0, 0, 0.45);
+}
+
+.stickyEnd {
+  right: 0;
+  box-shadow: -8px 0 8px -6px rgba(15, 23, 42, 0.18);
+}
+
+:global(.dark) .stickyEnd {
+  box-shadow: -8px 0 8px -6px rgba(0, 0, 0, 0.45);
+}
+
+:global(tr.group:hover) .stickyStart,
+:global(tr.group:hover) .stickyEnd {
+  background-color: #f8fafc;
+}
+
+:global(.dark) :global(tr.group:hover) .stickyStart,
+:global(.dark) :global(tr.group:hover) .stickyEnd {
+  background-color: #0f172a;
+}
+
 .tableWide {
   width: 100%;
   min-width: 56rem;

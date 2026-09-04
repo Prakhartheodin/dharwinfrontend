@@ -6,6 +6,7 @@ import TiptapEditor from "@/shared/data/forms/form-editors/tiptapeditor";
 import { FilePond } from "react-filepond";
 import CreatableSelect from "react-select/creatable";
 import type { GroupBase, StylesConfig } from "react-select";
+import { atsSelectStyles } from "@/shared/lib/reactSelectTheme";
 import {
   PROJECT_FORM_FIELDS,
   PROJECT_STATUS_OPTIONS,
@@ -93,148 +94,24 @@ const selectPortalTargetProps: {
     ? { menuPortalTarget: document.body, menuPosition: "fixed" }
     : {};
 
-/**
- * Shared Select / CreatableSelect look: teal focus ring, slate neutrals, teal pill multi-values.
- * Matches Brief / Roster section language (not default react-select purple).
- */
-function projectFormSelectStyles(
-  isMulti: boolean
-): StylesConfig<SelectOption, boolean, GroupBase<SelectOption>> {
-  const canPortal = typeof document !== "undefined";
+const pmFormSelectStyles: StylesConfig<SelectOption, boolean, GroupBase<SelectOption>> = {
+  ...atsSelectStyles<SelectOption, boolean>(),
+  menuPortal: (base) => ({ ...base, zIndex: 10050 }),
+};
 
-  return {
-    ...(canPortal
-      ? {
-          menuPortal: (base) => ({ ...base, zIndex: 10050 }),
-        }
-      : {}),
-    control: (base, state) => ({
-      ...base,
-      minHeight: isMulti ? 44 : 42,
-      borderRadius: 10,
-      borderColor: state.isFocused ? "rgba(20, 184, 166, 0.55)" : "rgba(148, 163, 184, 0.5)",
-      boxShadow: state.isFocused ? "0 0 0 2px rgba(20, 184, 166, 0.18)" : "none",
-      backgroundColor: "rgb(var(--default-background))",
-      transition: "border-color 0.15s ease, box-shadow 0.15s ease",
-      ":hover": {
-        borderColor: "rgba(20, 184, 166, 0.42)",
-      },
-    }),
-    valueContainer: (base) => ({
-      ...base,
-      padding: isMulti ? "8px 10px" : "6px 10px",
-      gap: isMulti ? 8 : 6,
-      flexWrap: isMulti ? "wrap" : "nowrap",
-    }),
-    ...(isMulti
-      ? {
-          multiValue: (base) => ({
-            ...base,
-            borderRadius: 9999,
-            background:
-              "linear-gradient(160deg, rgba(13, 148, 136, 0.16) 0%, rgba(15, 118, 110, 0.09) 100%)",
-            border: "1px solid rgba(20, 184, 166, 0.38)",
-            boxShadow: "0 1px 2px rgba(15, 23, 42, 0.05)",
-            alignItems: "center",
-          }),
-          multiValueLabel: (base) => ({
-            ...base,
-            color: "rgb(15 118 110)",
-            fontSize: "0.8125rem",
-            fontWeight: 600,
-            letterSpacing: "0.02em",
-            padding: "5px 4px 5px 12px",
-            lineHeight: 1.3,
-          }),
-          multiValueRemove: (base) => ({
-            ...base,
-            borderRadius: "0 9999px 9999px 0",
-            paddingLeft: 2,
-            paddingRight: 10,
-            color: "rgb(13 148 136)",
-            cursor: "pointer",
-            transition: "background-color 0.12s ease, color 0.12s ease",
-            ":hover": {
-              backgroundColor: "rgba(220, 38, 38, 0.1)",
-              color: "rgb(185 28 28)",
-            },
-          }),
-        }
-      : {
-          singleValue: (base) => ({
-            ...base,
-            color: "rgb(30 41 59)",
-            fontSize: "0.8125rem",
-            fontWeight: 600,
-            letterSpacing: "0.01em",
-          }),
-        }),
-    placeholder: (base) => ({
-      ...base,
-      fontSize: "0.8125rem",
-      color: "rgb(148 163 184)",
-    }),
-    input: (base) => ({
-      ...base,
-      fontSize: "0.8125rem",
-      margin: 0,
-      paddingTop: isMulti ? 3 : 2,
-      paddingBottom: isMulti ? 3 : 2,
-    }),
-    menu: (base) => ({
-      ...base,
-      borderRadius: 10,
-      overflow: "hidden",
-      border: "1px solid rgba(148, 163, 184, 0.35)",
-      boxShadow: "0 12px 32px rgba(15, 23, 42, 0.12)",
-      backgroundColor: "rgb(var(--default-background))",
-    }),
-    menuList: (base) => ({
-      ...base,
-      padding: 6,
-    }),
-    option: (base, state) => ({
-      ...base,
-      borderRadius: 8,
-      margin: "2px 0",
-      fontSize: "0.8125rem",
-      cursor: "pointer",
-      color: state.isSelected ? "rgb(15 118 110)" : "rgb(51 65 85)",
-      fontWeight: state.isSelected ? 600 : 500,
-      backgroundColor: state.isSelected
-        ? "rgba(13, 148, 136, 0.16)"
-        : state.isFocused
-          ? "rgba(148, 163, 184, 0.14)"
-          : "transparent",
-      ":active": {
-        backgroundColor: "rgba(13, 148, 136, 0.22)",
-      },
-    }),
-    dropdownIndicator: (base) => ({
-      ...base,
-      padding: "6px 8px",
-      color: "rgb(100 116 139)",
-      transition: "color 0.12s ease",
-      ":hover": {
-        color: "rgb(13 148 136)",
-      },
-    }),
-    indicatorSeparator: (base) => ({
-      ...base,
-      backgroundColor: "rgba(148, 163, 184, 0.4)",
-    }),
-    clearIndicator: (base) => ({
-      ...base,
-      padding: 8,
-      color: "rgb(100 116 139)",
-      ":hover": {
-        color: "rgb(15 118 110)",
-        backgroundColor: "rgba(20, 184, 166, 0.08)",
-        borderRadius: 8,
-      },
-    }),
-  };
-}
+/** Spreading the union-typed portal props widens react-select's option generic to `unknown`,
+ *  so the plain <Select>/<AsyncSelect> call sites need the styles re-cast. Every option is a
+ *  SelectOption at runtime. */
+const pmFormSelectStylesUnknown = pmFormSelectStyles as StylesConfig<
+  unknown,
+  boolean,
+  GroupBase<unknown>
+>;
+
+/** Portaled menus leave `.pm-project-form`; tag portal so globals.scss can override Select2 focus/selected colors. */
+const pmFormSelectClassNames = {
+  menuPortal: () => "pm-project-form-select-menu",
+};
 
 function getGridClass(colSpan: 4 | 6 | 12 = 6): string {
   return `xl:col-span-${colSpan} col-span-12`;
@@ -576,13 +453,8 @@ export function DynamicProjectForm({
             isDisabled={disabled}
             menuPlacement="auto"
             {...selectPortalTargetProps}
-            styles={
-              projectFormSelectStyles(false) as StylesConfig<
-                unknown,
-                boolean,
-                GroupBase<unknown>
-              >
-            }
+            classNames={pmFormSelectClassNames}
+            styles={pmFormSelectStylesUnknown}
           />
           {error && <div className="invalid-feedback d-block">{error}</div>}
         </div>
@@ -620,13 +492,8 @@ export function DynamicProjectForm({
               isDisabled={disabled}
               menuPlacement="auto"
               {...selectPortalTargetProps}
-              styles={
-                projectFormSelectStyles(true) as StylesConfig<
-                  unknown,
-                  boolean,
-                  GroupBase<unknown>
-                >
-              }
+              classNames={pmFormSelectClassNames}
+              styles={pmFormSelectStylesUnknown}
             />
           ) : (
             <Select
@@ -640,13 +507,8 @@ export function DynamicProjectForm({
               isDisabled={disabled}
               menuPlacement="auto"
               {...selectPortalTargetProps}
-              styles={
-                projectFormSelectStyles(true) as StylesConfig<
-                  unknown,
-                  boolean,
-                  GroupBase<unknown>
-                >
-              }
+              classNames={pmFormSelectClassNames}
+              styles={pmFormSelectStylesUnknown}
             />
           )}
           {error && <div className="invalid-feedback d-block">{error}</div>}
@@ -805,6 +667,7 @@ export function DynamicProjectForm({
             </div>
             <DatePicker
               className="ti-form-input ltr:rounded-l-none rtl:rounded-r-none focus:z-10"
+              calendarClassName="pm-project-form-dp-cal"
               selected={dateVal}
               onChange={(d) => handleChange(field.name)(d ?? null)}
               disabled={disabled}
@@ -938,7 +801,7 @@ export function DynamicProjectForm({
           <label className="form-label">{field.label}</label>
           <CreatableSelect
             components={components}
-            classNamePrefix="react-select"
+            classNamePrefix="Select2"
             isClearable
             isMulti
             menuIsOpen={false}
@@ -958,7 +821,8 @@ export function DynamicProjectForm({
             onCreateOption={(newTag) => addTag(newTag)}
             isDisabled={disabled}
             {...selectPortalTargetProps}
-            styles={projectFormSelectStyles(true)}
+            classNames={pmFormSelectClassNames}
+            styles={pmFormSelectStyles}
           />
           {error && <div className="invalid-feedback d-block">{error}</div>}
         </div>
@@ -1015,7 +879,7 @@ export function DynamicProjectForm({
   const overflowFields = visibleFields.filter((f) => !sectioned.has(f.name));
 
   return (
-    <div className="space-y-6 overflow-visible">
+    <div className="pm-project-form space-y-6 overflow-visible">
       {briefReview?.open ? (
         <BriefEnhancedReviewModal
           open={briefReview.open}
@@ -1111,7 +975,7 @@ export function DynamicProjectForm({
 
       <ProjectFormSection
         title="Labels & files"
-        hint="Tags for filtering; attachments optional."
+        hint="Tags for filtering in the project list and project attachments."
         animationDelayMs={320}
       >
         {metaFields.map((field) => renderField(field))}

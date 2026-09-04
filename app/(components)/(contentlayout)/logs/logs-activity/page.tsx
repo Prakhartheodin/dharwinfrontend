@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Seo from "@/shared/layout-components/seo/seo";
 import { useAuth } from "@/shared/contexts/auth-context";
@@ -27,6 +27,7 @@ import {
 } from "@/shared/lib/activity-log-catalog";
 import { ActivityLogFilterSelect } from "@/shared/components/activity-log-filter-select";
 import { ActivityLogLocationCell } from "@/shared/components/activity-log-location-cell";
+import ListPagination from "@/shared/components/ListPagination";
 import { getActivityLogDisplayIp } from "@/shared/lib/activity-log-location-display";
 import {
   canOpenActivityLogEntity,
@@ -53,6 +54,7 @@ function formatDateTime(isoString: string | undefined): string {
 
 function toIsoStartOfDay(date: string | null): string | undefined {
   if (!date) return undefined;
+  // ponytail: preset ranges use local YMD (toLocalYmd); bounds here are UTC. Full tz alignment deferred.
   try {
     return new Date(`${date}T00:00:00.000Z`).toISOString();
   } catch {
@@ -238,6 +240,9 @@ export default function LogsActivityPage() {
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
 
+  const fetchIdRef = useRef(0);
+  const customDateIncomplete = datePreset === "custom" && (!startDate || !endDate);
+
   const canFilter =
     isPlatformSuperUser ||
     logsActivityFeature.canDelete ||
@@ -254,7 +259,8 @@ export default function LogsActivityPage() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async () => {
+    const fetchId = ++fetchIdRef.current;
     setLoading(true);
     setError("");
     setForbidden(false);
@@ -277,10 +283,12 @@ export default function LogsActivityPage() {
 
     try {
       const res = await activityLogsApi.listActivityLogs(params);
+      if (fetchId !== fetchIdRef.current) return;
       setLogs(res.results ?? []);
       setTotalPages(res.totalPages ?? 1);
       setTotalResults(res.totalResults ?? 0);
     } catch (err) {
+      if (fetchId !== fetchIdRef.current) return;
       if (err instanceof AxiosError && err.response?.status === 403) {
         setForbidden(true);
         setError(
@@ -296,28 +304,36 @@ export default function LogsActivityPage() {
         setLogs([]);
       }
     } finally {
+      if (fetchId !== fetchIdRef.current) return;
       setLoading(false);
     }
-  };
+  }, [action, entityType, q, datePreset, startDate, endDate, page, limit]);
 
   useEffect(() => {
     if (!permissionsLoaded || !canReadActivityLogs) {
       return;
     }
+    if (customDateIncomplete) {
+      setLoading(false);
+      setLogs([]);
+      setTotalResults(0);
+      setTotalPages(1);
+      setError("");
+      return;
+    }
     fetchLogs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     permissionsLoaded,
     canReadActivityLogs,
-    page,
-    limit,
-    q,
-    action,
-    entityType,
-    datePreset,
-    startDate,
-    endDate,
+    customDateIncomplete,
+    fetchLogs,
   ]);
+
+  useEffect(() => {
+    if (totalPages > 0 && page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   const buildExportParams = useCallback((): activityLogsApi.ExportActivityLogsParams => {
     const range =
@@ -334,6 +350,7 @@ export default function LogsActivityPage() {
   }, [action, entityType, q, datePreset, startDate, endDate]);
 
   const handleExportExcel = async () => {
+    if (customDateIncomplete) return;
     setExporting(true);
     setError("");
     try {
@@ -375,232 +392,293 @@ export default function LogsActivityPage() {
     setPage(1);
   };
 
-  const start = totalResults === 0 ? 0 : (page - 1) * limit + 1;
-  const end = Math.min(page * limit, totalResults);
-
   const accessLoading = !permissionsLoaded;
+
+  const showPagination = !loading && !customDateIncomplete && (logs.length > 0 || hasActiveFilters);
 
   return (
     <Fragment>
       <Seo title="Activity Logs" />
-      <div className="flex items-center justify-between flex-wrap gap-3 sm:gap-4 mb-3 sm:mb-4 px-3 sm:px-4 pt-3 sm:pt-4">
-        <h5 className="box-title mb-0">
-          Activity Logs
-          <span className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle">
-            {totalResults}
-          </span>
-        </h5>
-        <div className="flex flex-wrap gap-2 items-center">
-          {isDesignatedSuperadmin && (
-            <Link
-              href="/logs/logs-activity/platform"
-              className="ti-btn ti-btn-soft-primary !py-1 !px-3 !text-[0.75rem]"
-            >
-              Platform audit console
-            </Link>
-          )}
-          <select
-            className="form-control select-show-page-size !w-auto !py-1 !px-4 !text-[0.75rem]"
-            value={limit}
-            onChange={(e) => {
-              setLimit(Number(e.target.value));
-              setPage(1);
-            }}
-          >
-            {[10, 20, 50, 100].map((size) => (
-              <option key={size} value={size}>
-                Show {size}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            className="ti-btn ti-btn-soft-primary !py-1 !px-3 !text-[0.75rem] !mb-0"
-            onClick={handleExportExcel}
-            disabled={loading || exporting}
-            aria-label="Export activity logs as Excel"
-            aria-busy={exporting}
-          >
-            {exporting ? (
-              <i className="ri-loader-4-line animate-spin motion-reduce:animate-none me-1" aria-hidden />
-            ) : (
-              <i className="ri-download-2-line me-1" aria-hidden />
-            )}
-            {exporting ? "Exporting..." : "Export Excel"}
-          </button>
-          {currentUser && (
-            <span className="text-[0.75rem] text-defaulttextcolor/70">
-              Viewing as: <span className="font-medium">{currentUser.name ?? currentUser.email}</span>
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div className="box-body px-3 sm:px-4 pb-4">
-        {error && (
-          <div className="p-4 mb-4 bg-danger/10 border border-danger/30 text-danger rounded-md text-sm">
-            {error}
-          </div>
-        )}
-
-        {accessLoading ? (
-          <div className="flex min-h-[40vh] items-center justify-center">
-            <div className="ti-btn ti-btn-primary ti-btn-loading">Checking access...</div>
-          </div>
-        ) : !canReadActivityLogs ? (
-          <div className="p-4 mb-4 bg-warning/10 border border-warning/30 text-warning rounded-md text-sm">
-            You need the <span className="font-semibold">logs.activity:view</span> permission (or Administrator /
-            platform access) to view activity logs.
-          </div>
-        ) : (
-          !forbidden && (
-            <>
-              {canFilter && (
-              <div className="mb-4 p-4 rounded-lg border border-defaultborder bg-gray-50/50 dark:bg-gray-800/30">
-                <div className="flex items-center gap-2 mb-3">
-                  <input
-                    type="text"
-                    className="form-control !py-2 !text-[0.8125rem] flex-1"
-                    placeholder="Search by person name, email, or what changed…"
-                    value={searchInput}
-                    onChange={(e) => setSearchInput(e.target.value)}
-                  />
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 mb-3">
-                  <span className="text-[0.7rem] uppercase tracking-wide text-defaulttextcolor/50">
-                    When
-                  </span>
-                  {DATE_PRESETS.map((p) => (
-                    <button
-                      key={p.key}
-                      type="button"
-                      onClick={() => {
-                        setDatePreset(p.key);
-                        setPage(1);
-                      }}
-                      className={
-                        "ti-btn !py-1 !px-3 !text-[0.75rem] !mb-0 " +
-                        (datePreset === p.key ? "ti-btn-primary" : "ti-btn-light")
-                      }
-                    >
-                      {p.label}
-                    </button>
+      <div className="mt-5 grid grid-cols-12 gap-6 h-[calc(100vh-8rem)] sm:mt-6">
+        <div className="xl:col-span-12 col-span-12 h-full min-h-0 flex flex-col">
+          <div className="box custom-box h-full min-h-0 flex flex-col overflow-hidden">
+            <div className="box-header shrink-0 flex flex-col gap-3 !px-5 !py-3 sm:!py-4 bg-white dark:bg-bodybg">
+              <div className="flex items-center justify-between flex-wrap gap-3 sm:gap-4">
+              <div className="box-title mb-0">
+                Activity Logs
+                <span className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle">
+                  {totalResults}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto">
+                {isDesignatedSuperadmin && (
+                  <Link
+                    href="/logs/logs-activity/platform"
+                    className="ti-btn ti-btn-soft-primary !py-1 !px-3 !text-[0.75rem]"
+                  >
+                    Platform audit console
+                  </Link>
+                )}
+                <select
+                  className="form-control select-show-page-size !w-auto !py-1 !px-4 !text-[0.75rem]"
+                  value={limit}
+                  onChange={(e) => {
+                    setLimit(Number(e.target.value));
+                    setPage(1);
+                  }}
+                  aria-label="Results per page"
+                >
+                  {[10, 20, 50, 100].map((size) => (
+                    <option key={size} value={size}>
+                      Show {size}
+                    </option>
                   ))}
-                </div>
-
-                <div className="flex flex-wrap items-end gap-3">
-                  <div className="w-full sm:min-w-[14rem] sm:w-auto sm:flex-1">
-                    <label htmlFor="logs-action" className="form-label !text-[0.75rem] mb-1">
-                      Action
-                    </label>
-                    <ActivityLogFilterSelect
-                      inputId="logs-action"
-                      groups={getGroupedActionOptions()}
-                      value={action}
-                      onChange={(next) => {
-                        setAction(next);
-                        setPage(1);
-                      }}
-                      placeholder="Any action"
-                    />
-                  </div>
-                  <div className="w-full sm:min-w-[14rem] sm:w-auto sm:flex-1">
-                    <label htmlFor="logs-entity-type" className="form-label !text-[0.75rem] mb-1">
-                      Entity type
-                    </label>
-                    <ActivityLogFilterSelect
-                      inputId="logs-entity-type"
-                      groups={getGroupedEntityTypeOptions()}
-                      value={entityType}
-                      onChange={(next) => {
-                        setEntityType(next);
-                        setPage(1);
-                      }}
-                      placeholder="Any entity"
-                    />
-                  </div>
-
-                  {datePreset === "custom" && (
-                    <>
-                      <div className="w-full sm:min-w-[10rem] sm:w-auto">
-                        <label htmlFor="logs-start-date" className="form-label !text-[0.75rem] mb-1">
-                          Start date
-                        </label>
-                        <input
-                          id="logs-start-date"
-                          type="date"
-                          className="form-control !py-1.5 !text-[0.8125rem]"
-                          value={startDate}
-                          onChange={(e) => {
-                            setStartDate(e.target.value);
-                            setPage(1);
-                          }}
-                        />
-                      </div>
-                      <div className="w-full sm:min-w-[10rem] sm:w-auto">
-                        <label htmlFor="logs-end-date" className="form-label !text-[0.75rem] mb-1">
-                          End date
-                        </label>
-                        <input
-                          id="logs-end-date"
-                          type="date"
-                          className="form-control !py-1.5 !text-[0.8125rem]"
-                          value={endDate}
-                          onChange={(e) => {
-                            setEndDate(e.target.value);
-                            setPage(1);
-                          }}
-                        />
-                      </div>
-                    </>
+                </select>
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-soft-primary !py-1 !px-3 !text-[0.75rem] !mb-0"
+                  onClick={handleExportExcel}
+                  disabled={loading || exporting || customDateIncomplete}
+                  aria-label="Export activity logs as Excel"
+                  aria-busy={exporting}
+                >
+                  {exporting ? (
+                    <i className="ri-loader-4-line animate-spin motion-reduce:animate-none me-1" aria-hidden />
+                  ) : (
+                    <i className="ri-download-2-line me-1" aria-hidden />
                   )}
-                </div>
-
-                {hasActiveFilters && (
-                  <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-defaultborder">
-                    <span className="text-[0.7rem] uppercase tracking-wide text-defaulttextcolor/50">
-                      Active
-                    </span>
-                    {datePreset !== "7d" && (
-                      <span className="inline-flex items-center gap-1 text-[0.75rem] px-2 py-1 rounded bg-primary/10 text-primary">
-                        {DATE_PRESETS.find((p) => p.key === datePreset)?.label}
-                        <button type="button" onClick={() => { setDatePreset("7d"); setPage(1); }}>✕</button>
-                      </span>
-                    )}
-                    {action.trim() && (
-                      <span className="inline-flex items-center gap-1 text-[0.75rem] px-2 py-1 rounded bg-primary/10 text-primary">
-                        {getActionDisplay(action).title}
-                        <button type="button" onClick={() => { setAction(""); setPage(1); }}>✕</button>
-                      </span>
-                    )}
-                    {entityType.trim() && (
-                      <span className="inline-flex items-center gap-1 text-[0.75rem] px-2 py-1 rounded bg-primary/10 text-primary">
-                        {getEntityTypeDisplay(entityType).title}
-                        <button type="button" onClick={() => { setEntityType(""); setPage(1); }}>✕</button>
-                      </span>
-                    )}
-                    {q.trim() && (
-                      <span className="inline-flex items-center gap-1 text-[0.75rem] px-2 py-1 rounded bg-primary/10 text-primary">
-                        “{q.trim()}”
-                        <button type="button" onClick={() => { setSearchInput(""); setQ(""); setPage(1); }}>✕</button>
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={handleClearFilters}
-                      className="ti-btn ti-btn-light !py-1 !px-3 !text-[0.75rem] !mb-0"
-                    >
-                      Clear all
-                    </button>
-                  </div>
+                  {exporting ? "Exporting..." : "Export Excel"}
+                </button>
+                {currentUser && (
+                  <span className="text-[0.75rem] text-defaulttextcolor/70">
+                    Viewing as: <span className="font-medium">{currentUser.name ?? currentUser.email}</span>
+                  </span>
                 )}
               </div>
+              </div>
+
+              {canFilter && !accessLoading && canReadActivityLogs && !forbidden && (
+                <div className="w-full p-4 rounded-lg border border-defaultborder bg-gray-50/50 dark:bg-gray-800/30">
+                  <div className="mb-3">
+                    <label htmlFor="logs-search" className="form-label !text-[0.75rem] mb-1">
+                      Search
+                    </label>
+                    <input
+                      id="logs-search"
+                      type="search"
+                      className="form-control !py-2 !text-[0.8125rem] w-full"
+                      placeholder="Search by person name, email, or what changed…"
+                      value={searchInput}
+                      onChange={(e) => setSearchInput(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="mb-3">
+                    <label id="logs-when-label" className="form-label !text-[0.75rem] mb-1">
+                      When
+                    </label>
+                    <div
+                      className="flex flex-wrap items-center gap-2"
+                      role="group"
+                      aria-labelledby="logs-when-label"
+                    >
+                      {DATE_PRESETS.map((p) => (
+                        <button
+                          key={p.key}
+                          type="button"
+                          onClick={() => {
+                            setDatePreset(p.key);
+                            setPage(1);
+                          }}
+                          className={
+                            "ti-btn !py-1 !px-3 !text-[0.75rem] !mb-0 " +
+                            (datePreset === p.key ? "ti-btn-primary" : "ti-btn-light")
+                          }
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div className="w-full sm:min-w-[14rem] sm:w-auto sm:flex-1">
+                      <label htmlFor="logs-action" className="form-label !text-[0.75rem] mb-1">
+                        Action
+                      </label>
+                      <ActivityLogFilterSelect
+                        inputId="logs-action"
+                        groups={getGroupedActionOptions()}
+                        value={action}
+                        onChange={(next) => {
+                          setAction(next);
+                          setPage(1);
+                        }}
+                        placeholder="Any action"
+                        noOptionsMessage="No matching actions"
+                      />
+                    </div>
+                    <div className="w-full sm:min-w-[14rem] sm:w-auto sm:flex-1">
+                      <label htmlFor="logs-entity-type" className="form-label !text-[0.75rem] mb-1">
+                        Entity type
+                      </label>
+                      <ActivityLogFilterSelect
+                        inputId="logs-entity-type"
+                        groups={getGroupedEntityTypeOptions()}
+                        value={entityType}
+                        onChange={(next) => {
+                          setEntityType(next);
+                          setPage(1);
+                        }}
+                        placeholder="Any entity"
+                        noOptionsMessage="No matching entity types"
+                      />
+                    </div>
+
+                    {datePreset === "custom" && (
+                      <>
+                        <div className="w-full sm:min-w-[10rem] sm:w-auto">
+                          <label htmlFor="logs-start-date" className="form-label !text-[0.75rem] mb-1">
+                            Start date
+                          </label>
+                          <input
+                            id="logs-start-date"
+                            type="date"
+                            className="form-control !py-1.5 !text-[0.8125rem]"
+                            value={startDate}
+                            onChange={(e) => {
+                              setStartDate(e.target.value);
+                              setPage(1);
+                            }}
+                          />
+                        </div>
+                        <div className="w-full sm:min-w-[10rem] sm:w-auto">
+                          <label htmlFor="logs-end-date" className="form-label !text-[0.75rem] mb-1">
+                            End date
+                          </label>
+                          <input
+                            id="logs-end-date"
+                            type="date"
+                            className="form-control !py-1.5 !text-[0.8125rem]"
+                            value={endDate}
+                            onChange={(e) => {
+                              setEndDate(e.target.value);
+                              setPage(1);
+                            }}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {customDateIncomplete && (
+                    <p className="mt-3 mb-0 text-[0.8125rem] text-warning">
+                      Select both start and end dates to load custom range results.
+                    </p>
+                  )}
+
+                  {hasActiveFilters && (
+                    <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-defaultborder">
+                      <span className="text-[0.7rem] uppercase tracking-wide text-defaulttextcolor/50">
+                        Active
+                      </span>
+                      {datePreset !== "7d" && (
+                        <span className="inline-flex items-center gap-1 text-[0.75rem] px-2 py-1 rounded bg-primary/10 text-primary">
+                          {DATE_PRESETS.find((p) => p.key === datePreset)?.label}
+                          <button
+                            type="button"
+                            aria-label="Remove date range filter"
+                            onClick={() => {
+                              setDatePreset("7d");
+                              setPage(1);
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      )}
+                      {action.trim() && (
+                        <span className="inline-flex items-center gap-1 text-[0.75rem] px-2 py-1 rounded bg-primary/10 text-primary">
+                          {getActionDisplay(action).title}
+                          <button
+                            type="button"
+                            aria-label="Remove action filter"
+                            onClick={() => {
+                              setAction("");
+                              setPage(1);
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      )}
+                      {entityType.trim() && (
+                        <span className="inline-flex items-center gap-1 text-[0.75rem] px-2 py-1 rounded bg-primary/10 text-primary">
+                          {getEntityTypeDisplay(entityType).title}
+                          <button
+                            type="button"
+                            aria-label="Remove entity type filter"
+                            onClick={() => {
+                              setEntityType("");
+                              setPage(1);
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      )}
+                      {q.trim() && (
+                        <span className="inline-flex items-center gap-1 text-[0.75rem] px-2 py-1 rounded bg-primary/10 text-primary">
+                          “{q.trim()}”
+                          <button
+                            type="button"
+                            aria-label="Remove search filter"
+                            onClick={() => {
+                              setSearchInput("");
+                              setQ("");
+                              setPage(1);
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleClearFilters}
+                        className="ti-btn ti-btn-light !py-1 !px-3 !text-[0.75rem] !mb-0"
+                      >
+                        Clear all
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden min-h-0">
+              {error && (
+                <div className="shrink-0 p-4 mx-3 sm:mx-4 mt-3 mb-0 bg-danger/10 border border-danger/30 text-danger rounded-md text-sm">
+                  {error}
+                </div>
               )}
 
-              {loading ? (
+              {accessLoading ? (
+                <div className="flex flex-1 min-h-[40vh] items-center justify-center">
+                  <div className="ti-btn ti-btn-primary ti-btn-loading">Checking access...</div>
+                </div>
+              ) : !canReadActivityLogs ? (
+                <div className="shrink-0 p-4 mx-3 sm:mx-4 mt-3 bg-warning/10 border border-warning/30 text-warning rounded-md text-sm">
+                  You need the <span className="font-semibold">logs.activity:view</span> permission (or Administrator /
+                  platform access) to view activity logs.
+                </div>
+              ) : forbidden ? null : customDateIncomplete ? (
+                <div className="flex flex-1 items-center justify-center px-4 py-10 text-center text-defaulttextcolor/70 text-sm">
+                  Choose start and end dates above to view activity logs for a custom range.
+                </div>
+              ) : loading ? (
                 <>
-                  <div className="lg:hidden divide-y divide-defaultborder rounded-lg border border-defaultborder overflow-hidden">
+                  <div className="lg:hidden divide-y divide-defaultborder rounded-lg border border-defaultborder overflow-hidden mx-3 sm:mx-4 mt-3">
                     {[...Array(4)].map((_, i) => (
                       <div key={`m-sk-${i}`} className="p-3 sm:p-4 space-y-2">
                         <div className="h-4 w-2/3 bg-gray-100 dark:bg-white/5 rounded animate-pulse" />
@@ -609,7 +687,7 @@ export default function LogsActivityPage() {
                       </div>
                     ))}
                   </div>
-                  <div className="hidden lg:block overflow-x-auto overscroll-x-contain -mx-3 sm:mx-0 rounded-lg border border-defaultborder">
+                  <div className="hidden lg:block overflow-x-auto overscroll-x-contain mx-3 sm:mx-4 mt-3 rounded-lg border border-defaultborder">
                     <table className="table table-bordered border-defaultborder min-w-[56rem] w-full mb-0">
                       <tbody>
                         <tr>
@@ -622,12 +700,12 @@ export default function LogsActivityPage() {
                   </div>
                 </>
               ) : logs.length === 0 ? (
-                <div className="rounded-lg border border-defaultborder px-4 py-10 text-center text-defaulttextcolor/70 text-sm">
+                <div className="flex flex-1 items-center justify-center mx-3 sm:mx-4 mt-3 rounded-lg border border-defaultborder px-4 py-10 text-center text-defaulttextcolor/70 text-sm">
                   {hasActiveFilters ? "No logs match your filters." : "No activity logs found yet."}
                 </div>
               ) : (
                 <>
-                  <div className="lg:hidden divide-y divide-defaultborder rounded-lg border border-defaultborder overflow-hidden">
+                  <div className="lg:hidden flex-1 min-h-0 overflow-y-auto divide-y divide-defaultborder rounded-lg border border-defaultborder mx-3 sm:mx-4 mt-3 mb-3">
                     {logs.map((log) => {
                       const model = buildLogRowModel(
                         log,
@@ -708,26 +786,26 @@ export default function LogsActivityPage() {
                     })}
                   </div>
 
-                  <div className="hidden lg:block overflow-x-auto overscroll-x-contain -mx-3 sm:mx-0 rounded-lg border border-defaultborder">
+                  <div className="hidden lg:block flex-1 overflow-y-auto overflow-x-auto overscroll-x-contain mx-3 sm:mx-4 mt-3 mb-3 rounded-lg border border-defaultborder" style={{ minHeight: 0 }}>
                     <table className="table table-bordered border-defaultborder min-w-[56rem] w-full mb-0">
                       <thead>
-                        <tr className="bg-gray-50 dark:bg-gray-800/50">
-                          <th className="px-4 py-2.5 text-start font-semibold min-w-[9.5rem] whitespace-nowrap">
+                        <tr className="bg-gray-50 dark:bg-gray-800/50 sticky top-0 z-10">
+                          <th className="px-4 py-2.5 text-start font-semibold min-w-[9.5rem] whitespace-nowrap sticky top-0 z-10 bg-gray-50 dark:bg-gray-800/50">
                             Timestamp
                           </th>
-                          <th className="px-4 py-2.5 text-start font-semibold min-w-[8.5rem]">Actor</th>
-                          <th className="px-4 py-2.5 text-start font-semibold min-w-[9rem]">Action</th>
-                          <th className="px-4 py-2.5 text-start font-semibold min-w-[12rem]">Entity</th>
+                          <th className="px-4 py-2.5 text-start font-semibold min-w-[8.5rem] sticky top-0 z-10 bg-gray-50 dark:bg-gray-800/50">Actor</th>
+                          <th className="px-4 py-2.5 text-start font-semibold min-w-[9rem] sticky top-0 z-10 bg-gray-50 dark:bg-gray-800/50">Action</th>
+                          <th className="px-4 py-2.5 text-start font-semibold min-w-[12rem] sticky top-0 z-10 bg-gray-50 dark:bg-gray-800/50">Entity</th>
                           <th
-                            className="px-4 py-2.5 text-start font-semibold min-w-[8rem]"
+                            className="px-4 py-2.5 text-start font-semibold min-w-[8rem] sticky top-0 z-10 bg-gray-50 dark:bg-gray-800/50"
                             title="Device place (GPS) when allowed; IP-based location is approximate."
                           >
                             Location
                           </th>
-                          <th className="px-4 py-2.5 text-start font-semibold min-w-[7rem] whitespace-nowrap">
+                          <th className="px-4 py-2.5 text-start font-semibold min-w-[7rem] whitespace-nowrap sticky top-0 z-10 bg-gray-50 dark:bg-gray-800/50">
                             IP
                           </th>
-                          <th className="px-4 py-2.5 text-start font-semibold min-w-[14rem]">User Agent</th>
+                          <th className="px-4 py-2.5 text-start font-semibold min-w-[14rem] sticky top-0 z-10 bg-gray-50 dark:bg-gray-800/50">User Agent</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -782,38 +860,23 @@ export default function LogsActivityPage() {
                   </div>
                 </>
               )}
+            </div>
 
-              {!loading && (logs.length > 0 || hasActiveFilters) && (
-                <div className="flex flex-wrap items-center justify-between gap-4 mt-4 pt-4 border-t border-defaultborder">
-                  <p className="text-[0.8125rem] text-defaulttextcolor/70 mb-0">
-                    Showing {start} to {end} of {totalResults} entries
-                  </p>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={page <= 1}
-                      className="ti-btn ti-btn-sm ti-btn-soft-primary"
-                    >
-                      Prev
-                    </button>
-                    <span className="px-2 py-1 text-[0.8125rem]">
-                      Page {page} of {totalPages}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={page >= totalPages}
-                      className="ti-btn ti-btn-sm ti-btn-soft-primary"
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
-              )}
-            </>
-          )
-        )}
+            {showPagination && (
+              <div className="box-footer shrink-0 !border-t-0 bg-white dark:bg-bodybg">
+                <ListPagination
+                  page={page}
+                  totalPages={totalPages}
+                  totalResults={totalResults}
+                  pageSize={limit}
+                  onPageChange={setPage}
+                  ariaLabel="Activity logs page navigation"
+                  gotoInputId="activity-logs-goto-page"
+                />
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </Fragment>
   );

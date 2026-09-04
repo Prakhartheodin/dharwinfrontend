@@ -2,19 +2,30 @@
 
 import Link from 'next/link'
 import Seo from '@/shared/layout-components/seo/seo'
-import React, { Fragment, useState, useEffect, useMemo } from 'react'
+import React, { Fragment, useState, useEffect, useCallback, useRef } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import pipelineStyles from '../ats-pipeline-list.module.css'
 import { listPlacements } from '@/shared/lib/api/placements'
 import type { Placement } from '@/shared/lib/api/placements'
 import { getPlacementStatusActorSummary } from '@/shared/lib/ats/placementActorText'
 import { JoiningDateTableCell } from '@/shared/components/ats/JoiningDateTableCell'
+import ListPagination from '@/shared/components/ListPagination'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 
-const isValidMongoId = (id: unknown): id is string =>
-  typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id)
+/** Same default as Jobs / Students / Recruiters. */
+const LIST_PAGE_SIZE = 10
+
+function parseListPage(raw: string | null | undefined): number {
+  const n = Number.parseInt(String(raw ?? ''), 10)
+  return Number.isInteger(n) && n >= 1 ? n : 1
+}
+
+function isValidMongoId(id: unknown): id is string {
+  return typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id)
+}
 
 // toJSON plugin maps _id → id on populated subdocs, so check both.
-const resolveCandidateId = (c: unknown): string | undefined => {
+function resolveCandidateId(c: unknown): string | undefined {
   if (typeof c === 'string' && c) return c
   if (c && typeof c === 'object') {
     const obj = c as { _id?: unknown; id?: unknown }
@@ -24,53 +35,295 @@ const resolveCandidateId = (c: unknown): string | undefined => {
   return undefined
 }
 
+function resolvePlacementId(p: Placement): string {
+  const pid = (p as { _id?: string; id?: string })._id ?? p.id
+  return typeof pid === 'string' ? pid : ''
+}
+
+function getCandidateDepartment(p: Placement): string {
+  if (p.status === 'Cancelled' || p.status === 'Deferred') return 'None'
+  const dept = (p.candidate as { department?: string } | undefined)?.department?.trim()
+  return dept || '-'
+}
+
+function getCandidateDesignation(p: Placement): string {
+  return (p.candidate as { designation?: string } | undefined)?.designation ?? '-'
+}
+
+function placementChipClass(status: string): string {
+  if (status === 'Cancelled') return 'bg-rose-50 text-rose-800 dark:bg-rose-500/20 dark:text-rose-200'
+  if (status === 'Deferred') return 'bg-violet-50 text-violet-800 dark:bg-violet-500/20 dark:text-violet-200'
+  if (status === 'Joined') return 'bg-success/10 text-success'
+  return 'bg-amber-50 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200'
+}
+
+function workflowChipClass(status: string): string {
+  if (status === 'Completed' || status === 'Verified') return 'bg-success/10 text-success'
+  if (status === 'In Progress') return 'bg-warning/10 text-warning'
+  return 'bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400'
+}
+
+const TH_CLASS =
+  'border-b border-slate-200/90 bg-slate-50 px-2 py-2.5 text-start align-bottom text-[0.6875rem] font-semibold uppercase tracking-wide text-slate-500 dark:border-white/10 dark:bg-slate-900/80 dark:text-slate-400'
+
+const TD_CLASS =
+  'min-w-0 align-middle px-2 py-2.5 text-[13px] text-slate-800 dark:text-slate-100'
+
+type RowModel = {
+  rowId: string
+  placementId: string
+  cid: string | undefined
+  name: string
+  email: string
+  actorLine: string
+  jobTitle: string
+  designation: string
+  sameJobDesig: boolean
+  employeeId: string
+  joiningDate: Placement['joiningDate']
+  department: string
+  placementStatus: string
+  pb: string
+  bgv: string
+  bgvDone: boolean
+}
+
+function toRowModel(p: Placement, index: number): RowModel {
+  const placementId = resolvePlacementId(p)
+  const jobTitle = p.job?.title?.trim() || '-'
+  const designation = getCandidateDesignation(p).trim()
+  const bgv = (p.backgroundVerification as { status?: string } | undefined)?.status || 'Pending'
+  return {
+    rowId: placementId || `onboarding-row-${index}`,
+    placementId,
+    cid: resolveCandidateId(p.candidate),
+    name: p.candidate?.fullName || '-',
+    email: p.candidate?.email || '',
+    actorLine: getPlacementStatusActorSummary({
+      status: p.status,
+      deferredBy: p.deferredBy,
+      deferredAt: p.deferredAt,
+      cancelledBy: p.cancelledBy,
+      cancelledAt: p.cancelledAt,
+    }).secondary,
+    jobTitle,
+    designation,
+    sameJobDesig:
+      jobTitle !== '-' && designation !== '-' && jobTitle.toLowerCase() === designation.toLowerCase(),
+    employeeId: p.candidate?.employeeId || p.employeeId || '-',
+    joiningDate: p.joiningDate,
+    department: getCandidateDepartment(p),
+    placementStatus: p.status || 'Onboarding',
+    pb: p.preBoardingStatus || 'Pending',
+    bgv,
+    bgvDone: bgv === 'Completed' || bgv === 'Verified',
+  }
+}
+
+function StatusChips({ row }: { row: RowModel }) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${placementChipClass(row.placementStatus)}`}>
+        <i className="ri-user-received-2-line text-[0.65rem]" aria-hidden />
+        {row.placementStatus}
+      </span>
+      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${workflowChipClass(row.pb)}`}>
+        <i className="ri-suitcase-line text-[0.65rem]" aria-hidden />
+        {row.pb}
+      </span>
+      <span
+        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${workflowChipClass(row.bgv)}`}
+        title={`BGV: ${row.bgv}`}
+      >
+        <i className="ri-shield-check-line text-[0.65rem]" aria-hidden />
+        {row.bgvDone ? 'BGV done' : 'BGV'}
+      </span>
+    </div>
+  )
+}
+
+function ActionButtons({
+  row,
+  canEdit,
+  layout,
+}: {
+  row: RowModel
+  canEdit: boolean
+  layout: 'card' | 'table'
+}) {
+  const card = layout === 'card'
+  const wrap = card
+    ? 'mt-2.5 flex flex-col gap-2 md:flex-row'
+    : 'flex flex-wrap items-center justify-end gap-1.5'
+  const size = card
+    ? 'inline-flex min-h-11 flex-1 items-center justify-center !h-11 !min-w-11 !px-3 !py-2 !text-[0.8125rem]'
+    : '!h-8 !min-w-fit !px-2.5 !py-1.5 !text-[0.75rem]'
+  return (
+    <div className={wrap}>
+      {canEdit && isValidMongoId(row.placementId) ? (
+        <Link
+          href={`/ats/onboarding/edit?id=${row.placementId}`}
+          className={`ti-btn ti-btn-sm ti-btn-primary shrink-0 whitespace-nowrap !w-auto !mb-0 ${size}`}
+        >
+          Edit HRMS
+        </Link>
+      ) : null}
+      {row.cid ? (
+        <Link
+          href={`/ats/employees/edit?id=${row.cid}`}
+          className={`ti-btn ti-btn-sm ti-btn-light shrink-0 whitespace-nowrap !w-auto !mb-0 ${size}`}
+        >
+          Profile
+        </Link>
+      ) : (
+        <button
+          type="button"
+          disabled
+          className={`ti-btn ti-btn-sm ti-btn-light shrink-0 cursor-not-allowed whitespace-nowrap !w-auto !mb-0 opacity-50 ${size}`}
+          title="Candidate record missing"
+        >
+          Profile
+        </button>
+      )}
+    </div>
+  )
+}
+
+function EmployeeBlock({
+  row,
+  showIdUnderName,
+}: {
+  row: RowModel
+  showIdUnderName?: boolean
+}) {
+  return (
+    <div className="min-w-0">
+      {row.cid ? (
+        <Link
+          href={`/ats/employees/edit?id=${row.cid}`}
+          className="block truncate font-medium text-primary hover:underline"
+          title={row.name}
+        >
+          {row.name}
+        </Link>
+      ) : (
+        <span className="block truncate font-medium text-slate-800 dark:text-slate-100" title={row.name}>
+          {row.name}
+        </span>
+      )}
+      {row.email ? (
+        <span className="block truncate text-xs text-slate-500 dark:text-slate-400" title={row.email}>
+          {row.email}
+        </span>
+      ) : null}
+      {showIdUnderName && row.employeeId !== '-' ? (
+        <span className="block truncate text-xs text-slate-500 dark:text-slate-400 xl:hidden" title={row.employeeId}>
+          {row.employeeId}
+        </span>
+      ) : null}
+      {row.actorLine ? (
+        <span className="mt-0.5 block truncate text-[10px] leading-tight text-slate-500">{row.actorLine}</span>
+      ) : null}
+    </div>
+  )
+}
+
+function JobBlock({ row }: { row: RowModel }) {
+  return (
+    <div className="min-w-0">
+      <div className={pipelineStyles.jobClamp} title={row.jobTitle}>
+        {row.jobTitle}
+      </div>
+      {!row.sameJobDesig && row.designation && row.designation !== '-' ? (
+        <span className="block truncate text-xs text-slate-500 dark:text-slate-400" title={row.designation}>
+          {row.designation}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
 const Onboarding = () => {
   const { canView, canEdit } = useFeaturePermissions('ats.onboarding')
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
   const [placements, setPlacements] = useState<Placement[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [listSearch, setListSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [apiPage, setApiPage] = useState(() => parseListPage(searchParams.get('page')))
+  const [totalResults, setTotalResults] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
+  const fetchGenerationRef = useRef(0)
+  const prevDebouncedSearchRef = useRef(debouncedSearch)
+
+  useEffect(() => {
+    const fromUrl = parseListPage(searchParams.get('page'))
+    setApiPage((prev) => (prev === fromUrl ? prev : fromUrl))
+  }, [searchParams])
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    const urlPage = parseListPage(params.get('page'))
+    if (urlPage === apiPage) return
+    if (apiPage <= 1) params.delete('page')
+    else params.set('page', String(apiPage))
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [apiPage, pathname, router, searchParams])
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedSearch(listSearch), 300)
+    return () => window.clearTimeout(t)
+  }, [listSearch])
+
+  useEffect(() => {
+    if (prevDebouncedSearchRef.current === debouncedSearch) return
+    prevDebouncedSearchRef.current = debouncedSearch
+    setApiPage(1)
+  }, [debouncedSearch])
 
   /**
    * Onboarding queue: status=Onboarding (pre-boarding completed, awaiting joining) ∪
    * status=Joined (already started). Promotion Onboarding → Joined happens in Onboarding edit.
    */
-  const fetchPlacements = () => {
+  const fetchPlacements = useCallback(() => {
+    if (!canView) return
+    const generation = ++fetchGenerationRef.current
     setLoading(true)
     setError(null)
-    listPlacements({ stage: 'onboarding', limit: 100, page: 1 })
-      .then((res) => setPlacements(res.results ?? []))
-      .catch((err) => setError(err?.response?.data?.message || err?.message || 'Failed to load placements'))
-      .finally(() => setLoading(false))
-  }
+    listPlacements({
+      stage: 'onboarding',
+      limit: LIST_PAGE_SIZE,
+      page: apiPage,
+      ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
+    })
+      .then((res) => {
+        if (generation !== fetchGenerationRef.current) return
+        setPlacements(res.results ?? [])
+        setTotalResults(res.totalResults ?? 0)
+        setTotalPages(res.totalPages ?? 0)
+      })
+      .catch((err) => {
+        if (generation !== fetchGenerationRef.current) return
+        setError(err?.response?.data?.message || err?.message || 'Failed to load placements')
+        setPlacements([])
+        setTotalResults(0)
+        setTotalPages(0)
+      })
+      .finally(() => {
+        if (generation === fetchGenerationRef.current) setLoading(false)
+      })
+  }, [canView, apiPage, debouncedSearch])
 
   useEffect(() => {
-    if (canView) fetchPlacements()
-  }, [canView])
+    fetchPlacements()
+  }, [fetchPlacements])
 
-  const filteredPlacements = useMemo(() => {
-    const q = listSearch.trim().toLowerCase()
-    if (!q) return placements
-    return placements.filter((p) => {
-      const name = (p.candidate?.fullName || '').toLowerCase()
-      const email = (p.candidate?.email || '').toLowerCase()
-      const job = (p.job?.title || '').toLowerCase()
-      const empId = String(p.candidate?.employeeId || p.employeeId || '').toLowerCase()
-      return name.includes(q) || email.includes(q) || job.includes(q) || empId.includes(q)
-    })
-  }, [placements, listSearch])
-
-  const getCandidateDepartment = (p: Placement) => {
-    if (p.status === 'Cancelled' || p.status === 'Deferred') return 'None'
-    const c = p.candidate as { department?: string } | undefined
-    const dept = c?.department?.trim()
-    return dept || '-'
-  }
-
-  const getCandidateDesignation = (p: Placement) => {
-    const c = p.candidate as { designation?: string } | undefined
-    return c?.designation ?? '-'
-  }
+  const showDepartment = placements.some((p) => getCandidateDepartment(p) !== '-')
+  const hasSearch = Boolean(debouncedSearch.trim())
 
   if (!canView) {
     return (
@@ -99,9 +352,9 @@ const Onboarding = () => {
                 </span>
                 <span
                   className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle tabular-nums"
-                  title="Count after search"
+                  title="Total matching this queue"
                 >
-                  {filteredPlacements.length}
+                  {totalResults}
                 </span>
               </div>
               <div
@@ -161,7 +414,7 @@ const Onboarding = () => {
                 </div>
               </div>
             </div>
-            <div className="box-body !p-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-x-clip">
+            <div className="box-body !p-0 flex min-h-0 min-w-0 flex-1 flex-col">
               {loading ? (
                 <div
                   className="flex flex-col items-center justify-center gap-4 px-6 py-10"
@@ -182,210 +435,125 @@ const Onboarding = () => {
                 </div>
               ) : error ? (
                 <div className="px-6 py-8 text-center text-danger">{error}</div>
-              ) : filteredPlacements.length === 0 ? (
+              ) : placements.length === 0 ? (
                 <div className="flex flex-col items-center justify-center px-6 py-16 text-center text-gray-500 dark:text-gray-400">
                   <i className="ri-user-follow-line mb-3 block text-4xl opacity-50" aria-hidden />
                   <p className="mb-1 text-base font-medium text-gray-700 dark:text-gray-200">
-                    {placements.length > 0 ? 'No matches' : 'No joined employees yet'}
+                    {hasSearch ? 'No matches' : 'No joined employees yet'}
                   </p>
                   <p className="mb-0 max-w-md text-sm">
-                    {placements.length > 0
+                    {hasSearch
                       ? 'Try a different search, or clear the search box.'
                       : 'Employees appear here when their placement status is set to Joined.'}
                   </p>
                 </div>
               ) : (
-                <div
-                  className={`table-responsive min-w-0 max-w-full ${pipelineStyles.tableCard} ${pipelineStyles.tableWrap}`}
-                >
-                  <table className={`table whitespace-nowrap text-[0.8125rem] text-defaulttextcolor dark:text-white/80 ${pipelineStyles.tableWide}`}>
-                    <thead>
-                      <tr className="border-b border-slate-200/90 dark:border-white/10">
-                        <th
-                          scope="col"
-                          className="sticky top-0 z-10 border-b border-slate-200/90 bg-slate-100/90 px-2 py-2 text-start align-bottom text-[0.625rem] font-semibold uppercase leading-tight tracking-tight text-slate-500 shadow-sm first:pl-2.5 last:pr-2.5 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:px-2.5 sm:text-[0.65rem] sm:leading-snug"
+                <div className={`min-w-0 max-w-full pb-14 ${pipelineStyles.tableCard}`}>
+                  <div className="divide-y divide-slate-200/90 dark:divide-white/10 lg:hidden">
+                    {placements.map((p, index) => {
+                      const row = toRowModel(p, index)
+                      return (
+                        <article
+                          key={row.rowId}
+                          className={`px-3.5 py-3.5 ${pipelineStyles.rowIn}`}
+                          style={{ animationDelay: `${Math.min(index, 16) * 45}ms` }}
                         >
-                          Employee
-                        </th>
-                        <th
-                          scope="col"
-                          className="sticky top-0 z-10 border-b border-slate-200/90 bg-slate-100/90 px-2 py-2 text-start align-bottom text-[0.625rem] font-semibold uppercase leading-tight tracking-tight text-slate-500 shadow-sm first:pl-2.5 last:pr-2.5 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:px-2.5 sm:text-[0.65rem] sm:leading-snug"
-                        >
-                          Job
-                        </th>
-                        <th
-                          scope="col"
-                          className="sticky top-0 z-10 border-b border-slate-200/90 bg-slate-100/90 px-2 py-2 text-start align-bottom text-[0.625rem] font-semibold uppercase leading-tight tracking-tight text-slate-500 shadow-sm first:pl-2.5 last:pr-2.5 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:px-2.5 sm:text-[0.65rem] sm:leading-snug"
-                        >
-                          Employee ID
-                        </th>
-                        <th
-                          scope="col"
-                          className="sticky top-0 z-10 border-b border-slate-200/90 bg-slate-100/90 px-2 py-2 text-start align-bottom text-[0.625rem] font-semibold uppercase leading-tight tracking-tight text-slate-500 shadow-sm first:pl-2.5 last:pr-2.5 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:px-2.5 sm:text-[0.65rem] sm:leading-snug"
-                        >
-                          Joining Date
-                        </th>
-                        <th
-                          scope="col"
-                          className="sticky top-0 z-10 border-b border-slate-200/90 bg-slate-100/90 px-2 py-2 text-start align-bottom text-[0.625rem] font-semibold uppercase leading-tight tracking-tight text-slate-500 shadow-sm first:pl-2.5 last:pr-2.5 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:px-2.5 sm:text-[0.65rem] sm:leading-snug"
-                        >
-                          Department
-                        </th>
-                        <th
-                          scope="col"
-                          className="sticky top-0 z-10 border-b border-slate-200/90 bg-slate-100/90 px-2 py-2 text-start align-bottom text-[0.625rem] font-semibold uppercase leading-tight tracking-tight text-slate-500 shadow-sm first:pl-2.5 last:pr-2.5 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:px-2.5 sm:text-[0.65rem] sm:leading-snug"
-                        >
-                          Designation
-                        </th>
-                        <th
-                          scope="col"
-                          className="sticky top-0 z-10 border-b border-slate-200/90 bg-slate-100/90 px-2 py-2 text-start align-bottom text-[0.625rem] font-semibold uppercase leading-tight tracking-tight text-slate-500 shadow-sm first:pl-2.5 last:pr-2.5 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:px-2.5 sm:text-[0.65rem] sm:leading-snug"
-                        >
-                          Status
-                        </th>
-                        <th
-                          scope="col"
-                          className="sticky top-0 z-10 border-b border-slate-200/90 bg-slate-100/90 px-2 py-2 text-end align-bottom text-[0.625rem] font-semibold uppercase leading-tight tracking-tight text-slate-500 shadow-sm first:pl-2.5 last:pr-2.5 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:px-2.5 sm:text-[0.65rem] sm:leading-snug"
-                        >
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredPlacements.map((p, index) => {
-                        const rowId = (p as { _id?: string; id?: string })._id ?? p.id ?? `onboarding-row-${index}`
-                        const actorLine = getPlacementStatusActorSummary({
-                          status: p.status,
-                          deferredBy: p.deferredBy,
-                          deferredAt: p.deferredAt,
-                          cancelledBy: p.cancelledBy,
-                          cancelledAt: p.cancelledAt,
-                        }).secondary
-                        return (
-                          <tr
-                            key={String(rowId)}
-                            className={`border-b border-slate-200/80 transition-colors duration-150 ease-out last:border-b-0 hover:bg-slate-50/90 dark:border-white/10 dark:hover:bg-white/[0.04] ${pipelineStyles.rowIn}`}
-                            style={{ animationDelay: `${Math.min(index, 16) * 45}ms` }}
-                          >
-                            <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100">
-                              <div>
-                                {(() => {
-                                  const cid = resolveCandidateId(p.candidate)
-                                  return (
-                                    <Link
-                                      href={cid ? `/ats/employees/edit?id=${cid}` : '#'}
-                                      className="font-medium text-primary hover:underline"
-                                    >
-                                      {p.candidate?.fullName || '-'}
-                                    </Link>
-                                  )
-                                })()}
-                                <span className="block text-xs text-slate-500 dark:text-slate-400">
-                                  {p.candidate?.email || ''}
-                                </span>
-                                {actorLine ? (
-                                  <span className="mt-0.5 block max-w-[16rem] text-[10px] leading-tight text-slate-500 dark:text-slate-500">
-                                    {actorLine}
-                                  </span>
-                                ) : null}
-                              </div>
-                            </td>
-                            <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100">
-                              {p.job?.title || '-'}
-                            </td>
-                            <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100">
-                              {p.candidate?.employeeId || p.employeeId || '-'}
-                            </td>
-                            <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100">
-                              <JoiningDateTableCell value={p.joiningDate} />
-                            </td>
-                            <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100">
-                              {getCandidateDepartment(p)}
-                            </td>
-                            <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100">
-                              {getCandidateDesignation(p)}
-                            </td>
-                            <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] sm:px-3 sm:py-2.5 sm:text-[13px]">
-                              <div className="flex flex-col gap-1">
-                                {(() => {
-                                  const placementStatus = (p.status || 'Onboarding') as string
-                                  const placementColor =
-                                    placementStatus === 'Cancelled'
-                                      ? 'bg-rose-50 text-rose-800 dark:bg-rose-500/20 dark:text-rose-200'
-                                      : placementStatus === 'Deferred'
-                                        ? 'bg-violet-50 text-violet-800 dark:bg-violet-500/20 dark:text-violet-200'
-                                        : placementStatus === 'Joined'
-                                          ? 'bg-success/10 text-success'
-                                          : 'bg-amber-50 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200'
-                                  const pb = (p.preBoardingStatus || 'Pending') as string;
-                                  const pbColor = pb === 'Completed' ? 'bg-success/10 text-success' : pb === 'In Progress' ? 'bg-warning/10 text-warning' : 'bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400';
-                                  const bgv = ((p.backgroundVerification as { status?: string } | undefined)?.status || 'Pending') as string;
-                                  const bgvColor = bgv === 'Completed' || bgv === 'Verified' ? 'bg-success/10 text-success' : bgv === 'In Progress' ? 'bg-warning/10 text-warning' : 'bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400';
-                                  return (
-                                    <>
-                                      <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.625rem] font-medium ${placementColor}`}>
-                                        <i className="ri-user-received-2-line text-[0.6rem]" aria-hidden />
-                                        {placementStatus}
-                                      </span>
-                                      <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.625rem] font-medium ${pbColor}`}>
-                                        <i className="ri-suitcase-line text-[0.6rem]" aria-hidden />
-                                        {pb}
-                                      </span>
-                                      <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.625rem] font-medium ${bgvColor}`}>
-                                        <i className="ri-shield-check-line text-[0.6rem]" aria-hidden />
-                                        BGV: {bgv}
-                                      </span>
-                                    </>
-                                  );
-                                })()}
-                              </div>
-                            </td>
-                            <td className="whitespace-nowrap px-2.5 py-2 text-end align-middle text-[12px] sm:px-3 sm:py-2.5 sm:text-[13px]">
-                              <div className="flex flex-wrap items-center justify-end gap-2">
-                                {canEdit && (() => {
-                                  const pid = (p as { _id?: string; id?: string })._id ?? (p as { id?: string }).id
-                                  const placementId = typeof pid === 'string' ? pid : ''
-                                  return isValidMongoId(placementId) ? (
-                                    <Link
-                                      href={`/ats/onboarding/edit?id=${placementId}`}
-                                      className="ti-btn ti-btn-sm ti-btn-primary shrink-0 whitespace-nowrap !w-auto !min-w-fit !h-8 !py-1.5 !px-3"
-                                    >
-                                      Edit HRMS
-                                    </Link>
-                                  ) : null
-                                })()}
-                                {(() => {
-                                  const cid = resolveCandidateId(p.candidate)
-                                  return (
-                                    <Link
-                                      href={cid ? `/ats/employees/edit?id=${cid}` : '#'}
-                                      className="ti-btn ti-btn-sm ti-btn-light shrink-0 whitespace-nowrap !w-auto !min-w-fit !h-8 !py-1.5 !px-3"
-                                    >
-                                      Profile
-                                    </Link>
-                                  )
-                                })()}
-                              </div>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                          <EmployeeBlock row={row} />
+                          <div className={`mt-1 ${pipelineStyles.jobClamp}`} title={row.jobTitle}>
+                            {row.jobTitle}
+                          </div>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                            {row.employeeId !== '-' ? <span>{row.employeeId}</span> : null}
+                            <JoiningDateTableCell value={row.joiningDate} />
+                          </div>
+                          <div className="mt-2">
+                            <StatusChips row={row} />
+                          </div>
+                          <ActionButtons row={row} canEdit={canEdit} layout="card" />
+                        </article>
+                      )
+                    })}
+                  </div>
+                  <div className={`hidden min-w-0 max-w-full lg:block ${pipelineStyles.tableNoHScroll}`}>
+                    <table
+                      className={`table mb-0 whitespace-normal border-separate border-spacing-0 text-[0.8125rem] text-defaulttextcolor dark:text-white/80 ${pipelineStyles.tableFit}`}
+                    >
+                      <thead>
+                        <tr>
+                          <th scope="col" className={`${TH_CLASS} w-[28%] pl-3 xl:w-[22%]`}>
+                            Employee
+                          </th>
+                          <th scope="col" className={`${TH_CLASS} w-[22%]`}>
+                            Job
+                          </th>
+                          <th scope="col" className={`${TH_CLASS} hidden w-[10%] xl:table-cell`}>
+                            Employee ID
+                          </th>
+                          <th scope="col" className={`${TH_CLASS} w-[14%]`}>
+                            Joining Date
+                          </th>
+                          {showDepartment ? (
+                            <th scope="col" className={`${TH_CLASS} hidden w-[10%] xl:table-cell`}>
+                              Department
+                            </th>
+                          ) : null}
+                          <th scope="col" className={`${TH_CLASS} w-[20%] xl:w-[18%]`}>
+                            Status
+                          </th>
+                          <th scope="col" className={`${TH_CLASS} w-[16%] pe-14 text-end`}>
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {placements.map((p, index) => {
+                          const row = toRowModel(p, index)
+                          return (
+                            <tr
+                              key={row.rowId}
+                              className={`border-b border-slate-200/80 last:border-b-0 hover:bg-slate-50/90 dark:border-white/10 dark:hover:bg-white/[0.04] ${pipelineStyles.rowIn}`}
+                              style={{ animationDelay: `${Math.min(index, 16) * 45}ms` }}
+                            >
+                              <td className={`${TD_CLASS} pl-3`}>
+                                <EmployeeBlock row={row} showIdUnderName />
+                              </td>
+                              <td className={TD_CLASS}>
+                                <JobBlock row={row} />
+                              </td>
+                              <td className={`${TD_CLASS} hidden xl:table-cell`}>{row.employeeId}</td>
+                              <td className={TD_CLASS}>
+                                <JoiningDateTableCell value={row.joiningDate} />
+                              </td>
+                              {showDepartment ? (
+                                <td className={`${TD_CLASS} hidden xl:table-cell`}>{row.department}</td>
+                              ) : null}
+                              <td className={TD_CLASS}>
+                                <StatusChips row={row} />
+                              </td>
+                              <td className={`${TD_CLASS} pe-14 text-end`}>
+                                <ActionButtons row={row} canEdit={canEdit} layout="table" />
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
             <div className="box-footer border-t border-defaultborder/60 dark:border-white/5 !px-3 !py-2 sm:!px-4">
-              <div className="text-xs text-gray-600 sm:text-sm dark:text-gray-400">
-                {loading || error ? null : (
-                  <span>
-                    {filteredPlacements.length} record{filteredPlacements.length !== 1 ? 's' : ''} shown
-                    {listSearch.trim() && placements.length !== filteredPlacements.length
-                      ? ` (filtered from ${placements.length})`
-                      : ''}
-                  </span>
-                )}
-              </div>
+              {loading || error ? null : (
+                <ListPagination
+                  page={apiPage}
+                  totalPages={totalPages}
+                  totalResults={totalResults}
+                  pageSize={LIST_PAGE_SIZE}
+                  onPageChange={setApiPage}
+                  ariaLabel="Onboarding page navigation"
+                  gotoInputId="onboarding-goto-page"
+                />
+              )}
             </div>
           </div>
         </div>

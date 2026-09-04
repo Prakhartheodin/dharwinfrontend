@@ -26,6 +26,11 @@
       
     }
   }
+
+  /* Filter-bar pickers are standalone (no left addon). Global rule above only rounds the end. */
+  .ymd-filter-date-input .react-datepicker__input-container input {
+    @apply rounded-xl #{!important};
+  }
   
   [dir="rtl"] {
     .react-datepicker__input-container {

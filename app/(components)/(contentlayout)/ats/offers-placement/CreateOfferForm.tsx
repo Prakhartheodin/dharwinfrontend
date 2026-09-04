@@ -2,8 +2,14 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { createOffer, getOfferLetterDefaults, JOB_TYPES, compensationTypeForJobType, type Offer, type OfferLetterJobType } from "@/shared/lib/api/offers";
+import { createOffer, getOfferLetterDefaults, JOB_TYPES, compensationTypeForJobType, listOffers, type Offer, type OfferLetterJobType } from "@/shared/lib/api/offers";
 import { listJobApplications, type JobApplication } from "@/shared/lib/api/jobApplications";
+import {
+  isJobApplicationEligibleForOffer,
+  jobApplicationRecordId,
+} from "@/shared/lib/ats/offer-application-eligibility";
+import { findJobApplicationById, resolveOfferInterviewBypassAck } from "@/shared/lib/ats/resolve-offer-interview-bypass";
+import { useConfirm } from "@/shared/components/ui/useConfirm";
 
 function formatCandidateAddress(c: JobApplication["candidate"] | undefined) {
   const a = c?.address;
@@ -25,8 +31,7 @@ export type CreateOfferFormProps = {
   prefillFromApplication?: boolean;
 };
 
-const getApplicationId = (ja: JobApplication) =>
-  (ja as { _id?: string; id?: string })._id ?? (ja as { id?: string }).id ?? "";
+const getApplicationId = jobApplicationRecordId;
 
 export function CreateOfferForm({
   onSuccess,
@@ -35,6 +40,7 @@ export function CreateOfferForm({
   variant = "page",
   prefillFromApplication = true,
 }: CreateOfferFormProps) {
+  const { confirm, confirmDialog } = useConfirm();
   const [jobApplications, setJobApplications] = useState<JobApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -67,11 +73,15 @@ export function CreateOfferForm({
   });
 
   useEffect(() => {
-    listJobApplications({ limit: 200 })
-      .then((res) => {
-        const all = res.results ?? [];
-        const eligible = all.filter(
-          (ja) => ja.status && ["Applied", "Screening", "Interview"].includes(ja.status)
+    Promise.all([listJobApplications({ limit: 500 }), listOffers({ limit: 500 })])
+      .then(([appsRes, offersRes]) => {
+        const appIdsWithOffer = new Set(
+          (offersRes.results ?? [])
+            .map((o) => String(o.jobApplication || "").trim())
+            .filter(Boolean)
+        );
+        const eligible = (appsRes.results ?? []).filter((ja) =>
+          isJobApplicationEligibleForOffer(ja.status, getApplicationId(ja), appIdsWithOffer)
         );
         setJobApplications(eligible);
       })
@@ -160,10 +170,16 @@ export function CreateOfferForm({
       .filter(Boolean);
     const weeklyHours: number =
       form.jobType === "PT_25" ? 20 : form.jobType === "FT_40" ? 40 : form.weeklyHours;
+
+    const selectedApp = findJobApplicationById(jobApplications, form.jobApplicationId);
+    const bypassAck = await resolveOfferInterviewBypassAck(selectedApp, confirm);
+    if (bypassAck === false) return;
+
     setSubmitting(true);
     try {
       const created = await createOffer({
         jobApplicationId: form.jobApplicationId,
+        ...(bypassAck ? { ackBypassInterview: true } : {}),
         ctcBreakdown: {
           base: form.base,
           hra: form.hra,
@@ -207,7 +223,9 @@ export function CreateOfferForm({
   const isModal = variant === "modal";
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <>
+      {confirmDialog}
+      <form onSubmit={handleSubmit} className="space-y-5">
       {error && <div className="p-3 rounded-lg bg-danger/10 text-danger text-sm">{error}</div>}
 
       {isModal && (
@@ -268,9 +286,9 @@ export function CreateOfferForm({
           <div className="text-sm text-gray-600 dark:text-gray-400 mt-2 p-3 rounded-lg bg-gray-50 dark:bg-black/20 space-y-1">
             <p className="font-medium">No applications available to create an offer.</p>
             <p className="text-xs">
-              Offers can only be created from applications in <strong>Applied</strong>, <strong>Screening</strong>, or{" "}
-              <strong>Interview</strong> stage (not Offered, Hired, or Rejected). Apply candidates to jobs from the
-              Jobs page.
+              Offers can only be created from applications in <strong>Applied</strong>, <strong>Screening</strong>,{" "}
+              <strong>Interview</strong>, <strong>Shortlisted</strong>, or <strong>Offered</strong> (when no offer
+              exists yet). Rejected and Hired applications are excluded.
             </p>
           </div>
         )}
@@ -673,5 +691,6 @@ export function CreateOfferForm({
         ) : null}
       </div>
     </form>
+    </>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import {
   getAllHolidays,
   createHoliday,
@@ -15,9 +15,13 @@ import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-ac
 import { useDebouncedValue } from "@/app/(components)/(contentlayout)/communication/dialer/_lib/contactSearch";
 import { YmdFilterDateInput } from "@/shared/components/filters/YmdFilterDateInput";
 import { getReferralLeadsDateRangeError } from "@/shared/lib/ymd-filter-date-input.util";
+import ListPagination from "@/shared/components/ListPagination";
+import { effectiveIsActive, sortHolidaysByRelevance } from "@/shared/lib/holidays/effectiveHoliday";
 
 /** Fixed so From can find To after its own remount; useId would change across that. */
 const HOLIDAYS_FILTER_TO_INPUT_ID = "holidays-filter-to";
+const FETCH_LIMIT = 500;
+const PAGE_SIZE = 10;
 
 const pageStyles = (
   <style>{`
@@ -35,7 +39,7 @@ const pageStyles = (
 
 export default function SettingsAttendanceHolidaysPage() {
   const isAdmin = useAttendanceAdminAccess();
-  const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [allHolidays, setAllHolidays] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -48,12 +52,10 @@ export default function SettingsAttendanceHolidaysPage() {
   const [startDateFilter, setStartDateFilter] = useState("");
   const [endDateFilter, setEndDateFilter] = useState("");
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
-  const [sortBy, setSortBy] = useState("date:asc");
+  const [sortBy, setSortBy] = useState("relevance:asc");
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalResults, setTotalResults] = useState(0);
   const [apiGroupNames, setApiGroupNames] = useState<string[]>([]);
-  const limit = 10;
+  const refDate = useMemo(() => new Date(), []);
 
   const fetchHolidays = useCallback(async () => {
     const generation = ++fetchGenerationRef.current;
@@ -61,31 +63,17 @@ export default function SettingsAttendanceHolidaysPage() {
     setError(null);
     try {
       const params: Record<string, unknown> = {
-        page: currentPage,
-        limit,
-        sortBy,
+        page: 1,
+        limit: FETCH_LIMIT,
       };
       if (debouncedTitleFilter.trim()) params.title = debouncedTitleFilter.trim();
       if (startDateFilter) params.startDate = startDateFilter;
       if (endDateFilter) params.endDate = endDateFilter;
-      if (activeFilter !== "all") params.isActive = activeFilter === "active";
 
       const response = await getAllHolidays(params as Parameters<typeof getAllHolidays>[0]);
       if (generation !== fetchGenerationRef.current) return;
-      const data = (response as { data?: { results?: Holiday[]; totalPages?: number; totalResults?: number } }).data;
-      if (data?.results) {
-        setHolidays(data.results);
-        setTotalPages(data.totalPages ?? 1);
-        setTotalResults(data.totalResults ?? 0);
-      } else if (Array.isArray(data)) {
-        setHolidays(data);
-        setTotalPages(1);
-        setTotalResults(data.length);
-      } else {
-        setHolidays([]);
-        setTotalPages(1);
-        setTotalResults(0);
-      }
+      const data = (response as { data?: { results?: Holiday[] } }).data;
+      setAllHolidays(data?.results ?? (Array.isArray(data) ? data : []));
     } catch (err: unknown) {
       if (generation !== fetchGenerationRef.current) return;
       const msg =
@@ -98,7 +86,41 @@ export default function SettingsAttendanceHolidaysPage() {
         setLoading(false);
       }
     }
-  }, [currentPage, sortBy, debouncedTitleFilter, startDateFilter, endDateFilter, activeFilter]);
+  }, [debouncedTitleFilter, startDateFilter, endDateFilter]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedTitleFilter, startDateFilter, endDateFilter, activeFilter, sortBy]);
+
+  const processed = useMemo(() => {
+    let rows = [...allHolidays];
+    if (sortBy === "relevance:asc") {
+      rows = sortHolidaysByRelevance(rows, refDate);
+    } else if (sortBy === "date:desc") {
+      rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    } else if (sortBy === "title:asc") {
+      rows.sort((a, b) => a.title.localeCompare(b.title));
+    } else if (sortBy === "title:desc") {
+      rows.sort((a, b) => b.title.localeCompare(a.title));
+    } else {
+      rows.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    }
+    return rows.filter((h) => {
+      const active = effectiveIsActive(h, refDate);
+      if (activeFilter === "active" && !active) return false;
+      if (activeFilter === "inactive" && active) return false;
+      return true;
+    });
+  }, [allHolidays, refDate, activeFilter, sortBy]);
+
+  const totalResults = processed.length;
+  const totalPages = Math.max(1, Math.ceil(totalResults / PAGE_SIZE));
+  const safePage = Math.min(currentPage, totalPages);
+  const holidays = processed.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
 
   useEffect(() => {
     if (isAdmin === true) fetchHolidays();
@@ -254,7 +276,7 @@ export default function SettingsAttendanceHolidaysPage() {
     setStartDateFilter("");
     setEndDateFilter("");
     setActiveFilter("all");
-    setSortBy("date:asc");
+    setSortBy("relevance:asc");
     setCurrentPage(1);
   };
 
@@ -484,6 +506,7 @@ export default function SettingsAttendanceHolidaysPage() {
                   }}
                   className="form-select form-select-sm min-w-[180px] rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 text-sm text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                 >
+                  <option value="relevance:asc">Relevance (Upcoming first)</option>
                   <option value="date:asc">Date (Oldest First)</option>
                   <option value="date:desc">Date (Newest First)</option>
                   <option value="title:asc">Title (A–Z)</option>
@@ -516,7 +539,7 @@ export default function SettingsAttendanceHolidaysPage() {
                 <p className="text-sm font-semibold text-defaulttextcolor">Loading holidays…</p>
                 <p className="mt-1.5 text-xs text-defaulttextcolor/50">This may take a moment</p>
               </div>
-            ) : holidays.length === 0 ? (
+            ) : totalResults === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-center">
                 <div className="inline-flex h-24 w-24 items-center justify-center rounded-3xl bg-slate-100 dark:bg-white/10 text-defaulttextcolor/40 mb-5 ring-1 ring-defaultborder/50">
                   <i className="ri-calendar-event-line text-5xl" />
@@ -552,123 +575,114 @@ export default function SettingsAttendanceHolidaysPage() {
                 )}
               </div>
             ) : (
-              <>
-                <p className="mb-4 text-sm text-defaulttextcolor/70">
-                  Showing {holidays.length} of {totalResults} holiday{totalResults !== 1 ? "s" : ""}
-                </p>
-                <div className="overflow-x-auto rounded-xl border border-defaultborder/70">
-                  <table className="min-w-full table-auto">
-                    <thead>
-                      <tr className="border-b border-defaultborder/60 bg-slate-50/80 dark:bg-white/[0.04]">
-                        <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70">
-                          Title
-                        </th>
-                        <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70">
-                          Date / Range
-                        </th>
-                        <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70">
-                          Status
-                        </th>
-                        <th className="px-5 py-3.5 text-right text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-defaultborder/50">
-                      {holidays.map((holiday, index) => {
-                        const id = holiday._id ?? holiday.id;
-                        return (
-                          <tr
-                            key={id}
-                            style={{ animationDelay: `${index * 40}ms` }}
-                            className="holiday-row-enter opacity-0 hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition-colors"
-                          >
-                            <td className="px-5 py-4 font-medium text-defaulttextcolor max-w-[280px]">
-                              <span className="block truncate" title={holiday.title}>{holiday.title}</span>
-                              {holiday.group ? (
-                                <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary ring-1 ring-primary/15">
-                                  <i className="ri-folder-2-line" />
-                                  {holiday.group}
-                                </span>
-                              ) : null}
-                            </td>
-                            <td className="px-5 py-4 text-sm text-defaulttextcolor/85 whitespace-nowrap">
-                              {holiday.endDate
-                                ? `${formatDate(holiday.date)} – ${formatDate(holiday.endDate)}`
-                                : formatDate(holiday.date)}
-                            </td>
-                            <td className="px-5 py-4">
-                              <span
-                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                                  holiday.isActive
-                                    ? "bg-success/10 text-success ring-1 ring-success/20"
-                                    : "bg-slate-100 dark:bg-white/10 text-defaulttextcolor/70"
-                                }`}
-                              >
-                                {holiday.isActive ? (
-                                  <>
-                                    <span className="h-1.5 w-1.5 rounded-full bg-success" />
-                                    Active
-                                  </>
-                                ) : (
-                                  "Inactive"
-                                )}
+              <div className="overflow-x-auto rounded-xl border border-defaultborder/70">
+                <table className="min-w-full table-auto">
+                  <thead>
+                    <tr className="border-b border-defaultborder/60 bg-slate-50/80 dark:bg-white/[0.04]">
+                      <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70">
+                        Title
+                      </th>
+                      <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70">
+                        Date / Range
+                      </th>
+                      <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70">
+                        Status
+                      </th>
+                      <th className="px-5 py-3.5 text-right text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-defaultborder/50">
+                    {holidays.map((holiday, index) => {
+                      const id = holiday._id ?? holiday.id;
+                      const active = effectiveIsActive(holiday, refDate);
+                      const storedDiffers = holiday.isActive !== active;
+                      return (
+                        <tr
+                          key={id}
+                          style={{ animationDelay: `${index * 40}ms` }}
+                          className="holiday-row-enter opacity-0 hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition-colors"
+                        >
+                          <td className="px-5 py-4 font-medium text-defaulttextcolor max-w-[280px]">
+                            <span className="block truncate" title={holiday.title}>{holiday.title}</span>
+                            {holiday.group ? (
+                              <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary ring-1 ring-primary/15">
+                                <i className="ri-folder-2-line" />
+                                {holiday.group}
                               </span>
-                            </td>
-                            <td className="px-5 py-4 text-right">
-                              <div className="flex items-center justify-end gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => openEditForm(holiday)}
-                                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-primary hover:bg-primary/10 transition-colors"
-                                  title="Edit"
-                                >
-                                  <i className="ri-pencil-line text-lg" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDelete(holiday)}
-                                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-danger hover:bg-danger/10 transition-colors"
-                                  title="Delete"
-                                >
-                                  <i className="ri-delete-bin-line text-lg" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                {totalPages > 1 && (
-                  <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
-                    <p className="text-sm text-defaulttextcolor/70">
-                      Page {currentPage} of {totalPages}
-                    </p>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                        disabled={currentPage === 1}
-                        className="rounded-xl border border-defaultborder/80 bg-transparent px-4 py-2.5 text-sm font-medium text-defaulttextcolor hover:bg-slate-100 dark:hover:bg-white/10 disabled:opacity-50 disabled:pointer-events-none transition-all"
-                      >
-                        Previous
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                        disabled={currentPage === totalPages}
-                        className="rounded-xl border border-defaultborder/80 bg-transparent px-4 py-2.5 text-sm font-medium text-defaulttextcolor hover:bg-slate-100 dark:hover:bg-white/10 disabled:opacity-50 disabled:pointer-events-none transition-all"
-                      >
-                        Next
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </>
+                            ) : null}
+                          </td>
+                          <td className="px-5 py-4 text-sm text-defaulttextcolor/85 whitespace-nowrap">
+                            {holiday.endDate
+                              ? `${formatDate(holiday.date)} – ${formatDate(holiday.endDate)}`
+                              : formatDate(holiday.date)}
+                          </td>
+                          <td className="px-5 py-4">
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                                active
+                                  ? "bg-success/10 text-success ring-1 ring-success/20"
+                                  : "bg-slate-100 dark:bg-white/10 text-defaulttextcolor/70"
+                              }`}
+                              title={
+                                storedDiffers
+                                  ? `Stored in DB: ${holiday.isActive ? "Active" : "Inactive"} · Effective: ${active ? "Active" : "Inactive"}`
+                                  : undefined
+                              }
+                            >
+                              {active ? (
+                                <>
+                                  <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                                  Active
+                                </>
+                              ) : (
+                                "Inactive"
+                              )}
+                            </span>
+                          </td>
+                          <td className="px-5 py-4 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => openEditForm(holiday)}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-primary hover:bg-primary/10 transition-colors"
+                                title="Edit"
+                              >
+                                <i className="ri-pencil-line text-lg" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(holiday)}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-danger hover:bg-danger/10 transition-colors"
+                                title="Delete"
+                              >
+                                <i className="ri-delete-bin-line text-lg" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
+
+          {!loading && (
+            <div className="border-t border-defaultborder/50 px-6 py-4 bg-white dark:bg-bodybg">
+              <ListPagination
+                page={safePage}
+                totalPages={totalPages}
+                totalResults={totalResults}
+                pageSize={PAGE_SIZE}
+                onPageChange={setCurrentPage}
+                ariaLabel="Holiday list pagination"
+                gotoInputId="holidays-goto-page"
+              />
+            </div>
+          )}
         </section>
 
         {showForm && (
@@ -767,7 +781,12 @@ export default function SettingsAttendanceHolidaysPage() {
                     onChange={(e) => setFormData((p) => ({ ...p, isActive: e.target.checked }))}
                     className="rounded border-defaultborder text-primary focus:ring-primary"
                   />
-                  <span className="text-sm font-medium text-defaulttextcolor">Active</span>
+                  <span className="text-sm font-medium text-defaulttextcolor">
+                    Enabled
+                    <span className="block text-xs font-normal text-defaulttextcolor/60">
+                      Auto-inactive after the holiday end date
+                    </span>
+                  </span>
                 </label>
                 <div className="flex gap-3 pt-2">
                   <button

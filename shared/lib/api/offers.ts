@@ -145,8 +145,10 @@ export async function getOfferById(id: string): Promise<Offer> {
 }
 
 export interface CreateOfferPayload {
-  /** Omit or leave unset to create a shell job + candidate (offer letter from scratch). */
+  /** Required by POST /offers — links to an existing job application. */
   jobApplicationId?: string;
+  /** Set when HR confirms offer creation without a prior interview marked selected. */
+  ackBypassInterview?: boolean;
   ctcBreakdown?: CtcBreakdown;
   joiningDate?: string | null;
   offerValidityDate?: string | null;

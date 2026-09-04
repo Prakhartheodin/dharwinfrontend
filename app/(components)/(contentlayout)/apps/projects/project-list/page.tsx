@@ -627,6 +627,7 @@ const Projectlist = (): JSX.Element => {
                 type="search"
                 className="h-9 w-full rounded-full border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none sm:w-[260px] dark:border-white/10 dark:bg-bodybg2 dark:text-slate-200 dark:focus:border-white/40"
                 placeholder="Search projects…"
+                aria-label="Search projects"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -889,7 +890,14 @@ const Projectlist = (): JSX.Element => {
                         <span className="ms-2 text-slate-500">{pct}%</span>
                       </span>
                     </div>
-                    <div className="h-1 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-white/10">
+                    <div
+                      className="h-1 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-white/10"
+                      role="progressbar"
+                      aria-valuenow={pct}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={`Project progress ${pct}%`}
+                    >
                       <div
                         className={`h-full rounded-full transition-all duration-500 ${
                           p.status === "completed" ? "bg-success" : p.status === "On hold" ? "bg-warning" : "bg-primary"

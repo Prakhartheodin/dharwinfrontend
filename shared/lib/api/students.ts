@@ -463,6 +463,88 @@ export async function exportWeekOffExcel(
   return { blob: res.data, rowCount };
 }
 
+export interface WeekOffAssignmentPerson {
+  studentId: string | null;
+  candidateId: string | null;
+  employeeId: string;
+  name: string;
+  email: string;
+  weekOff: string[];
+  department: string;
+  designation: string;
+  profileTypes: string[];
+}
+
+export interface WeekOffAssignmentsResponse {
+  day: string;
+  people: WeekOffAssignmentPerson[];
+  count: number;
+  page: number;
+  limit: number;
+  totalResults: number;
+  totalPages: number;
+}
+
+/**
+ * People assigned to a single week-off day (training + employees, merged).
+ * GET /training/students/week-off/assignments?day=Monday&page=1&limit=25&search=
+ */
+export async function listWeekOffAssignments(
+  day: string,
+  options: { page?: number; limit?: number; search?: string } = {}
+): Promise<WeekOffAssignmentsResponse> {
+  const { data } = await apiClient.get<{ success: boolean; data: WeekOffAssignmentsResponse }>(
+    "/training/students/week-off/assignments",
+    {
+      params: {
+        day,
+        page: options.page ?? 1,
+        limit: options.limit ?? 25,
+        ...(options.search?.trim() ? { search: options.search.trim() } : {}),
+      },
+    }
+  );
+  return data.data;
+}
+
+export interface WeekOffDayCountsResponse {
+  counts: Record<string, number>;
+}
+
+/**
+ * Unique-person counts per weekday (training + employees, merged).
+ * GET /training/students/week-off/counts
+ */
+export async function listWeekOffDayCounts(): Promise<WeekOffDayCountsResponse> {
+  const { data } = await apiClient.get<{ success: boolean; data: WeekOffDayCountsResponse }>(
+    "/training/students/week-off/counts"
+  );
+  return data.data;
+}
+
+export interface UnassignWeekOffDayResponse {
+  day: string;
+  remainingWeekOff: string[];
+  modifiedCount: number;
+}
+
+/**
+ * Remove one week-off day from a training profile and/or employee.
+ * POST /training/students/week-off/unassign
+ */
+export async function unassignWeekOffDay(input: {
+  day: string;
+  studentId?: string;
+  candidateId?: string;
+}): Promise<UnassignWeekOffDayResponse> {
+  const { data } = await apiClient.post<{
+    success: boolean;
+    message?: string;
+    data: UnassignWeekOffDayResponse;
+  }>("/training/students/week-off/unassign", input);
+  return data.data;
+}
+
 /**
  * Assign shift to multiple students.
  * POST /training/students/assign-shift

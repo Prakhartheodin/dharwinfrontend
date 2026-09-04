@@ -16,6 +16,17 @@ function getDetectedTimezone(): string {
   }
 }
 
+/** Local-calendar YYYY-MM-DD. toISOString() is UTC, so it names yesterday east of Greenwich after 00:00 local. */
+function localYmd(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Server caps a request at 62 days and a day at 8 hours; fail here so the user is not told by a 400. */
+const MAX_DAYS_PER_REQUEST = 62;
+const MAX_SHIFT_MS = 8 * 60 * 60 * 1000;
+const MAX_NOTES = 1000;
+
 function parseYmdLocal(value: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
   if (!match) return null;
@@ -121,12 +132,24 @@ export default function BackdatedAttendanceRequestModal({
     current.setHours(0, 0, 0, 0);
     const end = new Date(to);
     end.setHours(0, 0, 0, 0);
+    let rolledOvernight = false;
     while (current <= end) {
       if (!isWeekOffDay(current)) {
         const dateKey = `${current.getFullYear()}-${pad(current.getMonth() + 1)}-${pad(current.getDate())}`;
         const punchInDt = new Date(dateKey + "T" + pIn);
         let punchOutDt = new Date(dateKey + "T" + pOut);
-        if (punchOutDt <= punchInDt) punchOutDt = new Date(punchOutDt.getTime() + 86400000);
+        if (punchOutDt <= punchInDt) {
+          punchOutDt = new Date(punchOutDt.getTime() + 86400000);
+          rolledOvernight = true;
+        }
+        if (punchOutDt.getTime() - punchInDt.getTime() > MAX_SHIFT_MS) {
+          await Swal.fire({
+            icon: "warning",
+            title: "Shift too long",
+            text: "A backdated day cannot exceed 8 hours. Adjust the punch in / punch out times.",
+          });
+          return;
+        }
         attendanceEntries.push({
           date: dateKey,
           punchIn: punchInDt.toISOString(),
@@ -137,8 +160,27 @@ export default function BackdatedAttendanceRequestModal({
       current.setDate(current.getDate() + 1);
     }
     if (attendanceEntries.length === 0) {
-      await Swal.fire({ icon: "warning", title: "No working days", text: "The selected date range has no working days (weekends excluded)." });
+      await Swal.fire({ icon: "warning", title: "No working days", text: "The selected date range has no working days (week-offs are excluded)." });
       return;
+    }
+    if (attendanceEntries.length > MAX_DAYS_PER_REQUEST) {
+      await Swal.fire({
+        icon: "warning",
+        title: "Range too long",
+        text: `This range covers ${attendanceEntries.length} working days. Submit at most ${MAX_DAYS_PER_REQUEST} at a time.`,
+      });
+      return;
+    }
+    if (rolledOvernight) {
+      const { isConfirmed } = await Swal.fire({
+        icon: "question",
+        title: "Overnight shift?",
+        text: `Punch out (${punchOutTime}) is before punch in (${punchInTime}), so it will be recorded on the following morning.`,
+        showCancelButton: true,
+        confirmButtonText: "Yes, overnight",
+        cancelButtonText: "Let me fix the times",
+      });
+      if (!isConfirmed) return;
     }
     setSubmittingRequest(true);
     try {
@@ -161,7 +203,13 @@ export default function BackdatedAttendanceRequestModal({
       onSuccess?.();
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? (e as Error).message ?? "Failed to submit request.";
-      await Swal.fire({ icon: "error", title: "Error", text: msg });
+      // The server refuses days that are a holiday, a recorded leave, or a week-off, and names each one.
+      const isBlockedDays = msg.startsWith("Backdated attendance cannot be requested for");
+      await Swal.fire({
+        icon: isBlockedDays ? "warning" : "error",
+        title: isBlockedDays ? "These days can't be requested" : "Error",
+        text: msg,
+      });
     } finally {
       setSubmittingRequest(false);
     }
@@ -212,7 +260,7 @@ export default function BackdatedAttendanceRequestModal({
               <button
                 type="button"
                 onClick={handleClose}
-                className="shrink-0 flex h-9 w-9 items-center justify-center rounded-xl text-defaulttextcolor/70 hover:text-defaulttextcolor hover:bg-black/5 dark:hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+                className="shrink-0 flex h-11 w-11 items-center justify-center rounded-xl text-defaulttextcolor/70 hover:text-defaulttextcolor hover:bg-black/5 dark:hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500/50"
                 aria-label="Close"
               >
                 <i className="ri-close-line text-xl" />
@@ -224,7 +272,7 @@ export default function BackdatedAttendanceRequestModal({
             <div className="backdated-modal-stagger-1 flex items-start gap-3 rounded-xl bg-teal-500/10 border border-teal-500/15 p-3.5">
               <i className="ri-information-line text-teal-600 dark:text-teal-400 text-lg shrink-0 mt-0.5" aria-hidden />
               <p className="text-sm text-defaulttextcolor/85 dark:text-white/75 leading-relaxed">
-                Enter a date range (From and To). Punch In and Punch Out will be applied to all <strong>working days</strong>. Weekends are excluded.
+                Enter a date range (From and To). Punch In and Punch Out are applied to every <strong>working day</strong> in it; your week-offs are skipped. Max 8 hours per day.
               </p>
             </div>
 
@@ -237,7 +285,7 @@ export default function BackdatedAttendanceRequestModal({
                     id="backdated-from-date"
                     type="date"
                     value={requestForm.fromDate}
-                    max={new Date().toISOString().slice(0, 10)}
+                    max={localYmd(new Date())}
                     onChange={(e) => updateRequestForm("fromDate", e.target.value)}
                     className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-3.5 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/40 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20 transition-all"
                   />
@@ -248,7 +296,7 @@ export default function BackdatedAttendanceRequestModal({
                     id="backdated-to-date"
                     type="date"
                     value={requestForm.toDate}
-                    max={new Date().toISOString().slice(0, 10)}
+                    max={localYmd(new Date())}
                     onChange={(e) => updateRequestForm("toDate", e.target.value)}
                     className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-3.5 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/40 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20 transition-all"
                   />
@@ -257,7 +305,7 @@ export default function BackdatedAttendanceRequestModal({
             </div>
 
             <div className="backdated-modal-stagger-2 space-y-2">
-              <label htmlFor="backdated-timezone" className="block text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/55 dark:text-white/50">Timezone (candidate&apos;s)</label>
+              <label htmlFor="backdated-timezone" className="block text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/55 dark:text-white/50">Timezone</label>
               <div id="backdated-timezone" className="rounded-xl border border-defaultborder/80 bg-gray-50/80 dark:bg-white/5 px-3.5 py-2.5 text-sm text-defaulttextcolor/90 dark:text-white/80">
                 {requestForm.timezone || candidateTimezone}
               </div>
@@ -295,6 +343,7 @@ export default function BackdatedAttendanceRequestModal({
                 id="backdated-notes"
                 type="text"
                 value={requestForm.notes}
+                maxLength={MAX_NOTES}
                 onChange={(e) => updateRequestForm("notes", e.target.value)}
                 placeholder="e.g. Reason for backdated entry…"
                 className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-3.5 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/40 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20 transition-all"

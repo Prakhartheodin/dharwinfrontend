@@ -15,7 +15,7 @@ import {
   assignHolidaysToStudents,
   removeHolidaysFromStudents,
 } from "@/shared/lib/api/attendance";
-import HolidayGroupsManager from "../_components/HolidayGroupsManager";
+import EmployeeGroupHolidayAssign from "../_components/EmployeeGroupHolidayAssign";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import dynamic from "next/dynamic";
@@ -395,7 +395,7 @@ export default function SettingsAttendanceAssignHolidaysPage() {
             </span>
             <div className="min-w-0">
               <h2 className="text-lg font-semibold text-defaulttextcolor dark:text-white tracking-tight">Assign Holidays</h2>
-              <p className="text-xs text-defaulttextcolor/60 dark:text-white/50 mt-0.5">Assign or remove holidays for students or groups</p>
+              <p className="text-xs text-defaulttextcolor/60 dark:text-white/50 mt-0.5">Assign or remove holidays for individuals or employee groups</p>
             </div>
           </div>
           <div className="px-6 py-6 border-t border-defaultborder/50 space-y-5 bg-gradient-to-b from-slate-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent">
@@ -667,7 +667,7 @@ export default function SettingsAttendanceAssignHolidaysPage() {
             </>
           )}
 
-          {assignmentMode === "group" && <HolidayGroupsManager embedded />}
+          {assignmentMode === "group" && <EmployeeGroupHolidayAssign embedded />}
           </div>
         </section>
       </div>

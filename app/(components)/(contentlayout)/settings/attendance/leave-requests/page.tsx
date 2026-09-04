@@ -12,10 +12,8 @@ import { listStudents, type Student } from "@/shared/lib/api/students";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-access";
-import {
-  formatUtcCalendarDates,
-  uniqueSortedUtcCalendarDates,
-} from "@/shared/lib/attendance-display";
+import { uniqueSortedUtcCalendarDates } from "@/shared/lib/attendance-display";
+import { formatLeaveDateRuns, summarizeLeaveDateRuns } from "@/shared/lib/leave-date-range";
 
 function getStudentName(request: LeaveRequest, studentsList: Student[] = []): string {
   const s = request.student;
@@ -45,6 +43,23 @@ function getStudentEmail(request: LeaveRequest): string {
   if (!s) return request.studentEmail ?? "";
   if (typeof s === "object" && s.user?.email) return s.user.email;
   return request.studentEmail ?? "";
+}
+
+const DATE_VALUE_CLASS = "text-sm text-defaulttextcolor dark:text-white break-words leading-relaxed";
+
+function LeaveRequestDatesValue({ dates }: { dates: string[] }) {
+  const { label, full, hiddenDayCount } = summarizeLeaveDateRuns(dates);
+  if (hiddenDayCount <= 0) {
+    return <span className={DATE_VALUE_CLASS}>{label}</span>;
+  }
+  return (
+    <details className="min-w-0">
+      <summary className={`${DATE_VALUE_CLASS} cursor-pointer`} title={full}>
+        {label}
+      </summary>
+      <p className={`${DATE_VALUE_CLASS} mt-1`}>{full}</p>
+    </details>
+  );
 }
 
 export default function SettingsAttendanceLeaveRequestsPage() {
@@ -152,7 +167,7 @@ export default function SettingsAttendanceLeaveRequestsPage() {
   };
 
   const leaveDayCount = (dates: string[]) => uniqueSortedUtcCalendarDates(dates).length;
-  const formatLeaveDates = (dates: string[]) => formatUtcCalendarDates(dates);
+  const formatLeaveDates = (dates: string[]) => formatLeaveDateRuns(dates);
 
   const handleApprove = async (request: LeaveRequest) => {
     const requestId = request._id ?? (request as { id?: string }).id;
@@ -571,14 +586,14 @@ export default function SettingsAttendanceLeaveRequestsPage() {
                               <div className="rounded-lg bg-defaultborder/10 dark:bg-white/5 border border-defaultborder/50 overflow-hidden">
                                 <dl className="divide-y divide-defaultborder/50">
                                   <div className="px-4 py-3 sm:grid sm:grid-cols-[auto_1fr] sm:gap-x-4 sm:gap-y-1">
-                                    <dt className="text-xs font-medium text-defaulttextcolor/70 mt-1 sm:mt-0">Dates</dt>
-                                    <dd className="text-sm text-defaulttextcolor mt-0.5 sm:mt-0">
-                                      {formatLeaveDates(request.dates)}
+                                    <dt className="text-xs font-medium text-defaulttextcolor/70 dark:text-white/50 mt-1 sm:mt-0">Dates</dt>
+                                    <dd className="min-w-0 mt-0.5 sm:mt-0">
+                                      <LeaveRequestDatesValue dates={request.dates} />
                                     </dd>
                                   </div>
                                   <div className="px-4 py-3 sm:grid sm:grid-cols-[auto_1fr] sm:gap-x-4 sm:gap-y-1">
-                                    <dt className="text-xs font-medium text-defaulttextcolor/70 mt-1 sm:mt-0">Total</dt>
-                                    <dd className="text-sm text-defaulttextcolor mt-0.5 sm:mt-0">{dayCount} day{dayCount !== 1 ? "s" : ""}</dd>
+                                    <dt className="text-xs font-medium text-defaulttextcolor/70 dark:text-white/50 mt-1 sm:mt-0">Total</dt>
+                                    <dd className="text-sm text-defaulttextcolor dark:text-white mt-0.5 sm:mt-0">{dayCount} day{dayCount !== 1 ? "s" : ""}</dd>
                                   </div>
                                 </dl>
                               </div>
@@ -723,7 +738,7 @@ export default function SettingsAttendanceLeaveRequestsPage() {
                 <ul className="mt-3 space-y-2.5 text-sm text-defaulttextcolor/85">
                   <li className="flex items-start gap-2.5">
                     <i className="ri-checkbox-circle-fill mt-0.5 text-emerald-500/90 shrink-0 text-base" />
-                    <span>Students submit leave requests which appear here for review.</span>
+                    <span>Employees submit leave requests which appear here for review.</span>
                   </li>
                   <li className="flex items-start gap-2.5">
                     <i className="ri-check-double-line mt-0.5 text-emerald-600 dark:text-emerald-400 shrink-0 text-base" />

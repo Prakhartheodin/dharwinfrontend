@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   getAllShifts,
   createShift,
@@ -14,7 +14,8 @@ import { getAllTimeZones } from "@/shared/lib/timezones";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import * as XLSX from "xlsx";
-import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-access";
+import { useAuth } from "@/shared/contexts/auth-context";
+import { useDebouncedValue } from "@/app/(components)/(contentlayout)/communication/dialer/_lib/contactSearch";
 
 const TIMEZONES = getAllTimeZones();
 const EXCEL_COLUMNS = [
@@ -29,10 +30,26 @@ const TIME_REG = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 
 type BulkShiftRow = ShiftCreatePayload & { _key?: string };
 
+function hasStudentsManage(permissions: string[], isAdministrator: boolean): boolean {
+  if (isAdministrator) return true;
+  return permissions.some((p) => p === "students.manage" || p.startsWith("students.manage"));
+}
+
+function hasStudentsRead(permissions: string[], isAdministrator: boolean): boolean {
+  if (isAdministrator) return true;
+  if (hasStudentsManage(permissions, isAdministrator)) return true;
+  return permissions.some((p) => p === "students.read" || p.startsWith("students.read"));
+}
+
 export default function SettingsAttendanceManageShiftsPage() {
-  const isAdmin = useAttendanceAdminAccess();
+  const { permissions, permissionsLoaded, isAdministrator } = useAuth();
+  const canRead = hasStudentsRead(permissions, isAdministrator);
+  const canManage = hasStudentsManage(permissions, isAdministrator);
   const [shifts, setShifts] = useState<Shift[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refetching, setRefetching] = useState(false);
+  const hasLoadedOnceRef = useRef(false);
+  const fetchGenerationRef = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [mode, setMode] = useState<"single" | "bulk">("single");
@@ -51,38 +68,69 @@ export default function SettingsAttendanceManageShiftsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [importingExcel, setImportingExcel] = useState(false);
   const [nameFilter, setNameFilter] = useState("");
+  const debouncedNameFilter = useDebouncedValue(nameFilter, 300);
   const [activeFilter, setActiveFilter] = useState("all");
   const [sortBy, setSortBy] = useState("name:asc");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [totalResults, setTotalResults] = useState(0);
   const limit = 10;
   const excelInputRef = React.useRef<HTMLInputElement>(null);
 
   const fetchShifts = useCallback(async () => {
-    setLoading(true);
+    const generation = ++fetchGenerationRef.current;
+    if (!hasLoadedOnceRef.current) setInitialLoading(true);
+    else setRefetching(true);
     setError(null);
     try {
       const params: Record<string, unknown> = { page: currentPage, limit, sortBy };
-      if (nameFilter.trim()) params.name = nameFilter.trim();
+      if (debouncedNameFilter.trim()) params.name = debouncedNameFilter.trim();
       if (activeFilter !== "all") params.isActive = activeFilter === "active";
       const res = await getAllShifts(params as Parameters<typeof getAllShifts>[0]);
-      const data = (res as { data?: { results?: Shift[]; totalPages?: number } }).data;
+      if (generation !== fetchGenerationRef.current) return;
+      const data = (res as { data?: { results?: Shift[]; totalPages?: number; totalResults?: number } }).data;
       setShifts(data?.results ?? []);
       setTotalPages(data?.totalPages ?? 1);
+      setTotalResults(data?.totalResults ?? 0);
     } catch (err: unknown) {
+      if (generation !== fetchGenerationRef.current) return;
       setError((err as { message?: string })?.message ?? "Failed to fetch shifts");
     } finally {
-      setLoading(false);
+      if (generation === fetchGenerationRef.current) {
+        hasLoadedOnceRef.current = true;
+        setInitialLoading(false);
+        setRefetching(false);
+      }
     }
-  }, [currentPage, sortBy, nameFilter, activeFilter]);
+  }, [currentPage, sortBy, debouncedNameFilter, activeFilter]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [nameFilter, activeFilter, sortBy]);
+  }, [debouncedNameFilter, activeFilter, sortBy]);
 
   useEffect(() => {
-    if (isAdmin) fetchShifts();
-  }, [isAdmin, fetchShifts]);
+    if (canRead) fetchShifts();
+    return () => {
+      fetchGenerationRef.current += 1;
+    };
+  }, [canRead, fetchShifts]);
+
+  const clearFilters = () => {
+    setNameFilter("");
+    setActiveFilter("all");
+    setSortBy("name:asc");
+    setCurrentPage(1);
+  };
+
+  const hasActiveFilters = nameFilter.trim() !== "" || activeFilter !== "all" || sortBy !== "name:asc";
+  const isSearchDebouncing = nameFilter.trim() !== debouncedNameFilter.trim();
+  const searchedName = debouncedNameFilter.trim();
+  let emptyStateHint = "No shifts have been created yet.";
+  if (hasActiveFilters) {
+    emptyStateHint = "Try adjusting your filters or clear them to see all shifts.";
+  } else if (canManage) {
+    emptyStateHint = "Add one to assign to students.";
+  }
 
   const openCreate = () => {
     setEditingShift(null);
@@ -340,7 +388,7 @@ export default function SettingsAttendanceManageShiftsPage() {
     }
   };
 
-  if (isAdmin === null) {
+  if (!permissionsLoaded) {
     return (
       <>
         <Seo title="Manage Shifts" />
@@ -358,7 +406,7 @@ export default function SettingsAttendanceManageShiftsPage() {
     );
   }
 
-  if (!isAdmin) {
+  if (!canRead) {
     return (
       <>
         <Seo title="Manage Shifts" />
@@ -369,7 +417,7 @@ export default function SettingsAttendanceManageShiftsPage() {
                 <i className="ri-error-warning-line text-5xl" />
               </div>
               <h3 className="text-xl font-semibold text-defaulttextcolor dark:text-white mb-2">Access Denied</h3>
-              <p className="text-sm text-defaulttextcolor/80 max-w-md mx-auto">Only administrators can manage shifts.</p>
+              <p className="text-sm text-defaulttextcolor/80 max-w-md mx-auto">You need students.read permission to view shifts.</p>
             </div>
           </div>
         </div>
@@ -395,10 +443,12 @@ export default function SettingsAttendanceManageShiftsPage() {
                 <p className="text-xs text-defaulttextcolor/60 dark:text-white/50 mt-0.5">Create and edit shifts for attendance</p>
               </div>
             </div>
-            <button type="button" onClick={openCreate} className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-primary/90 hover:shadow-md hover:shadow-primary/20 active:scale-[0.98]">
-              <i className="ri-add-line text-base" />
-              Add Shift
-            </button>
+            {canManage && (
+              <button type="button" onClick={openCreate} className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-primary/90 hover:shadow-md hover:shadow-primary/20 active:scale-[0.98]">
+                <i className="ri-add-line text-base" />
+                Add Shift
+              </button>
+            )}
           </div>
           <div className="px-6 py-6 border-t border-defaultborder/50 space-y-5 bg-gradient-to-b from-slate-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent">
             <p className="text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/60">Filters</p>
@@ -417,7 +467,10 @@ export default function SettingsAttendanceManageShiftsPage() {
                 <label className="mb-1.5 block text-xs font-semibold text-defaulttextcolor">Status</label>
                 <select
                   value={activeFilter}
-                  onChange={(e) => setActiveFilter(e.target.value)}
+                  onChange={(e) => {
+                    setActiveFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
                   className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-4 py-2.5 text-sm text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all min-h-[2.75rem]"
                 >
                   <option value="all">All</option>
@@ -429,14 +482,37 @@ export default function SettingsAttendanceManageShiftsPage() {
                 <label className="mb-1.5 block text-xs font-semibold text-defaulttextcolor">Sort</label>
                 <select
                   value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
+                  onChange={(e) => {
+                    setSortBy(e.target.value);
+                    setCurrentPage(1);
+                  }}
                   className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-4 py-2.5 text-sm text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all min-h-[2.75rem]"
                 >
                   <option value="name:asc">Name (A–Z)</option>
                   <option value="name:desc">Name (Z–A)</option>
+                  <option value="createdAt:desc">Created (Newest)</option>
+                  <option value="createdAt:asc">Created (Oldest)</option>
                 </select>
               </div>
+              {hasActiveFilters && (
+                <div className="sm:col-span-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="rounded-xl border border-defaultborder/80 bg-transparent px-4 py-2.5 text-sm font-medium text-defaulttextcolor hover:bg-defaultborder/20 dark:hover:bg-white/5 transition-colors"
+                  >
+                    Clear filters
+                  </button>
+                </div>
+              )}
             </div>
+
+            {!initialLoading && totalResults > 0 && (
+              <p className="text-sm text-defaulttextcolor/70">
+                {totalResults} shift{totalResults === 1 ? "" : "s"}
+                {isSearchDebouncing || refetching ? " · Updating…" : ""}
+              </p>
+            )}
 
             {error && (
               <div className="rounded-xl border border-danger/30 bg-danger/10 dark:bg-danger/15 px-4 py-3 text-sm text-danger">
@@ -445,10 +521,10 @@ export default function SettingsAttendanceManageShiftsPage() {
             )}
 
             {showForm && (
-            <div className="fixed inset-0 z-[10100] flex items-start sm:items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto" onClick={() => setShowForm(false)} role="presentation">
-              <div className="my-auto rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-2xl shadow-black/30 w-full max-w-4xl max-h-[calc(100vh-3rem)] overflow-y-auto" onClick={(e) => e.stopPropagation()} role="presentation">
+            <div className="fixed inset-0 z-[10100] flex items-start sm:items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto" role="presentation">
+              <div className="my-auto rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-2xl shadow-black/30 w-full max-w-4xl max-h-[calc(100vh-3rem)] overflow-y-auto" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="shift-form-title">
                 <div className="flex flex-wrap justify-between items-center gap-4 px-6 py-5 border-b border-defaultborder/50 bg-gradient-to-r from-slate-50/90 to-white dark:from-white/[0.03] dark:to-transparent">
-                  <h3 className="text-lg font-semibold text-defaulttextcolor dark:text-white">{editingShift ? "Edit Shift" : "Create New Shift"}</h3>
+                  <h3 id="shift-form-title" className="text-lg font-semibold text-defaulttextcolor dark:text-white">{editingShift ? "Edit Shift" : "Create New Shift"}</h3>
                   <div className="flex items-center gap-2">
                     {!editingShift && (
                       <>
@@ -608,7 +684,7 @@ export default function SettingsAttendanceManageShiftsPage() {
             </div>
           )}
 
-            {loading ? (
+            {initialLoading ? (
               <div className="flex flex-col items-center justify-center py-12">
                 <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-4 ring-1 ring-primary/10">
                   <i className="ri-loader-4-line animate-spin text-3xl" />
@@ -617,10 +693,29 @@ export default function SettingsAttendanceManageShiftsPage() {
               </div>
             ) : shifts.length === 0 ? (
               <div className="py-12 text-center rounded-xl bg-slate-50/60 dark:bg-white/[0.04] border border-defaultborder/50">
-                <p className="text-sm text-defaulttextcolor/70">No shifts yet. Add one to assign to students.</p>
+                <p className="text-sm font-medium text-defaulttextcolor">
+                  {searchedName ? `No shifts matching "${searchedName}"` : hasActiveFilters ? "No shifts match your filters" : "No shifts yet"}
+                </p>
+                <p className="mt-2 text-sm text-defaulttextcolor/70">{emptyStateHint}</p>
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="mt-4 rounded-xl border border-defaultborder/80 bg-transparent px-5 py-2.5 text-sm font-medium text-defaulttextcolor hover:bg-defaultborder/20 dark:hover:bg-white/5 transition-colors"
+                  >
+                    Clear filters
+                  </button>
+                )}
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-xl border border-defaultborder/70 bg-white dark:bg-white/5">
+              <div className="relative overflow-x-auto rounded-xl border border-defaultborder/70 bg-white dark:bg-white/5">
+                {refetching && (
+                  <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/70 dark:bg-bodybg/70 backdrop-blur-[1px]" aria-live="polite" aria-busy="true">
+                    <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/10">
+                      <i className="ri-loader-4-line animate-spin text-2xl" />
+                    </div>
+                  </div>
+                )}
                 <table className="min-w-full text-sm">
                   <thead>
                     <tr className="border-b border-defaultborder/70 bg-slate-50/80 dark:bg-white/5">
@@ -649,8 +744,12 @@ export default function SettingsAttendanceManageShiftsPage() {
                           </span>
                         </td>
                         <td className="text-end px-4 py-3">
-                          <button type="button" onClick={() => openEdit(s)} className="inline-flex items-center justify-center p-2 rounded-lg text-primary hover:bg-primary/10 transition-colors" title="Edit"><i className="ri-edit-line text-lg" /></button>
-                          <button type="button" onClick={() => handleDelete(s)} className="inline-flex items-center justify-center p-2 rounded-lg text-danger hover:bg-danger/10 transition-colors ml-1" title="Delete"><i className="ri-delete-bin-line text-lg" /></button>
+                          {canManage && (
+                            <>
+                              <button type="button" onClick={() => openEdit(s)} className="inline-flex items-center justify-center p-2 rounded-lg text-primary hover:bg-primary/10 transition-colors" title="Edit" aria-label={`Edit ${s.name}`}><i className="ri-edit-line text-lg" /></button>
+                              <button type="button" onClick={() => handleDelete(s)} className="inline-flex items-center justify-center p-2 rounded-lg text-danger hover:bg-danger/10 transition-colors ml-1" title="Delete" aria-label={`Delete ${s.name}`}><i className="ri-delete-bin-line text-lg" /></button>
+                            </>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -658,9 +757,9 @@ export default function SettingsAttendanceManageShiftsPage() {
                 </table>
               </div>
             )}
-            {totalPages > 1 && (
+            {totalPages > 1 && !initialLoading && (
               <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-defaultborder/50">
-                <p className="text-sm text-defaulttextcolor/70">Page {currentPage} of {totalPages}</p>
+                <p className="text-sm text-defaulttextcolor/70">Page {currentPage} of {totalPages} · {totalResults} total</p>
                 <div className="flex gap-2">
                   <button type="button" disabled={currentPage === 1} onClick={() => setCurrentPage((p) => p - 1)} className="inline-flex items-center gap-2 rounded-xl border border-defaultborder/80 px-4 py-2.5 text-sm font-medium text-defaulttextcolor hover:bg-defaultborder/20 dark:hover:bg-white/5 disabled:opacity-50 disabled:pointer-events-none transition-colors">Previous</button>
                   <button type="button" disabled={currentPage === totalPages} onClick={() => setCurrentPage((p) => p + 1)} className="inline-flex items-center gap-2 rounded-xl border border-defaultborder/80 px-4 py-2.5 text-sm font-medium text-defaulttextcolor hover:bg-defaultborder/20 dark:hover:bg-white/5 disabled:opacity-50 disabled:pointer-events-none transition-colors">Next</button>

@@ -17,10 +17,24 @@ export interface BackdatedAttendanceRequestStudent {
   fullName?: string;
 }
 
+/** A day in the request that already carries a holiday, a leave, or a week-off. */
+export interface BackdatedDayConflict {
+  /** YYYY-MM-DD */
+  date: string;
+  kind: "holiday" | "leave" | "weekoff";
+  /** Holiday title, leave type, or week-off weekday name. */
+  label: string;
+}
+
 export interface BackdatedAttendanceRequest {
   _id: string;
   student: BackdatedAttendanceRequestStudent;
   studentEmail?: string;
+  /** Set instead of `student` for requests by users with no training profile (agents). */
+  user?: { _id?: string; id?: string; name?: string; email?: string } | string | null;
+  userEmail?: string;
+  /** Only returned by getBackdatedAttendanceRequestById, and only while pending. */
+  dayConflicts?: BackdatedDayConflict[];
   attendanceEntries?: AttendanceEntry[];
   notes?: string | null;
   status: "pending" | "approved" | "rejected" | "cancelled";

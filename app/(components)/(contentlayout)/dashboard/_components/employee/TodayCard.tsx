@@ -155,11 +155,13 @@ export default function TodayCard({
             {punching ? "Working…" : isIn ? "Punch out" : "Punch in"}
           </button>
         )}
-        {onBackdatedEntry && !blocked ? (
+        {/* Deliberately not gated on `blocked`: today being a holiday, a leave or a week-off
+            says nothing about the past days this opens a request for. */}
+        {onBackdatedEntry ? (
           <button
             type="button"
             onClick={onBackdatedEntry}
-            className="text-[0.75rem] font-semibold text-teal-600 hover:underline dark:text-teal-400"
+            className="inline-flex h-9 items-center px-2 text-[0.75rem] font-semibold text-teal-600 hover:underline dark:text-teal-400"
           >
             Backdated entry
           </button>

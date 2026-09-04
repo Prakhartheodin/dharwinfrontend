@@ -73,10 +73,16 @@ export function isExternalJob(job: { jobOrigin?: string }): boolean {
 
 export interface JobsListParams {
   title?: string;
+  titles?: string[];
+  companies?: string[];
+  locations?: string[];
   jobType?: string;
   location?: string;
   status?: string;
   experienceLevel?: string;
+  experienceMin?: number;
+  experienceMax?: number;
+  postingDate?: string;
   createdBy?: string;
   search?: string;
   forCandidates?: boolean;
@@ -87,6 +93,48 @@ export interface JobsListParams {
   salaryMin?: number;
   salaryMax?: number;
   salaryNotSpecified?: boolean;
+}
+
+export interface JobFilterOptionItem {
+  id: string;
+  title: string;
+}
+
+export interface JobFilterOptions {
+  titles: string[];
+  companies: string[];
+  locations: string[];
+  statuses: string[];
+  experience: { min: number; max: number };
+  /** Id + title pairs for job-id filter dropdowns (e.g. Applications page). */
+  jobs?: JobFilterOptionItem[];
+}
+
+function serializeJobsListParams(params?: JobsListParams): Record<string, string | number | boolean> | undefined {
+  if (!params) return undefined;
+  const query: Record<string, string | number | boolean> = {};
+  if (params.title) query.title = params.title;
+  if (params.titles?.length) query.titles = params.titles.join(",");
+  if (params.companies?.length) query.companies = params.companies.join(",");
+  if (params.locations?.length) query.locations = params.locations.join(",");
+  if (params.jobType) query.jobType = params.jobType;
+  if (params.location) query.location = params.location;
+  if (params.status) query.status = params.status;
+  if (params.experienceLevel) query.experienceLevel = params.experienceLevel;
+  if (params.experienceMin != null) query.experienceMin = params.experienceMin;
+  if (params.experienceMax != null) query.experienceMax = params.experienceMax;
+  if (params.postingDate) query.postingDate = params.postingDate;
+  if (params.createdBy) query.createdBy = params.createdBy;
+  if (params.search) query.search = params.search;
+  if (params.forCandidates != null) query.forCandidates = params.forCandidates;
+  if (params.jobOrigin) query.jobOrigin = params.jobOrigin;
+  if (params.sortBy) query.sortBy = params.sortBy;
+  if (params.limit != null) query.limit = params.limit;
+  if (params.page != null) query.page = params.page;
+  if (params.salaryMin != null) query.salaryMin = params.salaryMin;
+  if (params.salaryMax != null) query.salaryMax = params.salaryMax;
+  if (params.salaryNotSpecified != null) query.salaryNotSpecified = params.salaryNotSpecified;
+  return query;
 }
 
 export interface JobsListResponse {
@@ -101,7 +149,19 @@ export async function listJobs(
   params?: JobsListParams,
   requestConfig?: { signal?: AbortSignal }
 ): Promise<JobsListResponse> {
-  const { data } = await apiClient.get<JobsListResponse>("/jobs", { params, ...requestConfig });
+  const { data } = await apiClient.get<JobsListResponse>("/jobs", {
+    params: serializeJobsListParams(params),
+    ...requestConfig,
+  });
+  return data;
+}
+
+export async function getJobFilterOptions(
+  params?: Pick<JobsListParams, "status" | "search" | "jobOrigin">
+): Promise<JobFilterOptions> {
+  const { data } = await apiClient.get<JobFilterOptions>("/jobs/filter-options", {
+    params: serializeJobsListParams(params),
+  });
   return data;
 }
 
@@ -189,17 +249,35 @@ export async function browseApplyToJob(
 }
 
 /**
- * Export jobs to xlsx. Pass the ids of the rows currently visible in the list —
- * the page filters client-side, so the server can't reproduce that selection from
- * query params. Omit `ids` to export every job the user may see.
+ * Export jobs to xlsx using the same server-side filters as the list view.
  */
-export async function exportJobsToExcel(ids?: string[]): Promise<Blob> {
-  const { data } = await apiClient.post<Blob>(
-    "/jobs/export/excel",
-    ids?.length ? { ids } : {},
-    { responseType: "blob" }
-  );
-  return data;
+export async function exportJobsToExcel(
+  params: Omit<JobsListParams, "page" | "limit"> = {}
+): Promise<{ blob: Blob; capped: boolean; totalResults?: number; exportMax?: number }> {
+  const body: Record<string, unknown> = {};
+  if (params.status) body.status = params.status;
+  if (params.search) body.search = params.search;
+  if (params.titles?.length) body.titles = params.titles;
+  if (params.companies?.length) body.companies = params.companies;
+  if (params.locations?.length) body.locations = params.locations;
+  if (params.jobOrigin) body.jobOrigin = params.jobOrigin;
+  if (params.salaryMin != null) body.salaryMin = params.salaryMin;
+  if (params.salaryMax != null) body.salaryMax = params.salaryMax;
+  if (params.salaryNotSpecified != null) body.salaryNotSpecified = params.salaryNotSpecified;
+  if (params.experienceMin != null) body.experienceMin = params.experienceMin;
+  if (params.experienceMax != null) body.experienceMax = params.experienceMax;
+  if (params.postingDate) body.postingDate = params.postingDate;
+  if (params.sortBy) body.sortBy = params.sortBy;
+
+  const res = await apiClient.post<Blob>("/jobs/export/excel", body, { responseType: "blob" });
+  const capped = res.headers["x-export-capped"] === "true";
+  const totalResults = res.headers["x-export-total-results"]
+    ? Number(res.headers["x-export-total-results"])
+    : undefined;
+  const exportMax = res.headers["x-export-max-rows"]
+    ? Number(res.headers["x-export-max-rows"])
+    : undefined;
+  return { blob: res.data, capped, totalResults, exportMax };
 }
 
 export async function downloadJobsTemplate(): Promise<Blob> {

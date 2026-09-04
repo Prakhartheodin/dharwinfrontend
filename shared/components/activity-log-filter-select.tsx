@@ -11,6 +11,7 @@ export interface ActivityLogFilterSelectProps {
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
+  noOptionsMessage?: string;
   /** Platform audit shows the raw technical key inline (forensic use); consumer audit keeps it out of the closed control. */
   showKeyInValue?: boolean;
 }
@@ -33,6 +34,7 @@ export function ActivityLogFilterSelect({
   value,
   onChange,
   placeholder,
+  noOptionsMessage = "No matching options",
   showKeyInValue = false,
 }: ActivityLogFilterSelectProps) {
   const selected = useMemo(() => {
@@ -68,7 +70,7 @@ export function ActivityLogFilterSelect({
           )}
         </div>
       )}
-      noOptionsMessage={() => "No matching actions"}
+      noOptionsMessage={() => noOptionsMessage}
     />
   );
 }

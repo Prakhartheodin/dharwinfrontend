@@ -1,14 +1,30 @@
 "use client"
 import Seo from '@/shared/layout-components/seo/seo'
-import React, { Fragment, useMemo, useState, useEffect } from 'react'
-import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
+import React, { Fragment, useMemo, useState, useEffect, useCallback, useRef } from 'react'
+import { useTable, useSortBy } from 'react-table'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { listRecruiters, deleteUser, exportRecruitersToExcel, downloadRecruitersTemplate, importRecruitersFromExcel } from '@/shared/lib/api/users'
+import { AxiosError } from 'axios'
+import { listRecruiters, deleteUser, exportRecruitersToExcel, downloadRecruitersTemplate, importRecruitersFromExcel, getRecruiterFilterOptions, type RecruiterFilterOptions } from '@/shared/lib/api/users'
 import { mapRecruiterToDisplay, type DisplayRecruiter } from '@/shared/lib/ats/recruiterMappers'
+import {
+  buildRecruiterExportParams,
+  buildRecruiterListParams,
+  filterRecruiterFacetOptions,
+} from '@/shared/lib/ats/recruiter-list-filters'
+import {
+  DEFAULT_RECRUITER_SORT_API,
+  isRecruiterSortOption,
+  sortOptionToApiSortBy,
+  type RecruiterSortOption,
+} from '@/shared/lib/ats/recruiter-list-sort'
 import { useAuth } from '@/shared/contexts/auth-context'
+import { hasPermission } from '@/shared/lib/permissions'
 import { listRecruiterNotes, createRecruiterNote, deleteRecruiterNote, shareRecruiterByEmail } from '@/shared/lib/api/recruiterNotes'
+import ListPagination from '@/shared/components/ListPagination'
+import PersonAvatar from '@/shared/components/PersonAvatar'
 import Swal from 'sweetalert2'
+import { closeHsOverlay, openHsOverlay } from '../../training/evaluation/_components/evaluation-overlay'
 
 // Recruiters data loaded from API in component – see recruitersData state below
 
@@ -32,19 +48,41 @@ interface RecruiterNote {
   postedDate: string
 }
 
+const FACET_LIST_BOX =
+  'h-36 max-h-36 overflow-y-auto overscroll-contain rounded-lg bg-white dark:bg-black/20 p-2 shadow-sm [scrollbar-width:thin]'
+
+function scrollRecruiterFilterBodyIfListEdge(event: React.WheelEvent<HTMLDivElement>) {
+  const list = event.currentTarget
+  const atTop = list.scrollTop <= 0 && event.deltaY < 0
+  const atBottom =
+    list.scrollTop + list.clientHeight >= list.scrollHeight - 1 && event.deltaY > 0
+  if (!atTop && !atBottom) return
+  const body = list.closest('[data-recruiter-filter-body]')
+  if (!(body instanceof HTMLElement)) return
+  body.scrollTop += event.deltaY
+}
+
 const Recruiters = () => {
   const router = useRouter()
-  const { user: currentUser } = useAuth()
+  const auth = useAuth()
+  const canManageRecruiters = hasPermission(auth, 'manage_recruiters')
   const [recruitersData, setRecruitersData] = useState<DisplayRecruiter[]>([])
   const [recruitersLoading, setRecruitersLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
-
-  useEffect(() => {
-    listRecruiters({ limit: 500 })
-      .then((res) => setRecruitersData((res.results ?? []).map(mapRecruiterToDisplay)))
-      .catch(() => setRecruitersData([]))
-      .finally(() => setRecruitersLoading(false))
-  }, [])
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [totalResults, setTotalResults] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
+  const [sortBy, setSortBy] = useState<string>(DEFAULT_RECRUITER_SORT_API)
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const fetchGenerationRef = useRef(0)
+  const fetchRecruitersRef = useRef<() => Promise<void>>()
+  const excelDropdownRef = useRef<HTMLDivElement | null>(null)
+  const sortDropdownRef = useRef<HTMLDivElement | null>(null)
+  const [excelMenuOpen, setExcelMenuOpen] = useState(false)
+  const [sortMenuOpen, setSortMenuOpen] = useState(false)
   const [recruiterNotes, setRecruiterNotes] = useState<RecruiterNote[]>([])
   const [previewRecruiter, setPreviewRecruiter] = useState<any>(null)
   const [notesRecruiterId, setNotesRecruiterId] = useState<string | null>(null)
@@ -54,7 +92,8 @@ const Recruiters = () => {
   const [shareEmail, setShareEmail] = useState('')
   const [showEmailInput, setShowEmailInput] = useState(false)
   const [shareSubmitting, setShareSubmitting] = useState(false)
-  const [selectedSort, setSelectedSort] = useState<string>('')
+  const [selectedSort, setSelectedSort] = useState<RecruiterSortOption>('')
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false)
   
   const [filters, setFilters] = useState<FilterState>({
     name: [],
@@ -63,49 +102,202 @@ const Recruiters = () => {
     location: [],
     email: ''
   })
+  const [filterOptions, setFilterOptions] = useState<RecruiterFilterOptions>({
+    names: [],
+    domains: [],
+    education: [],
+    locations: [],
+    emails: [],
+  })
+  const [filtersLoading, setFiltersLoading] = useState(false)
+
+  const listQueryInput = useMemo(
+    () => ({
+      page: currentPage,
+      limit: pageSize,
+      sortBy,
+      search: debouncedSearchQuery,
+      filters,
+    }),
+    [currentPage, pageSize, sortBy, debouncedSearchQuery, filters]
+  )
 
   // Search states for filter dropdowns
   const [searchName, setSearchName] = useState('')
   const [searchDomain, setSearchDomain] = useState('')
   const [searchEducation, setSearchEducation] = useState('')
   const [searchLocation, setSearchLocation] = useState('')
+  const [searchEmail, setSearchEmail] = useState('')
 
   // Excel import
   const [excelImporting, setExcelImporting] = useState(false)
   const excelInputRef = React.useRef<HTMLInputElement>(null)
 
   // Handle individual row checkbox
-  const handleRowSelect = (id: string) => {
-    const newSelected = new Set(selectedRows)
-    if (newSelected.has(id)) {
-      newSelected.delete(id)
-    } else {
-      newSelected.add(id)
-    }
-    setSelectedRows(newSelected)
-  }
+  const handleRowSelect = useCallback((id: string) => {
+    setSelectedRows((prev) => {
+      const newSelected = new Set(prev)
+      if (newSelected.has(id)) {
+        newSelected.delete(id)
+      } else {
+        newSelected.add(id)
+      }
+      return newSelected
+    })
+  }, [])
 
-  const refreshRecruiters = () => {
-    listRecruiters({ limit: 500 })
-      .then((res) => setRecruitersData((res.results ?? []).map(mapRecruiterToDisplay)))
-      .catch(() => {})
-  }
+  const refreshRecruiters = useCallback(async () => {
+    if (fetchRecruitersRef.current) {
+      await fetchRecruitersRef.current()
+    }
+  }, [])
+
+  const fetchRecruiters = useCallback(async () => {
+    const generation = ++fetchGenerationRef.current
+    setRecruitersLoading(true)
+    setLoadError(null)
+    try {
+      const res = await listRecruiters(buildRecruiterListParams(listQueryInput))
+      if (generation !== fetchGenerationRef.current) return
+      setRecruitersData((res.results ?? []).map(mapRecruiterToDisplay))
+      setTotalResults(res.totalResults ?? 0)
+      setTotalPages(res.totalPages ?? 0)
+    } catch (err) {
+      if (generation !== fetchGenerationRef.current) return
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : err instanceof Error
+          ? err.message
+          : 'Failed to load recruiters.'
+      setLoadError(msg)
+      setRecruitersData([])
+      setTotalResults(0)
+      setTotalPages(0)
+      await Swal.fire({
+        icon: 'error',
+        title: 'Failed to load recruiters',
+        text: msg,
+        toast: true,
+        position: 'top-end',
+        timer: 4000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
+    } finally {
+      if (generation === fetchGenerationRef.current) {
+        setRecruitersLoading(false)
+      }
+    }
+  }, [listQueryInput])
+
+  const fetchFilterOptions = useCallback(async () => {
+    setFiltersLoading(true)
+    try {
+      const options = await getRecruiterFilterOptions({
+        ...(debouncedSearchQuery.trim() ? { search: debouncedSearchQuery.trim() } : {}),
+      })
+      setFilterOptions(options)
+    } catch {
+      setFilterOptions({
+        names: [],
+        domains: [],
+        education: [],
+        locations: [],
+        emails: [],
+      })
+    } finally {
+      setFiltersLoading(false)
+    }
+  }, [debouncedSearchQuery])
+
+  useEffect(() => {
+    fetchRecruitersRef.current = fetchRecruiters
+  }, [fetchRecruiters])
+
+  useEffect(() => {
+    fetchRecruiters()
+  }, [fetchRecruiters])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearchQuery(searchName.trim())
+    }, 300)
+    return () => window.clearTimeout(timer)
+  }, [searchName])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [pageSize, sortBy, debouncedSearchQuery, filters])
+
+  useEffect(() => {
+    setSelectedRows(new Set())
+  }, [currentPage, pageSize, sortBy, debouncedSearchQuery, filters])
+
+  useEffect(() => {
+    fetchFilterOptions()
+  }, [fetchFilterOptions])
+
+  useEffect(() => {
+    if (!excelMenuOpen && !sortMenuOpen) return
+    const onDoc = (e: MouseEvent) => {
+      if (excelMenuOpen && !excelDropdownRef.current?.contains(e.target as Node)) {
+        setExcelMenuOpen(false)
+      }
+      if (sortMenuOpen && !sortDropdownRef.current?.contains(e.target as Node)) {
+        setSortMenuOpen(false)
+      }
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setExcelMenuOpen(false)
+        setSortMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [excelMenuOpen, sortMenuOpen])
 
   const handleExportExcel = async () => {
+    if (!canManageRecruiters) return
+    setExcelMenuOpen(false)
     try {
-      const blob = await exportRecruitersToExcel()
+      const { blob, capped, totalResults: exportTotal, exportMax } = await exportRecruitersToExcel(
+        buildRecruiterExportParams(listQueryInput)
+      )
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
       a.download = `recruiters_export_${Date.now()}.xlsx`
       a.click()
       URL.revokeObjectURL(url)
+      if (capped && exportTotal != null && exportMax != null) {
+        await Swal.fire({
+          icon: 'warning',
+          title: 'Export capped',
+          text: `Export capped at ${exportMax.toLocaleString()} of ${exportTotal.toLocaleString()} matching recruiters.`,
+          toast: true,
+          position: 'top-end',
+          timer: 4500,
+          showConfirmButton: false,
+        })
+      }
     } catch (err) {
-      alert('Failed to export recruiters')
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : 'Failed to export recruiters'
+      await Swal.fire({ icon: 'error', title: 'Export failed', text: msg })
     }
   }
 
   const handleDownloadTemplate = async () => {
+    if (!canManageRecruiters) return
+    setExcelMenuOpen(false)
     try {
       const blob = await downloadRecruitersTemplate()
       const url = URL.createObjectURL(blob)
@@ -115,11 +307,16 @@ const Recruiters = () => {
       a.click()
       URL.revokeObjectURL(url)
     } catch (err) {
-      alert('Failed to download template')
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : 'Failed to download template'
+      await Swal.fire({ icon: 'error', title: 'Download failed', text: msg })
     }
   }
 
   const handleImportExcel = () => {
+    if (!canManageRecruiters) return
     excelInputRef.current?.click()
   }
 
@@ -128,29 +325,87 @@ const Recruiters = () => {
     if (!file) return
     e.target.value = ''
     setExcelImporting(true)
+    setExcelMenuOpen(false)
     try {
       const result = await importRecruitersFromExcel(file)
-      refreshRecruiters()
+      await refreshRecruiters()
       const msg = result.summary
         ? `Imported ${result.summary.successful} of ${result.summary.total}. Failed: ${result.summary.failed}`
         : result.message
-      alert(msg)
-    } catch (err: any) {
-      alert(err?.response?.data?.message || 'Failed to import recruiters')
+      await Swal.fire({
+        icon: result.summary?.failed ? 'warning' : 'success',
+        title: 'Import complete',
+        text: msg,
+        timer: 3500,
+        showConfirmButton: false,
+      })
+    } catch (err: unknown) {
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : 'Failed to import recruiters'
+      await Swal.fire({ icon: 'error', title: 'Import failed', text: msg })
     } finally {
       setExcelImporting(false)
     }
   }
 
   const handleDeleteSelected = async () => {
-    if (selectedRows.size === 0) return
-    if (!confirm(`Delete ${selectedRows.size} selected recruiter(s)?`)) return
+    if (!canManageRecruiters) return
+    if (selectedRows.size === 0) {
+      await Swal.fire({
+        icon: 'warning',
+        title: 'No selection',
+        text: 'Please select at least one recruiter to delete.',
+        toast: true,
+        position: 'top-end',
+        timer: 3000,
+        showConfirmButton: false,
+      })
+      return
+    }
+
+    const result = await Swal.fire({
+      title: 'Delete selected recruiters?',
+      text: `You are about to delete ${selectedRows.size} recruiter(s). This cannot be undone.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: `Yes, delete ${selectedRows.size} recruiter(s)`,
+    })
+
+    if (!result.isConfirmed) return
+
+    setBulkDeleting(true)
     try {
-      await Promise.all(Array.from(selectedRows).map((id) => deleteUser(id)))
+      const ids = Array.from(selectedRows)
+      const results = await Promise.allSettled(ids.map((id) => deleteUser(id)))
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length
+      const failed = results.length - succeeded
       setSelectedRows(new Set())
-      refreshRecruiters()
+      await refreshRecruiters()
+      await Swal.fire({
+        icon: failed === results.length ? 'error' : failed > 0 ? 'warning' : 'success',
+        title: failed === results.length ? 'Delete failed' : failed > 0 ? 'Partially deleted' : 'Deleted',
+        text:
+          failed > 0
+            ? `${succeeded} deleted, ${failed} failed.`
+            : `${succeeded} recruiter(s) deleted.`,
+        toast: true,
+        position: 'top-end',
+        timer: 4000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
     } catch (err) {
-      alert('Failed to delete one or more recruiters')
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : 'Failed to delete one or more recruiters'
+      await Swal.fire({ icon: 'error', title: 'Delete failed', text: msg })
+    } finally {
+      setBulkDeleting(false)
     }
   }
 
@@ -171,8 +426,8 @@ const Recruiters = () => {
       .then((apiNotes) => {
         if (cancelled) return
         const mapped: RecruiterNote[] = apiNotes.map((n) => ({
-          id: n.id,
-          recruiterId: n.recruiter,
+          id: String(n.id ?? (n as { _id?: string })._id ?? ''),
+          recruiterId: String(n.recruiter),
           note: n.note,
           visibility: n.visibility,
           postedBy: n.postedByName || 'Unknown',
@@ -207,17 +462,21 @@ const Recruiters = () => {
         visibility: newNote.visibility,
       })
       const mapped: RecruiterNote = {
-        id: created.id,
-        recruiterId: created.recruiter,
+        id: String(created.id ?? (created as { _id?: string })._id ?? ''),
+        recruiterId: String(created.recruiter),
         note: created.note,
         visibility: created.visibility,
-        postedBy: created.postedByName || (currentUser?.name as string) || (currentUser?.email as string) || 'Unknown',
+        postedBy: created.postedByName || auth.user?.name || auth.user?.email || 'Unknown',
         postedDate: created.createdAt,
       }
       setRecruiterNotes((prev) => [...prev, mapped])
       setNewNote({ text: '', visibility: 'public' })
-    } catch (err: any) {
-      alert(err?.response?.data?.message || 'Failed to add note')
+    } catch (err: unknown) {
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : 'Failed to add note'
+      await Swal.fire({ icon: 'error', title: 'Failed to add note', text: msg, toast: true, position: 'top-end', timer: 3000, showConfirmButton: false })
     }
   }
 
@@ -226,8 +485,12 @@ const Recruiters = () => {
     try {
       await deleteRecruiterNote(noteId)
       setRecruiterNotes((prev) => prev.filter((note) => note.id !== noteId))
-    } catch (err: any) {
-      alert(err?.response?.data?.message || 'Failed to delete note')
+    } catch (err: unknown) {
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : 'Failed to delete note'
+      await Swal.fire({ icon: 'error', title: 'Failed to delete note', text: msg, toast: true, position: 'top-end', timer: 3000, showConfirmButton: false })
     }
   }
 
@@ -240,11 +503,10 @@ const Recruiters = () => {
   // Generate public URL for recruiter
   const getRecruiterPublicUrl = (recruiterId: string) => {
     if (typeof window !== 'undefined') {
-      return `${window.location.origin}/ats/recruiters/${recruiterId}`
+      return `${window.location.origin}/public-recruiter/${recruiterId}`
     }
-    // B19 fix: SSR-safe fallback uses configured app URL, avoiding the placeholder example.com.
     const base = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/+$/, '')
-    return `${base}/ats/recruiters/${recruiterId}`
+    return `${base}/public-recruiter/${recruiterId}`
   }
 
   // Download recruiter profile as text file
@@ -340,7 +602,8 @@ const Recruiters = () => {
     () => [
       {
         Header: 'All',
-        accessor: 'checkbox',
+        accessor: 'select',
+        id: 'select',
         disableSortBy: true,
         Cell: ({ row }: any) => (
           <input
@@ -360,18 +623,27 @@ const Recruiters = () => {
           return (
             <div className="flex items-center gap-3">
               <div className="flex-shrink-0">
-                <img
-                  src={recruiter.displayPicture || '/assets/images/faces/1.jpg'}
-                  alt={recruiter.name}
-                  className="w-10 h-10 rounded-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = '/assets/images/faces/1.jpg'
-                  }}
+                <PersonAvatar
+                  name={recruiter.name}
+                  email={recruiter.email}
+                  imageUrl={recruiter.displayPicture}
                 />
               </div>
               <div className="flex-1 min-w-0">
                 <div 
                   className="font-semibold text-gray-800 dark:text-white truncate cursor-pointer hover:text-primary"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Preview ${recruiter.name}`}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      setPreviewRecruiter(recruiter)
+                      setTimeout(() => {
+                        ;(window as any).HSOverlay?.open(document.querySelector('#recruiter-preview-panel'))
+                      }, 100)
+                    }
+                  }}
                   onClick={() => {
                     setPreviewRecruiter(recruiter)
                     setTimeout(() => {
@@ -437,10 +709,19 @@ const Recruiters = () => {
         Cell: ({ row }: any) => {
           const recruiter = row.original
           return (
-            <div className="text-sm text-gray-800 dark:text-white">
-              <span className="badge bg-success/10 text-success border border-success/30 px-2 py-1 rounded-md text-xs font-medium">
-                {recruiter.domain}
-              </span>
+            <div className="text-sm text-gray-800 dark:text-white flex flex-wrap gap-1">
+              {recruiter.domainTags?.length > 0 ? (
+                recruiter.domainTags.map((tag: string) => (
+                  <span
+                    key={tag}
+                    className="badge bg-success/10 text-success border border-success/30 px-2 py-1 rounded-md text-xs font-medium"
+                  >
+                    {tag}
+                  </span>
+                ))
+              ) : (
+                <span className="text-gray-500">—</span>
+              )}
             </div>
           )
         },
@@ -490,12 +771,14 @@ const Recruiters = () => {
         disableSortBy: true,
         Cell: ({ row }: any) => (
           <div className="flex items-center gap-2">
+            {canManageRecruiters && (
             <div className="hs-tooltip ti-main-tooltip">
               <button
                 type="button"
                 onClick={() => router.push(`/ats/recruiters/edit/${row.original.id}`)}
                 className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-info"
                 title="Edit Recruiter"
+                aria-label={`Edit ${row.original.name}`}
               >
                 <i className="ri-pencil-line"></i>
                 <span
@@ -505,12 +788,14 @@ const Recruiters = () => {
                 </span>
               </button>
             </div>
+            )}
             <div className="hs-tooltip ti-main-tooltip">
               <button
                 type="button"
                 onClick={() => handleAddNote(row.original.id, row.original)}
                 className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-warning"
                 title="Add Note"
+                aria-label={`Add note for ${row.original.name}`}
               >
                 <i className="ri-file-add-line"></i>
                 <span
@@ -526,6 +811,7 @@ const Recruiters = () => {
                 onClick={() => handleShareClick(row.original)}
                 className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
                 title="Share Public URL"
+                aria-label={`Share ${row.original.name}`}
               >
                 <i className="ri-share-line"></i>
                 <span
@@ -541,6 +827,7 @@ const Recruiters = () => {
                 onClick={() => handleDownloadProfile(row.original)}
                 className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-primary"
                 title="Download Profile"
+                aria-label={`Download profile for ${row.original.name}`}
               >
                 <i className="ri-download-line"></i>
                 <span
@@ -554,99 +841,45 @@ const Recruiters = () => {
         ),
       },
     ],
-    [selectedRows]
+    [selectedRows, canManageRecruiters, router, handleRowSelect]
   )
 
-  // Filter data based on filter state
-  const filteredData = useMemo(() => {
-    return recruitersData.filter((recruiter) => {
-      // Name filter (array)
-      if (filters.name.length > 0 && !filters.name.some(name => 
-        recruiter.name.toLowerCase().includes(name.toLowerCase())
-      )) {
-        return false
-      }
-      
-      // Domain filter (array)
-      if (filters.domain.length > 0 && !filters.domain.some(domain => 
-        recruiter.domain.toLowerCase().includes(domain.toLowerCase())
-      )) {
-        return false
-      }
-      
-      // Education filter (array)
-      if (filters.education.length > 0 && !filters.education.some(edu => 
-        recruiter.education.toLowerCase().includes(edu.toLowerCase())
-      )) {
-        return false
-      }
-      
-      // Location filter (array)
-      if (filters.location.length > 0 && !filters.location.some(loc => 
-        recruiter.location.toLowerCase().includes(loc.toLowerCase())
-      )) {
-        return false
-      }
-      
-      // Email filter (string)
-      if (filters.email && !recruiter.email.toLowerCase().includes(filters.email.toLowerCase())) {
-        return false
-      }
-      
-      return true
-    })
-  }, [recruitersData, filters])
+  const allNames = filterOptions.names
+  const allDomains = filterOptions.domains
+  const allEducation = filterOptions.education
+  const allLocations = filterOptions.locations
+  const allEmails = filterOptions.emails ?? []
 
-  const data = useMemo(() => filteredData, [filteredData])
+  const filteredNames = useMemo(
+    () => filterRecruiterFacetOptions(allNames, searchName),
+    [allNames, searchName]
+  )
 
-  // Get unique values for dropdown filters
-  const allDomains = useMemo(() => {
-    const domains = recruitersData.flatMap((r) =>
-      (r.domain || "").split(",").map((d) => d.trim()).filter(Boolean)
-    );
-    return [...new Set(domains)].sort();
-  }, [recruitersData]);
+  const filteredDomains = useMemo(
+    () => filterRecruiterFacetOptions(allDomains, searchDomain),
+    [allDomains, searchDomain]
+  )
 
-  const allEducation = useMemo(() => {
-    return [...new Set(recruitersData.map(recruiter => recruiter.education))].filter(Boolean).sort()
-  }, [recruitersData])
+  const filteredEducation = useMemo(
+    () => filterRecruiterFacetOptions(allEducation, searchEducation),
+    [allEducation, searchEducation]
+  )
 
-  const allNames = useMemo(() => {
-    return [...new Set(recruitersData.map(recruiter => recruiter.name))].filter(Boolean).sort()
-  }, [recruitersData])
+  const filteredLocations = useMemo(
+    () => filterRecruiterFacetOptions(allLocations, searchLocation),
+    [allLocations, searchLocation]
+  )
 
-  const allLocations = useMemo(() => {
-    return [...new Set(recruitersData.map(recruiter => recruiter.location))].filter(Boolean).sort()
-  }, [recruitersData])
+  const filteredEmails = useMemo(
+    () => filterRecruiterFacetOptions(allEmails, searchEmail),
+    [allEmails, searchEmail]
+  )
 
-  // Filter options based on search terms
-  const filteredNames = useMemo(() => {
-    if (!searchName) return allNames
-    return allNames.filter(name => 
-      name.toLowerCase().includes(searchName.toLowerCase())
-    )
-  }, [allNames, searchName])
+  const displayData = recruitersData
 
-  const filteredDomains = useMemo(() => {
-    if (!searchDomain) return allDomains
-    return allDomains.filter(domain => 
-      domain.toLowerCase().includes(searchDomain.toLowerCase())
-    )
-  }, [allDomains, searchDomain])
-
-  const filteredEducation = useMemo(() => {
-    if (!searchEducation) return allEducation
-    return allEducation.filter(edu => 
-      edu.toLowerCase().includes(searchEducation.toLowerCase())
-    )
-  }, [allEducation, searchEducation])
-
-  const filteredLocations = useMemo(() => {
-    if (!searchLocation) return allLocations
-    return allLocations.filter(loc => 
-      loc.toLowerCase().includes(searchLocation.toLowerCase())
-    )
-  }, [allLocations, searchLocation])
+  useEffect(() => {
+    if (filters.email === '') setSearchEmail('')
+  }, [filters.email])
 
   const handleMultiSelectChange = (key: 'name' | 'domain' | 'education' | 'location', value: string) => {
     setFilters(prev => {
@@ -677,103 +910,90 @@ const Recruiters = () => {
     setSearchDomain('')
     setSearchEducation('')
     setSearchLocation('')
+    setSearchEmail('')
   }
+
+  const openFilterPanel = useCallback(() => {
+    setFilterPanelOpen(true)
+    queueMicrotask(() => openHsOverlay('#recruiters-filter-panel'))
+  }, [])
+
+  const closeFilterPanel = useCallback(() => {
+    setFilterPanelOpen(false)
+    closeHsOverlay('#recruiters-filter-panel')
+  }, [])
+
+  useEffect(() => {
+    if (!filterPanelOpen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeFilterPanel()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [filterPanelOpen, closeFilterPanel])
 
   const hasActiveFilters = 
     filters.name.length > 0 ||
     filters.domain.length > 0 ||
     filters.education.length > 0 ||
     filters.location.length > 0 ||
-    filters.email !== ''
+    filters.email !== '' ||
+    debouncedSearchQuery.trim() !== ''
 
   const activeFilterCount = 
     filters.name.length +
     filters.domain.length +
     filters.education.length +
     filters.location.length +
-    (filters.email !== '' ? 1 : 0)
+    (filters.email !== '' ? 1 : 0) +
+    (debouncedSearchQuery.trim() !== '' ? 1 : 0)
 
   const tableInstance: any = useTable(
     {
       columns,
-      data,
-      initialState: { pageIndex: 0, pageSize: 10 },
+      data: displayData,
+      manualPagination: true,
+      manualSortBy: true,
     },
-    useSortBy,
-    usePagination
+    useSortBy
   )
 
   const {
     getTableProps,
     getTableBodyProps,
     headerGroups,
-    prepareRow,
-    state,
-    page,
-    nextPage,
-    previousPage,
-    canNextPage,
-    canPreviousPage,
-    pageOptions,
-    gotoPage,
-    pageCount,
-    setPageSize,
-    setSortBy,
   } = tableInstance
 
-  const { pageIndex, pageSize } = state
-
-  // Handle sort selection
+  // Handle sort selection — server-side via sortBy API param
   const handleSortChange = (sortOption: string) => {
-    setSelectedSort(sortOption)
-    
-    switch(sortOption) {
-      case 'name-asc':
-        setSortBy([{ id: 'recruiterInfo', desc: false }])
-        break
-      case 'name-desc':
-        setSortBy([{ id: 'recruiterInfo', desc: true }])
-        break
-      case 'domain-asc':
-        setSortBy([{ id: 'domain', desc: false }])
-        break
-      case 'domain-desc':
-        setSortBy([{ id: 'domain', desc: true }])
-        break
-      case 'education-asc':
-        setSortBy([{ id: 'education', desc: false }])
-        break
-      case 'education-desc':
-        setSortBy([{ id: 'education', desc: true }])
-        break
-      case 'location-asc':
-        setSortBy([{ id: 'location', desc: false }])
-        break
-      case 'location-desc':
-        setSortBy([{ id: 'location', desc: true }])
-        break
-      case 'clear-sort':
-        setSortBy([])
-        setSelectedSort('')
-        break
-      default:
-        setSortBy([])
+    if (sortOption === '') {
+      setSelectedSort('')
+      setSortBy(DEFAULT_RECRUITER_SORT_API)
+      setCurrentPage(1)
+      setSortMenuOpen(false)
+      return
+    }
+    if (isRecruiterSortOption(sortOption)) {
+      setSelectedSort(sortOption)
+      setSortBy(sortOptionToApiSortBy(sortOption))
+      setCurrentPage(1)
+      setSortMenuOpen(false)
     }
   }
 
-  // Handle select all checkbox - select ALL rows in filtered dataset
+  // Handle select all checkbox — current page only
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      const allIds = new Set(filteredData.map((recruiter) => recruiter.id))
+      const allIds = new Set(displayData.map((recruiter) => recruiter.id))
       setSelectedRows(allIds)
     } else {
       setSelectedRows(new Set())
     }
   }
 
-  // Check if all rows in filtered dataset are selected
-  const isAllSelected = selectedRows.size === filteredData.length && filteredData.length > 0
-  const isIndeterminate = selectedRows.size > 0 && selectedRows.size < filteredData.length
+  // Check if all rows on the current page are selected
+  const isAllSelected = selectedRows.size === displayData.length && displayData.length > 0
+  const isIndeterminate = selectedRows.size > 0 && selectedRows.size < displayData.length
 
   return (
     <Fragment>
@@ -785,14 +1005,18 @@ const Recruiters = () => {
               <div className="box-title">
                 Recruiters
                 <span className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle">
-                  {filteredData.length}
+                  {totalResults}
                 </span>
               </div>
               <div className="flex flex-wrap gap-2">
                 <select
                   className="form-control select-show-page-size !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
                   value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value))
+                    setCurrentPage(1)
+                  }}
+                  aria-label="Results per page"
                 >
                   {[10, 25, 50, 100].map((size) => (
                     <option key={size} value={size}>
@@ -800,100 +1024,127 @@ const Recruiters = () => {
                     </option>
                   ))}
                 </select>
-                <div className="hs-dropdown ti-dropdown me-2">
+                <div ref={sortDropdownRef} className="relative me-2">
                   <button
                     type="button"
-                    className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] ti-dropdown-toggle"
+                    className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem]"
                     id="sort-dropdown-button"
-                    aria-expanded="false"
+                    aria-haspopup="menu"
+                    aria-expanded={sortMenuOpen}
+                    aria-label="Sort recruiters"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setSortMenuOpen((prev) => !prev)
+                    }}
                   >
                     <i className="ri-arrow-up-down-line font-semibold align-middle me-1"></i>Sort
                     <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
                   </button>
-                  <ul className="hs-dropdown-menu ti-dropdown-menu hidden" aria-labelledby="sort-dropdown-button">
-                    <li>
+                  {sortMenuOpen && (
+                  <ul className="absolute end-0 top-full z-50 mt-1 min-w-[10rem] rounded-lg border border-defaultborder dark:border-defaultborder/20 bg-white py-1 shadow-lg dark:bg-bodybg" role="menu" aria-labelledby="sort-dropdown-button">
+                    <li role="none">
                       <button
                         type="button"
                         className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'name-asc' ? 'active' : ''}`}
+                        role="menuitem"
                         onClick={() => handleSortChange('name-asc')}
                       >
                         <i className="ri-sort-asc me-2 align-middle inline-block"></i>Name (A-Z)
                       </button>
                     </li>
-                    <li>
+                    <li role="none">
                       <button
                         type="button"
                         className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'name-desc' ? 'active' : ''}`}
+                        role="menuitem"
                         onClick={() => handleSortChange('name-desc')}
                       >
                         <i className="ri-sort-desc me-2 align-middle inline-block"></i>Name (Z-A)
                       </button>
                     </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'skills-asc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('skills-asc')}
-                      >
-                        <i className="ri-code-s-slash-line me-2 align-middle inline-block"></i>Skills (A-Z)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'skills-desc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('skills-desc')}
-                      >
-                        <i className="ri-code-s-slash-line me-2 align-middle inline-block"></i>Skills (Z-A)
-                      </button>
-                    </li>
-                    <li>
+                    <li role="none">
                       <button
                         type="button"
                         className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'education-asc' ? 'active' : ''}`}
+                        role="menuitem"
                         onClick={() => handleSortChange('education-asc')}
                       >
                         <i className="ri-graduation-cap-line me-2 align-middle inline-block"></i>Education (A-Z)
                       </button>
                     </li>
-                    <li>
+                    <li role="none">
                       <button
                         type="button"
                         className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'education-desc' ? 'active' : ''}`}
+                        role="menuitem"
                         onClick={() => handleSortChange('education-desc')}
                       >
                         <i className="ri-graduation-cap-line me-2 align-middle inline-block"></i>Education (Z-A)
                       </button>
                     </li>
+                    <li role="none">
+                      <button
+                        type="button"
+                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'location-asc' ? 'active' : ''}`}
+                        role="menuitem"
+                        onClick={() => handleSortChange('location-asc')}
+                      >
+                        <i className="ri-map-pin-line me-2 align-middle inline-block"></i>Location (A-Z)
+                      </button>
+                    </li>
+                    <li role="none">
+                      <button
+                        type="button"
+                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'location-desc' ? 'active' : ''}`}
+                        role="menuitem"
+                        onClick={() => handleSortChange('location-desc')}
+                      >
+                        <i className="ri-map-pin-line me-2 align-middle inline-block"></i>Location (Z-A)
+                      </button>
+                    </li>
                     <li className="ti-dropdown-divider"></li>
-                    <li>
+                    <li role="none">
                       <button
                         type="button"
                         className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left text-gray-500 dark:text-gray-400"
-                        onClick={() => handleSortChange('clear-sort')}
+                        role="menuitem"
+                        onClick={() => handleSortChange('')}
                       >
                         <i className="ri-close-line me-2 align-middle inline-block"></i>Clear Sort
                       </button>
                     </li>
                   </ul>
+                  )}
                 </div>
+                {canManageRecruiters && (
                 <Link
                   href="/ats/recruiters/add"
                   className="ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem] me-2"
                 >
                   <i className="ri-add-line font-semibold align-middle"></i>Add Recruiter
                 </Link>
-                <div className="hs-dropdown ti-dropdown me-2">
+                )}
+                {canManageRecruiters && (
+                <div ref={excelDropdownRef} className="relative me-2">
                   <button
                     type="button"
-                    className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem] ti-dropdown-toggle"
+                    className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem]"
                     id="excel-dropdown-button"
-                    aria-expanded="false"
+                    aria-haspopup="menu"
+                    aria-expanded={excelMenuOpen}
+                    aria-label="Excel actions"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setExcelMenuOpen((prev) => !prev)
+                    }}
                   >
                     <i className="ri-file-excel-2-line font-semibold align-middle me-1"></i>Excel
                     <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
                   </button>
-                  <ul className="hs-dropdown-menu ti-dropdown-menu hidden" aria-labelledby="excel-dropdown-button">
+                  {excelMenuOpen && (
+                  <ul className="absolute end-0 top-full z-50 mt-1 min-w-[10rem] rounded-lg border border-defaultborder dark:border-defaultborder/20 bg-white py-1 shadow-lg dark:bg-bodybg" aria-labelledby="excel-dropdown-button" role="menu">
                     <li>
                       <button
                         type="button"
@@ -924,6 +1175,7 @@ const Recruiters = () => {
                       </button>
                     </li>
                   </ul>
+                  )}
                   <input
                     ref={excelInputRef}
                     type="file"
@@ -932,12 +1184,15 @@ const Recruiters = () => {
                     onChange={onExcelFileChange}
                   />
                 </div>
+                )}
                 <button
                   type="button"
-                  className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] me-2"
-                  data-hs-overlay="#recruiters-filter-panel"
+                  className={`ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] me-2 ${filterPanelOpen ? 'ring-2 ring-primary/30 bg-primary/[0.06]' : ''}`}
+                  aria-expanded={filterPanelOpen}
+                  aria-controls="recruiters-filter-panel"
+                  onClick={() => (filterPanelOpen ? closeFilterPanel() : openFilterPanel())}
                 >
-                  <i className="ri-search-line font-semibold align-middle me-1"></i>Search
+                  <i className={`ri-${filtersLoading ? 'loader-4-line animate-spin' : 'search-line'} font-semibold align-middle me-1`} aria-hidden="true"></i>Search
                   {hasActiveFilters && (
                     <span className="badge bg-primary text-white rounded-full ms-1 text-[0.65rem]">
                       {activeFilterCount}
@@ -945,14 +1200,18 @@ const Recruiters = () => {
                   )}
                 </button>
               
+                {canManageRecruiters && (
                 <button
                   type="button"
                   className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem]"
-                  onClick={handleDeleteSelected}
-                  disabled={selectedRows.size === 0}
+                  onClick={() => { void handleDeleteSelected() }}
+                  disabled={selectedRows.size === 0 || bulkDeleting}
+                  aria-busy={bulkDeleting}
+                  aria-label="Delete selected recruiters"
                 >
-                  <i className="ri-delete-bin-line font-semibold align-middle me-1"></i>Delete
+                  <i className={`ri-${bulkDeleting ? 'loader-4-line animate-spin' : 'delete-bin-line'} font-semibold align-middle me-1`} aria-hidden="true"></i>Delete
                 </button>
+                )}
               </div>
             </div>
             <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden">
@@ -963,7 +1222,7 @@ const Recruiters = () => {
                       <tr {...headerGroup.getHeaderGroupProps()} className="bg-primary/10 dark:bg-primary/20 border-b border-gray-300 dark:border-gray-600" key={`header-group-${i}`}>
                         {headerGroup.headers.map((column: any, i: number) => (
                           <th
-                            {...column.getHeaderProps(column.getSortByToggleProps())}
+                            {...column.getHeaderProps()}
                             scope="col"
                             className="text-start sticky top-0 z-10 bg-gray-50 dark:bg-black/20"
                             key={column.id || `col-${i}`}
@@ -982,7 +1241,7 @@ const Recruiters = () => {
                                   if (input) input.indeterminate = isIndeterminate
                                 }}
                                 onChange={handleSelectAll}
-                                aria-label="Select all"
+                                aria-label="Select all on page"
                               />
                             ) : (
                               <div className="flex items-center gap-2">
@@ -1006,132 +1265,70 @@ const Recruiters = () => {
                     ))}
                   </thead>
                   <tbody {...getTableBodyProps()}>
-                    {page.map((row: any, i: number) => {
-                      prepareRow(row)
-                      return (
-                        <tr {...row.getRowProps()} className="border-b border-gray-300 dark:border-gray-600" key={row.id || `row-${i}`}>
-                          {row.cells.map((cell: any, i: number) => {
-                            return (
-                              <td {...cell.getCellProps()} key={cell.column.id || `cell-${i}`}>
-                                {cell.render('Cell')}
-                              </td>
-                            )
-                          })}
+                    {recruitersLoading ? (
+                      <tr>
+                        <td colSpan={columns.length} className="text-center py-8">
+                          <div className="flex flex-col items-center justify-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-2"></div>
+                            <span className="text-gray-600 dark:text-gray-400">Loading recruiters...</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : loadError ? (
+                      <tr>
+                        <td colSpan={columns.length} className="text-center py-8">
+                          <div className="flex flex-col items-center justify-center">
+                            <i className="ri-error-warning-line text-4xl text-danger mb-2" aria-hidden="true"></i>
+                            <span className="text-gray-600 dark:text-gray-400">{loadError}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : displayData.length === 0 ? (
+                      <tr>
+                        <td colSpan={columns.length} className="text-center py-8">
+                          <div className="flex flex-col items-center justify-center">
+                            <i className="ri-inbox-line text-4xl text-gray-400 mb-2" aria-hidden="true"></i>
+                            <span className="text-gray-600 dark:text-gray-400">No recruiters found</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      displayData.map((recruiter) => (
+                        <tr className="border-b border-gray-300 dark:border-gray-600" key={recruiter.id}>
+                          {columns.map((col: any) => (
+                            <td key={col.id || col.accessor}>
+                              {col.id === 'select' ? (
+                                <input
+                                  className="form-check-input"
+                                  type="checkbox"
+                                  checked={selectedRows.has(recruiter.id)}
+                                  onChange={() => handleRowSelect(recruiter.id)}
+                                  aria-label={`Select ${recruiter.name}`}
+                                />
+                              ) : col.Cell ? (
+                                col.Cell({ row: { original: recruiter } })
+                              ) : (
+                                recruiter[col.accessor as keyof DisplayRecruiter]
+                              )}
+                            </td>
+                          ))}
                         </tr>
-                      )
-                    })}
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
             </div>
             <div className="box-footer !border-t-0">
-              <div className="flex items-center flex-wrap gap-4">
-                <div>
-                  Showing {pageIndex * pageSize + 1} to {Math.min((pageIndex + 1) * pageSize, data.length)} of {data.length} entries{' '}
-                  <i className="bi bi-arrow-right ms-2 font-semibold"></i>
-                </div>
-                <div className="ms-auto">
-                  <nav aria-label="Page navigation" className="pagination-style-4">
-                    <ul className="ti-pagination mb-0">
-                      <li className={`page-item ${!canPreviousPage ? 'disabled' : ''}`}>
-                        <button
-                          className="page-link px-3 py-[0.375rem]"
-                          onClick={() => previousPage()}
-                          disabled={!canPreviousPage}
-                        >
-                          Prev
-                        </button>
-                      </li>
-                      {pageOptions.length <= 7 ? (
-                        // Show all pages if 7 or fewer
-                        pageOptions.map((page: number) => (
-                          <li
-                            key={page}
-                            className={`page-item ${pageIndex === page ? 'active' : ''}`}
-                          >
-                            <button
-                              className="page-link px-3 py-[0.375rem]"
-                              onClick={() => gotoPage(page)}
-                            >
-                              {page + 1}
-                            </button>
-                          </li>
-                        ))
-                      ) : (
-                        // Show smart pagination for more pages
-                        <>
-                          {pageIndex > 2 && (
-                            <>
-                              <li className="page-item">
-                                <button
-                                  className="page-link px-3 py-[0.375rem]"
-                                  onClick={() => gotoPage(0)}
-                                >
-                                  1
-                                </button>
-                              </li>
-                              {pageIndex > 3 && (
-                                <li className="page-item disabled">
-                                  <span className="page-link px-3 py-[0.375rem]">...</span>
-                                </li>
-                              )}
-                            </>
-                          )}
-                          {Array.from({ length: Math.min(5, pageCount) }, (_, i) => {
-                            let pageNum
-                            if (pageIndex < 3) {
-                              pageNum = i
-                            } else if (pageIndex > pageCount - 4) {
-                              pageNum = pageCount - 5 + i
-                            } else {
-                              pageNum = pageIndex - 2 + i
-                            }
-                            return (
-                              <li
-                                key={pageNum}
-                                className={`page-item ${pageIndex === pageNum ? 'active' : ''}`}
-                              >
-                                <button
-                                  className="page-link px-3 py-[0.375rem]"
-                                  onClick={() => gotoPage(pageNum)}
-                                >
-                                  {pageNum + 1}
-                                </button>
-                              </li>
-                            )
-                          })}
-                          {pageIndex < pageCount - 3 && (
-                            <>
-                              {pageIndex < pageCount - 4 && (
-                                <li className="page-item disabled">
-                                  <span className="page-link px-3 py-[0.375rem]">...</span>
-                                </li>
-                              )}
-                              <li className="page-item">
-                                <button
-                                  className="page-link px-3 py-[0.375rem]"
-                                  onClick={() => gotoPage(pageCount - 1)}
-                                >
-                                  {pageCount}
-                                </button>
-                              </li>
-                            </>
-                          )}
-                        </>
-                      )}
-                      <li className={`page-item ${!canNextPage ? 'disabled' : ''}`}>
-                        <button
-                          className="page-link px-3 py-[0.375rem] text-primary"
-                          onClick={() => nextPage()}
-                          disabled={!canNextPage}
-                        >
-                          Next
-                        </button>
-                      </li>
-                    </ul>
-                  </nav>
-                </div>
-              </div>
+              <ListPagination
+                page={currentPage}
+                totalPages={totalPages}
+                totalResults={totalResults}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                gotoInputId="recruiters-goto-page"
+                ariaLabel="Recruiters page navigation"
+              />
             </div>
           </div>
         </div>
@@ -1139,7 +1336,8 @@ const Recruiters = () => {
 
       {/* Filter Panel Offcanvas */}
       <div id="recruiters-filter-panel" className="hs-overlay hidden ti-offcanvas ti-offcanvas-right !z-[105]" tabIndex={-1}>
-        <div className="ti-offcanvas-header bg-gray-50 dark:bg-black/20 !py-2.5">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        <div className="ti-offcanvas-header bg-gray-50 dark:bg-black/20 !py-2.5 shrink-0">
           <h6 className="ti-offcanvas-title text-base font-semibold flex items-center gap-2">
             <i className="ri-search-line text-primary text-base"></i>
             Search Recruiters
@@ -1154,8 +1352,11 @@ const Recruiters = () => {
            
           </button>
         </div>
-        <div className="ti-offcanvas-body !p-4">
-          <div className="space-y-5">
+        <div
+          data-recruiter-filter-body
+          className="ti-offcanvas-body !h-auto !max-h-none min-h-0 flex-1 overflow-y-auto !px-4 !pt-4 !pb-4"
+        >
+          <div className="space-y-5 pb-2">
             {/* Name Filter */}
             <div className="pb-4 border-b border-gray-200 dark:border-defaultborder/10">
               <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
@@ -1171,7 +1372,7 @@ const Recruiters = () => {
                   value={searchName}
                   onChange={(e) => setSearchName(e.target.value)}
                 />
-                <div className="max-h-40 overflow-y-auto rounded-lg bg-white dark:bg-black/20 p-2 shadow-sm">
+                <div className={FACET_LIST_BOX} onWheel={scrollRecruiterFilterBodyIfListEdge}>
                   <div className="space-y-1">
                     {filteredNames.length > 0 ? (
                       filteredNames.map((name) => (
@@ -1232,7 +1433,7 @@ const Recruiters = () => {
                   value={searchDomain}
                   onChange={(e) => setSearchDomain(e.target.value)}
                 />
-                <div className="max-h-40 overflow-y-auto rounded-lg bg-white dark:bg-black/20 p-2 shadow-sm">
+                <div className={FACET_LIST_BOX} onWheel={scrollRecruiterFilterBodyIfListEdge}>
                   <div className="space-y-1">
                     {filteredDomains.length > 0 ? (
                       filteredDomains.map((domain) => (
@@ -1293,7 +1494,7 @@ const Recruiters = () => {
                   value={searchEducation}
                   onChange={(e) => setSearchEducation(e.target.value)}
                 />
-                <div className="max-h-40 overflow-y-auto rounded-lg bg-white dark:bg-black/20 p-2 shadow-sm">
+                <div className={FACET_LIST_BOX} onWheel={scrollRecruiterFilterBodyIfListEdge}>
                   <div className="space-y-1">
                     {filteredEducation.length > 0 ? (
                       filteredEducation.map((edu) => (
@@ -1354,7 +1555,7 @@ const Recruiters = () => {
                   value={searchLocation}
                   onChange={(e) => setSearchLocation(e.target.value)}
                 />
-                <div className="max-h-40 overflow-y-auto rounded-lg bg-white dark:bg-black/20 p-2 shadow-sm">
+                <div className={FACET_LIST_BOX} onWheel={scrollRecruiterFilterBodyIfListEdge}>
                   <div className="space-y-1">
                     {filteredLocations.length > 0 ? (
                       filteredLocations.map((location) => (
@@ -1402,37 +1603,91 @@ const Recruiters = () => {
 
             {/* Email Filter */}
             <div className="pb-4">
-              <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
+              <label htmlFor="recruiter-filter-email-search" className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
                 <i className="ri-mail-line text-warning text-base"></i>
                 Email
+                <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allEmails.length})</span>
               </label>
-              <input
-                type="text"
-                className="form-control border-gray-200 dark:border-defaultborder/10 focus:ring-2 focus:ring-primary/20 !py-1.5 !text-sm"
-                placeholder="Search by email..."
-                value={filters.email}
-                onChange={(e) => setFilters(prev => ({ ...prev, email: e.target.value }))}
-              />
-            </div>
-
-            {/* Filter Actions */}
-            <div className="flex gap-2 pt-4 border-t border-gray-200 dark:border-defaultborder/10">
-              <button
-                type="button"
-                className="ti-btn ti-btn-primary flex-1 font-medium shadow-sm hover:shadow-md transition-shadow !py-1.5 !text-sm"
-                onClick={handleResetFilters}
-              >
-                <i className="ri-refresh-line me-1.5"></i>Reset
-              </button>
-              <button
-                type="button"
-                className="ti-btn ti-btn-light font-medium shadow-sm hover:shadow-md transition-shadow !py-1.5 !text-sm"
-                data-hs-overlay="#recruiters-filter-panel"
-              >
-                <i className="ri-close-line me-1.5"></i>Close
-              </button>
+              <div className="space-y-2">
+                <input
+                  id="recruiter-filter-email-search"
+                  type="search"
+                  className="form-control !py-1.5 !text-sm mb-1.5 min-h-11"
+                  placeholder="Search emails..."
+                  value={searchEmail}
+                  onChange={(e) => setSearchEmail(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && searchEmail.trim()) {
+                      setFilters((prev) => ({ ...prev, email: searchEmail.trim() }))
+                    }
+                  }}
+                  autoComplete="off"
+                  aria-label="Search emails"
+                />
+                <div className={FACET_LIST_BOX} onWheel={scrollRecruiterFilterBodyIfListEdge}>
+                  <div className="space-y-1">
+                    {filteredEmails.length > 0 ? (
+                      filteredEmails.map((email) => (
+                        <label
+                          key={email}
+                          className="flex items-center gap-2 cursor-pointer hover:bg-warning/5 dark:hover:bg-warning/10 min-h-11 p-1.5 rounded-md transition-colors"
+                        >
+                          <input
+                            type="checkbox"
+                            className="form-check-input !w-3.5 !h-3.5"
+                            checked={filters.email === email}
+                            onChange={() =>
+                              setFilters((prev) => ({
+                                ...prev,
+                                email: prev.email === email ? '' : email,
+                              }))
+                            }
+                          />
+                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium break-all">{email}</span>
+                        </label>
+                      ))
+                    ) : (
+                      <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
+                        No emails found
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {filters.email !== '' && (
+                  <div className="flex flex-wrap gap-1.5 pt-1.5">
+                    <span className="badge bg-warning/10 text-warning border border-warning/30 px-2 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium shadow-sm">
+                      {filters.email}
+                      <button
+                        type="button"
+                        onClick={() => setFilters((prev) => ({ ...prev, email: '' }))}
+                        className="hover:bg-warning/20 rounded-full p-0.5 transition-colors"
+                        aria-label={`Remove email filter ${filters.email}`}
+                      >
+                        <i className="ri-close-line text-xs"></i>
+                      </button>
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
+        </div>
+        <div className="ti-offcanvas-footer !relative !bottom-auto shrink-0 px-4 py-3 flex gap-2">
+            <button
+              type="button"
+              className="ti-btn ti-btn-primary flex-1 font-medium shadow-sm hover:shadow-md transition-shadow !py-1.5 !text-sm min-h-11"
+              onClick={handleResetFilters}
+            >
+              <i className="ri-refresh-line me-1.5"></i>Reset
+            </button>
+            <button
+              type="button"
+              className="ti-btn ti-btn-light font-medium shadow-sm hover:shadow-md transition-shadow !py-1.5 !text-sm min-h-11"
+              onClick={closeFilterPanel}
+            >
+              <i className="ri-close-line me-1.5"></i>Close
+            </button>
+        </div>
         </div>
       </div>
 
@@ -1464,13 +1719,11 @@ const Recruiters = () => {
             <div className="space-y-4">
               {/* Recruiter Header Info */}
               <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 dark:border-primary/30 rounded-lg">
-                <img
-                  src={previewRecruiter.displayPicture || '/assets/images/faces/1.jpg'}
-                  alt={previewRecruiter.name}
-                  className="w-16 h-16 rounded-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = '/assets/images/faces/1.jpg'
-                  }}
+                <PersonAvatar
+                  name={previewRecruiter.name}
+                  email={previewRecruiter.email}
+                  imageUrl={previewRecruiter.displayPicture}
+                  className="w-16 h-16 rounded-full text-base"
                 />
                 <div className="flex-1">
                   <h6 className="font-bold text-gray-800 dark:text-white text-xl mb-1">{previewRecruiter.name}</h6>
@@ -1495,9 +1748,17 @@ const Recruiters = () => {
                 </div>
                 <div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Domain</div>
-                  <span className="badge bg-success/10 text-success border border-success/30 px-2 py-1 rounded-md text-xs font-medium">
-                    {previewRecruiter.domain}
-                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {previewRecruiter.domainTags?.length > 0 ? (
+                      previewRecruiter.domainTags.map((tag: string) => (
+                        <span key={tag} className="badge bg-success/10 text-success border border-success/30 px-2 py-1 rounded-md text-xs font-medium">
+                          {tag}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-gray-500">—</span>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Location</div>
@@ -1531,9 +1792,15 @@ const Recruiters = () => {
                 >
                   Close
                 </button>
-                <button type="button" className="ti-btn ti-btn-primary flex-1">
+                <Link
+                  href={`/public-recruiter/${previewRecruiter.id}/preview`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ti-btn ti-btn-primary flex-1 text-center"
+                  onClick={() => setPreviewRecruiter(null)}
+                >
                   View Full Profile
-                </button>
+                </Link>
               </div>
             </div>
           ) : (
@@ -1653,9 +1920,9 @@ const Recruiters = () => {
                 </h6>
                 <div className="space-y-3 max-h-96 overflow-y-auto">
                   {notesRecruiterId && getRecruiterNotes(notesRecruiterId).length > 0 ? (
-                    getRecruiterNotes(notesRecruiterId).map((note) => (
+                    getRecruiterNotes(notesRecruiterId).map((note, index) => (
                       <div 
-                        key={note.id}
+                        key={note.id || `note-${index}`}
                         className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg bg-white dark:bg-black/40"
                       >
                         <div className="flex items-start justify-between gap-3 mb-2">

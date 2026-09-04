@@ -1,11 +1,17 @@
 "use client";
 
 import Seo from "@/shared/layout-components/seo/seo";
-import React, { Fragment, useState, useEffect, useMemo, useCallback } from "react";
+import React, { Fragment, useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { usePmRefetchOnFocus } from "@/shared/hooks/usePmRefetchOnFocus";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { listProjects, normalizeProjectPriority, type Project, type ProjectStatus } from "@/shared/lib/api/projects";
+import {
+  listProjects,
+  normalizeProjectPriority,
+  getProjectProgress,
+  type Project,
+  type ProjectStatus,
+} from "@/shared/lib/api/projects";
 import {
   listTasks,
   getTaskId,
@@ -36,16 +42,17 @@ const CHART_COLORS = [
 ];
 
 const PM_SECTION_GAP = "mt-5";
-const PM_TWIN_PANEL_CLASS =
-  "box custom-box flex h-full w-full flex-col rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10";
-const PM_CHART_PANEL_CLASS =
+const PM_PANEL_CLASS =
   "box custom-box flex h-full w-full flex-col rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10";
 const PM_TWIN_BODY_CLASS = "box-body !p-0";
+const PM_HEADER_BTN_CLASS =
+  "inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-600 transition hover:border-slate-900 hover:text-slate-900 dark:border-white/10 dark:bg-bodybg2 dark:text-slate-300 dark:hover:border-white dark:hover:text-white";
 const PM_CHART_BODY_CLASS = "box-body px-4 pb-4 pt-2";
 const PM_CHART_CONTENT_CLASS = "flex min-h-[280px] flex-col";
 const PM_TABLE_CONTENT_CLASS = "px-4 pb-4 pt-3";
 const PM_TABLE_SURFACE_CLASS =
   "overflow-hidden rounded-lg border border-defaultborder/70 bg-white dark:border-white/10 dark:bg-bodybg";
+const PM_CARD_LINK_BTN = "ti-btn ti-btn-outline-secondary !mb-0 whitespace-nowrap !px-3 !py-1.5";
 
 const TASK_CHART_LABELS: Record<TaskStatus, string> = {
   new: "New",
@@ -55,17 +62,46 @@ const TASK_CHART_LABELS: Record<TaskStatus, string> = {
   completed: "Completed",
 };
 
+const CHART_MUTED_FALLBACK = "rgb(140, 144, 151)";
+
+function startOfToday(): Date {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+}
+
+function countByStatus<T extends string>(
+  items: Array<{ status: T }>,
+  statuses: T[],
+  labels: Record<T, string>
+) {
+  return statuses.map((status) => ({
+    status,
+    label: labels[status],
+    count: items.filter((item) => item.status === status).length,
+  }));
+}
+
+function chartMutedLabelColor(): string {
+  if (typeof document === "undefined") return CHART_MUTED_FALLBACK;
+  const raw = getComputedStyle(document.documentElement).getPropertyValue("--text-muted").trim();
+  return raw ? `rgb(${raw.replace(/\s+/g, ", ")})` : CHART_MUTED_FALLBACK;
+}
+
 function buildDonutChartOptions({
   labels,
   colors,
   centerTotal,
   centerLabel,
+  tooltipItemLabel,
 }: {
   labels: string[];
   colors: string[];
   centerTotal: number;
   centerLabel: string;
+  tooltipItemLabel: string;
 }) {
+  const mutedLabel = chartMutedLabelColor();
   return {
     chart: {
       type: "donut" as const,
@@ -82,17 +118,20 @@ function buildDonutChartOptions({
       fontWeight: 500,
       markers: { size: 6, strokeWidth: 0, offsetX: -2 },
       itemMargin: { horizontal: 10, vertical: 6 },
-      formatter: (seriesName: string) => seriesName,
     },
     dataLabels: {
       enabled: true,
-      formatter: (val: number) => (val >= 4 ? `${Math.round(val)}%` : ""),
+      formatter: (val: number) => (val > 0 ? (val < 1 ? "<1%" : `${Math.round(val)}%`) : ""),
+      hideOverflowingLabels: false,
       dropShadow: { enabled: false },
       style: { fontSize: "11px", fontWeight: 600 },
     },
     stroke: { width: 3, colors: ["var(--custom-white)"] },
     plotOptions: {
       pie: {
+        dataLabels: {
+          hideOverflowingLabels: false,
+        },
         donut: {
           size: "68%",
           labels: {
@@ -102,7 +141,7 @@ function buildDonutChartOptions({
               fontSize: "11px",
               fontWeight: 500,
               offsetY: -6,
-              color: "#64748b",
+              color: mutedLabel,
             },
             value: {
               show: true,
@@ -117,7 +156,7 @@ function buildDonutChartOptions({
               label: centerLabel,
               fontSize: "11px",
               fontWeight: 500,
-              color: "#64748b",
+              color: mutedLabel,
               formatter: () => String(centerTotal),
             },
           },
@@ -126,7 +165,7 @@ function buildDonutChartOptions({
     },
     tooltip: {
       y: {
-        formatter: (val: number) => `${val} item${val === 1 ? "" : "s"}`,
+        formatter: (val: number) => `${val} ${tooltipItemLabel}${val === 1 ? "" : "s"}`,
       },
     },
     states: {
@@ -145,12 +184,84 @@ function buildDonutChartOptions({
   };
 }
 
+function getProjectOverviewStatusBadgeClass(status: ProjectStatus): string {
+  if (status === "completed") return "bg-success/10 text-success";
+  if (status === "On hold") return "bg-warning/10 text-warning";
+  return "bg-primary/10 text-primary";
+}
+
+function getAtRiskStatusBadgeClass(status: ProjectStatus): string {
+  if (status === "completed") return "border-success/20 bg-success/10 text-success";
+  if (status === "On hold") return "border-warning/20 bg-warning/10 text-warning";
+  return "border-danger/20 bg-danger/10 text-danger";
+}
+
+function getPriorityBadgeClass(priority: Project["priority"]): string {
+  const pri = normalizeProjectPriority(priority);
+  if (pri === "urgent") return "bg-danger/10 text-danger";
+  if (pri === "high") return "bg-orange-500/10 text-orange-600";
+  if (pri === "medium") return "bg-info/10 text-info";
+  return "bg-success/10 text-success";
+}
+
+function zebraRowClass(index: number): string | undefined {
+  return index % 2 === 1 ? "bg-slate-50/40 dark:bg-white/[0.02]" : undefined;
+}
+
+function DonutChartPanel({
+  title,
+  total,
+  labels,
+  series,
+  centerLabel,
+  tooltipItemLabel,
+  emptyMessage,
+  ariaLabel,
+}: {
+  title: string;
+  total: number;
+  labels: string[];
+  series: number[];
+  centerLabel: string;
+  tooltipItemLabel: string;
+  emptyMessage: string;
+  ariaLabel: string;
+}) {
+  return (
+    <div className="col-span-12 xl:col-span-6">
+      <div className={PM_PANEL_CLASS}>
+        <div className="box-header border-b border-defaultborder/60 bg-slate-50/80 dark:border-white/10 dark:bg-white/[0.03]">
+          <h5 className="box-title mb-0">{title}</h5>
+          <span className="text-[0.6875rem] font-medium tabular-nums text-defaulttextcolor/45">
+            {total} total
+          </span>
+        </div>
+        <div className={PM_CHART_BODY_CLASS}>
+          <div className={PM_CHART_CONTENT_CLASS}>
+            <DonutStatusChart
+              labels={labels}
+              series={series}
+              colors={CHART_COLORS}
+              centerTotal={total}
+              centerLabel={centerLabel}
+              tooltipItemLabel={tooltipItemLabel}
+              emptyMessage={emptyMessage}
+              ariaLabel={ariaLabel}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DonutStatusChart({
   labels,
   series,
   colors,
   centerTotal,
   centerLabel,
+  tooltipItemLabel,
   emptyMessage,
   ariaLabel,
 }: {
@@ -159,12 +270,23 @@ function DonutStatusChart({
   colors: string[];
   centerTotal: number;
   centerLabel: string;
+  tooltipItemLabel: string;
   emptyMessage: string;
   ariaLabel: string;
 }) {
+  const [isDark, setIsDark] = useState(false);
+  useEffect(() => {
+    const el = document.documentElement;
+    const update = () => setIsDark(el.classList.contains("dark"));
+    update();
+    const obs = new MutationObserver(update);
+    obs.observe(el, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
+
   const options = useMemo(
-    () => buildDonutChartOptions({ labels, colors, centerTotal, centerLabel }),
-    [labels, colors, centerTotal, centerLabel]
+    () => buildDonutChartOptions({ labels, colors, centerTotal, centerLabel, tooltipItemLabel }),
+    [labels, colors, centerTotal, centerLabel, tooltipItemLabel, isDark]
   );
 
   if (centerTotal === 0) {
@@ -181,7 +303,14 @@ function DonutStatusChart({
       role="img"
       aria-label={ariaLabel}
     >
-      <ReactApexChart type="donut" height={280} width="100%" options={options} series={series} />
+      <ReactApexChart
+        key={isDark ? "dark" : "light"}
+        type="donut"
+        height={280}
+        width="100%"
+        options={options}
+        series={series}
+      />
     </div>
   );
 }
@@ -243,12 +372,6 @@ function joinNames(items: Array<{ name?: string } | undefined> | undefined): str
 function getTaskProjectName(task: Task): string {
   const { embeddedName } = getTaskProjectMeta(task);
   return embeddedName ?? "";
-}
-
-function projectProgressPct(project: Project): number {
-  const total = project.totalTasks ?? 0;
-  const done = project.completedTasks ?? 0;
-  return total > 0 ? Math.round((done / total) * 100) : 0;
 }
 
 type PmAnalyticsExportInput = {
@@ -316,14 +439,14 @@ function exportPmAnalyticsToExcel(input: PmAnalyticsExportInput) {
       project.name ?? "",
       PROJECT_STATUS_LABELS[project.status],
       normalizeProjectPriority(project.priority),
-      projectProgressPct(project),
+      getProjectProgress(project),
       project.completedTasks ?? 0,
       project.totalTasks ?? 0,
       fmtExportDate(project.startDate),
       fmtExportDate(project.endDate),
       project.projectManager ?? "",
       joinNames(project.assignedTo),
-      (project.assignedTeams ?? []).map((team) => team.name ?? "").filter(Boolean).join("; "),
+      joinNames(project.assignedTeams),
       (project.tags ?? []).join("; "),
     ])
   );
@@ -352,7 +475,7 @@ function exportPmAnalyticsToExcel(input: PmAnalyticsExportInput) {
       PROJECT_STATUS_LABELS[project.status],
       normalizeProjectPriority(project.priority),
       fmtExportDate(project.endDate),
-      projectProgressPct(project),
+      getProjectProgress(project),
       project.completedTasks ?? 0,
       project.totalTasks ?? 0,
     ])
@@ -407,35 +530,60 @@ function SkeletonCard() {
 
 const AnalyticsPage = () => {
   const [loading, setLoading] = useState(true);
+  const [refetching, setRefetching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [teamCount, setTeamCount] = useState(0);
+  const fetchIdRef = useRef(0);
 
-  const fetchData = useCallback(() => {
-    setLoading(true);
+  const fetchData = useCallback((opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false;
+    const fetchId = ++fetchIdRef.current;
+    if (silent) {
+      setRefetching(true);
+    } else {
+      setLoading(true);
+      setError(null);
+    }
     Promise.all([
       listProjects({ limit: 200 }),
       listTasks({ limit: 200 }),
-      listTeamGroups({ limit: 200 }),
+      listTeamGroups({ limit: 200 }).catch(() => null),
     ])
       .then(([projRes, taskRes, teamRes]) => {
+        if (fetchId !== fetchIdRef.current) return;
         setProjects(projRes.results ?? []);
         setTasks(taskRes.results ?? []);
-        setTeamCount(teamRes.totalResults ?? (teamRes.results ?? []).length);
+        setTeamCount(
+          teamRes ? teamRes.totalResults ?? (teamRes.results ?? []).length : 0
+        );
       })
-      .catch(() => {
+      .catch((err) => {
+        if (fetchId !== fetchIdRef.current) return;
+        if (silent) return;
         setProjects([]);
         setTasks([]);
         setTeamCount(0);
+        setError(err instanceof Error ? err.message : "Failed to load analytics data.");
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (fetchId !== fetchIdRef.current) return;
+        if (silent) {
+          setRefetching(false);
+        } else {
+          setLoading(false);
+        }
+      });
   }, []);
+
+  const silentRefetch = useCallback(() => fetchData({ silent: true }), [fetchData]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  usePmRefetchOnFocus(fetchData);
+  usePmRefetchOnFocus(silentRefetch);
 
   const kpis = useMemo(() => {
     const totalProjects = projects.length;
@@ -464,46 +612,19 @@ const AnalyticsPage = () => {
     };
   }, [projects, tasks, teamCount]);
 
-  const tasksByStatus = useMemo(() => {
-    const statuses: TaskStatus[] = [
-      "new",
-      "todo",
-      "on_going",
-      "in_review",
-      "completed",
-    ];
-    const counts = statuses.map((s) => ({
-      status: s,
-      label: TASK_CHART_LABELS[s],
-      count: tasks.filter((t) => t.status === s).length,
-    }));
-    return counts;
-  }, [tasks]);
-
-  const projectsByStatus = useMemo(() => {
-    const statuses: ProjectStatus[] = ["Inprogress", "On hold", "completed"];
-    const counts = statuses.map((s) => ({
-      status: s,
-      label: PROJECT_STATUS_LABELS[s],
-      count: projects.filter((p) => p.status === s).length,
-    }));
-    return counts;
-  }, [projects]);
-
-  const tasksChartLabels = useMemo(() => tasksByStatus.map((s) => s.label), [tasksByStatus]);
-  const tasksChartSeries = useMemo(() => tasksByStatus.map((s) => s.count), [tasksByStatus]);
-  const projectsChartLabels = useMemo(
-    () => projectsByStatus.map((s) => s.label),
-    [projectsByStatus]
+  const tasksByStatus = useMemo(
+    () =>
+      countByStatus(tasks, ["new", "todo", "on_going", "in_review", "completed"], TASK_CHART_LABELS),
+    [tasks]
   );
-  const projectsChartSeries = useMemo(
-    () => projectsByStatus.map((s) => s.count),
-    [projectsByStatus]
+
+  const projectsByStatus = useMemo(
+    () => countByStatus(projects, ["Inprogress", "On hold", "completed"], PROJECT_STATUS_LABELS),
+    [projects]
   );
 
   const overdueTasks = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = startOfToday();
     return tasks.filter(
       (t) =>
         t.dueDate &&
@@ -513,8 +634,7 @@ const AnalyticsPage = () => {
   }, [tasks]);
 
   const atRiskProjects = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = startOfToday();
     return projects.filter(
       (p) =>
         p.endDate &&
@@ -574,6 +694,28 @@ const AnalyticsPage = () => {
     );
   }
 
+  if (error) {
+    return (
+      <Fragment>
+        <Seo title="Analytics" />
+        <div className="pb-10 sm:pb-12">
+          <div className="box custom-box">
+            <div className="box-body py-10 text-center">
+              <span className="avatar avatar-lg !rounded-full mb-3 inline-flex items-center justify-center bg-danger/10 text-danger">
+                <i className="ri-error-warning-line text-[1.5rem]" />
+              </span>
+              <h6 className="mb-1 font-semibold">Couldn&apos;t load analytics</h6>
+              <p className="mb-4 text-[#8c9097] dark:text-white/50">{error}</p>
+              <button type="button" onClick={fetchData} className="ti-btn ti-btn-primary-full btn-wave">
+                Try again
+              </button>
+            </div>
+          </div>
+        </div>
+      </Fragment>
+    );
+  }
+
   return (
     <Fragment>
       <Seo title="Analytics" />
@@ -607,7 +749,7 @@ const AnalyticsPage = () => {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-600 transition hover:border-slate-900 hover:text-slate-900 dark:border-white/10 dark:bg-bodybg2 dark:text-slate-300 dark:hover:border-white dark:hover:text-white"
+              className={PM_HEADER_BTN_CLASS}
               onClick={() =>
                 exportPmAnalyticsToExcel({
                   kpis,
@@ -624,16 +766,18 @@ const AnalyticsPage = () => {
             </button>
               <button
                 type="button"
-                onClick={fetchData}
-                aria-label="Refresh"
-                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-600 transition hover:border-slate-900 hover:text-slate-900 dark:border-white/10 dark:bg-bodybg2 dark:text-slate-300 dark:hover:border-white dark:hover:text-white"
+                onClick={silentRefetch}
+                disabled={refetching}
+                aria-label={refetching ? "Refreshing data" : "Refresh"}
+                aria-busy={refetching}
+                className={`${PM_HEADER_BTN_CLASS} disabled:opacity-60`}
               >
-                <i className="ri-refresh-line" />
+                <i className={`ri-refresh-line ${refetching ? "animate-spin" : ""}`} />
                 <span>Refresh</span>
               </button>
-            </div>
           </div>
         </div>
+      </div>
       <div className="grid grid-cols-12 gap-x-2 gap-y-6">
         <StatCard
           title="Total Projects"
@@ -662,52 +806,26 @@ const AnalyticsPage = () => {
       </div>
 
       <div className={`${PM_SECTION_GAP} grid grid-cols-12 items-stretch gap-x-3 gap-y-4`}>
-        <div className="col-span-12 xl:col-span-6">
-          <div className={PM_CHART_PANEL_CLASS}>
-            <div className="box-header border-b border-defaultborder/60 bg-slate-50/80 dark:border-white/10 dark:bg-white/[0.03]">
-              <h5 className="box-title mb-0">Tasks by status</h5>
-              <span className="text-[0.6875rem] font-medium tabular-nums text-defaulttextcolor/45">
-                {kpis.totalTasks} total
-              </span>
-            </div>
-            <div className={PM_CHART_BODY_CLASS}>
-              <div className={PM_CHART_CONTENT_CLASS}>
-                <DonutStatusChart
-                  labels={tasksChartLabels}
-                  series={tasksChartSeries}
-                  colors={CHART_COLORS}
-                  centerTotal={kpis.totalTasks}
-                  centerLabel="Tasks"
-                  emptyMessage="No tasks yet."
-                  ariaLabel={`Tasks by status. ${kpis.totalTasks} tasks total.`}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="col-span-12 xl:col-span-6">
-          <div className={PM_CHART_PANEL_CLASS}>
-            <div className="box-header border-b border-defaultborder/60 bg-slate-50/80 dark:border-white/10 dark:bg-white/[0.03]">
-              <h5 className="box-title mb-0">Projects by status</h5>
-              <span className="text-[0.6875rem] font-medium tabular-nums text-defaulttextcolor/45">
-                {kpis.totalProjects} total
-              </span>
-            </div>
-            <div className={PM_CHART_BODY_CLASS}>
-              <div className={PM_CHART_CONTENT_CLASS}>
-                <DonutStatusChart
-                  labels={projectsChartLabels}
-                  series={projectsChartSeries}
-                  colors={CHART_COLORS}
-                  centerTotal={kpis.totalProjects}
-                  centerLabel="Projects"
-                  emptyMessage="No projects yet."
-                  ariaLabel={`Projects by status. ${kpis.totalProjects} projects total.`}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
+        <DonutChartPanel
+          title="Tasks by status"
+          total={kpis.totalTasks}
+          labels={tasksByStatus.map((s) => s.label)}
+          series={tasksByStatus.map((s) => s.count)}
+          centerLabel="Tasks"
+          tooltipItemLabel="task"
+          emptyMessage="No tasks yet."
+          ariaLabel={`Tasks by status. ${kpis.totalTasks} tasks total.`}
+        />
+        <DonutChartPanel
+          title="Projects by status"
+          total={kpis.totalProjects}
+          labels={projectsByStatus.map((s) => s.label)}
+          series={projectsByStatus.map((s) => s.count)}
+          centerLabel="Projects"
+          tooltipItemLabel="project"
+          emptyMessage="No projects yet."
+          ariaLabel={`Projects by status. ${kpis.totalProjects} projects total.`}
+        />
       </div>
 
       <div className={`${PM_SECTION_GAP} grid grid-cols-12 gap-x-3 gap-y-4`}>
@@ -717,7 +835,7 @@ const AnalyticsPage = () => {
               <h5 className="box-title">Projects overview</h5>
               <Link
                 href="/apps/projects/project-list"
-                className="ti-btn ti-btn-primary !mb-0 whitespace-nowrap !px-3 !py-1"
+                className={PM_CARD_LINK_BTN}
               >
                 View all
               </Link>
@@ -729,7 +847,14 @@ const AnalyticsPage = () => {
                 </p>
               ) : (
                 <div className="table-responsive">
-                  <table className="table whitespace-nowrap mb-0">
+                  <table className="table mb-0 w-full min-w-full table-fixed whitespace-nowrap">
+                    <colgroup>
+                      <col className="w-[40%]" />
+                      <col className="w-[14%]" />
+                      <col className="w-[14%]" />
+                      <col className="w-[22%]" />
+                      <col className="w-[10%]" />
+                    </colgroup>
                     <thead>
                       <tr>
                         <th>Project</th>
@@ -743,52 +868,37 @@ const AnalyticsPage = () => {
                       {projects.slice(0, 10).map((p) => {
                         const total = p.totalTasks ?? 0;
                         const done = p.completedTasks ?? 0;
-                        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+                        const pct = getProjectProgress(p);
                         return (
                           <tr key={getProjectId(p)}>
-                            <td>
+                            <td className="max-w-0 truncate" title={p.name}>
                               <Link
                                 href={`/apps/projects/edit/${getProjectId(p)}`}
-                                className="text-primary hover:underline font-medium"
+                                className="block truncate font-medium text-primary hover:underline"
                               >
                                 {p.name}
                               </Link>
                             </td>
                             <td>
-                              <span
-                                className={`badge ${
-                                  p.status === "completed"
-                                    ? "bg-success/10 text-success"
-                                    : p.status === "On hold"
-                                      ? "bg-warning/10 text-warning"
-                                      : "bg-primary/10 text-primary"
-                                }`}
-                              >
+                              <span className={`badge ${getProjectOverviewStatusBadgeClass(p.status)}`}>
                                 {PROJECT_STATUS_LABELS[p.status]}
                               </span>
                             </td>
                             <td>
-                              {(() => {
-                                const pri = normalizeProjectPriority(p.priority);
-                                const cls =
-                                  pri === "urgent"
-                                    ? "bg-danger/10 text-danger"
-                                    : pri === "high"
-                                      ? "bg-orange-500/10 text-orange-600"
-                                      : pri === "medium"
-                                        ? "bg-info/10 text-info"
-                                        : "bg-success/10 text-success";
-                                return (
-                                  <span className={`badge ${cls}`}>{pri}</span>
-                                );
-                              })()}
+                              <span className={`badge ${getPriorityBadgeClass(p.priority)}`}>
+                                {normalizeProjectPriority(p.priority)}
+                              </span>
                             </td>
                             <td>
                               <div className="flex items-center gap-2">
-                                <div className="progress progress-xs flex-grow w-24">
+                                <div className="progress progress-xs w-24 flex-grow">
                                   <div
                                     className="progress-bar bg-primary"
+                                    role="progressbar"
                                     style={{ width: `${pct}%` }}
+                                    aria-valuenow={pct}
+                                    aria-valuemin={0}
+                                    aria-valuemax={100}
                                   />
                                 </div>
                                 <span className="text-[0.75rem]">{pct}%</span>
@@ -811,12 +921,12 @@ const AnalyticsPage = () => {
 
       <div className={`${PM_SECTION_GAP} mb-2 grid grid-cols-12 items-stretch gap-x-3 gap-y-4`}>
         <div className="col-span-12 xl:col-span-6">
-          <div className={PM_TWIN_PANEL_CLASS}>
+          <div className={PM_PANEL_CLASS}>
             <div className="box-header border-b border-defaultborder/60 bg-slate-50/80 dark:border-white/10 dark:bg-white/[0.03]">
               <h5 className="box-title mb-0">Overdue tasks</h5>
               <Link
                 href="/task/kanban-board"
-                className="ti-btn ti-btn-outline-secondary !mb-0 whitespace-nowrap !px-3 !py-1.5"
+                className={PM_CARD_LINK_BTN}
               >
                 View board
               </Link>
@@ -828,47 +938,47 @@ const AnalyticsPage = () => {
                   emptyMessage="No overdue tasks."
                   isEmpty={overdueTasks.length === 0}
                 >
-                  {overdueTasks.slice(0, 10).map((t, idx) => (
-                    <tr
-                      key={getTaskId(t)}
-                      className={idx % 2 === 1 ? "bg-slate-50/40 dark:bg-white/[0.02]" : undefined}
-                    >
-                      <td className="max-w-[12rem] px-3 py-2 align-middle">
-                        <Link
-                          href={`/task/task-details?taskId=${getTaskId(t)}`}
-                          className="block truncate font-medium text-primary hover:underline"
-                          title={t.title}
-                        >
-                          {t.title}
-                        </Link>
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2 align-middle text-[0.8125rem] tabular-nums text-defaulttextcolor/75">
-                        {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "—"}
-                      </td>
-                      <td className="px-3 py-2 align-middle">
-                        <span className="inline-flex rounded-full border border-danger/20 bg-danger/10 px-2 py-0.5 text-[0.6875rem] font-semibold uppercase tracking-wide text-danger">
-                          {TASK_STATUS_LABELS[t.status]}
-                        </span>
-                      </td>
-                      <td className="max-w-[10rem] px-3 py-2 align-middle text-[0.8125rem] text-defaulttextcolor/70">
-                        <span className="block truncate" title={typeof t.projectId === "object" && t.projectId?.name ? t.projectId.name : undefined}>
-                          {typeof t.projectId === "object" && t.projectId?.name ? t.projectId.name : "—"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {overdueTasks.slice(0, 10).map((t, idx) => {
+                    const projectName = getTaskProjectName(t);
+                    return (
+                      <tr key={getTaskId(t)} className={zebraRowClass(idx)}>
+                        <td className="max-w-[12rem] px-3 py-2 align-middle">
+                          <Link
+                            href={`/task/task-details?taskId=${getTaskId(t)}`}
+                            className="block truncate font-medium text-primary hover:underline"
+                            title={t.title}
+                          >
+                            {t.title}
+                          </Link>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 align-middle text-[0.8125rem] tabular-nums text-defaulttextcolor/75">
+                          {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "—"}
+                        </td>
+                        <td className="px-3 py-2 align-middle">
+                          <span className="inline-flex rounded-full border border-danger/20 bg-danger/10 px-2 py-0.5 text-[0.6875rem] font-semibold uppercase tracking-wide text-danger">
+                            {TASK_STATUS_LABELS[t.status]}
+                          </span>
+                        </td>
+                        <td className="max-w-[10rem] px-3 py-2 align-middle text-[0.8125rem] text-defaulttextcolor/70">
+                          <span className="block truncate" title={projectName || undefined}>
+                            {projectName || "—"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </PmCompactTable>
               </div>
             </div>
           </div>
         </div>
         <div className="col-span-12 xl:col-span-6">
-          <div className={PM_TWIN_PANEL_CLASS}>
+          <div className={PM_PANEL_CLASS}>
             <div className="box-header border-b border-defaultborder/60 bg-slate-50/80 dark:border-white/10 dark:bg-white/[0.03]">
               <h5 className="box-title mb-0">At-risk projects</h5>
               <Link
                 href="/apps/projects/project-list"
-                className="ti-btn ti-btn-outline-secondary !mb-0 whitespace-nowrap !px-3 !py-1.5"
+                className={PM_CARD_LINK_BTN}
               >
                 View all
               </Link>
@@ -881,10 +991,7 @@ const AnalyticsPage = () => {
                   isEmpty={atRiskProjects.length === 0}
                 >
                   {atRiskProjects.slice(0, 10).map((p, idx) => (
-                    <tr
-                      key={getProjectId(p)}
-                      className={idx % 2 === 1 ? "bg-slate-50/40 dark:bg-white/[0.02]" : undefined}
-                    >
+                    <tr key={getProjectId(p)} className={zebraRowClass(idx)}>
                       <td className="max-w-[12rem] px-3 py-2 align-middle">
                         <Link
                           href={`/apps/projects/edit/${getProjectId(p)}`}
@@ -899,13 +1006,7 @@ const AnalyticsPage = () => {
                       </td>
                       <td className="px-3 py-2 align-middle">
                         <span
-                          className={`inline-flex rounded-full border px-2 py-0.5 text-[0.6875rem] font-semibold ${
-                            p.status === "completed"
-                              ? "border-success/20 bg-success/10 text-success"
-                              : p.status === "On hold"
-                                ? "border-warning/20 bg-warning/10 text-warning"
-                                : "border-danger/20 bg-danger/10 text-danger"
-                          }`}
+                          className={`inline-flex rounded-full border px-2 py-0.5 text-[0.6875rem] font-semibold ${getAtRiskStatusBadgeClass(p.status)}`}
                         >
                           {PROJECT_STATUS_LABELS[p.status]}
                         </span>

@@ -3,17 +3,19 @@ import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { useSearchParams } from 'next/navigation'
-import { useTable, useSortBy, usePagination } from 'react-table'
+import { useTable, useSortBy } from 'react-table'
 import Link from 'next/link'
 import JobsFilterPanel from './_components/JobsFilterPanel'
 import JobPreviewPanel from './_components/JobPreviewPanel'
 import JobShareModal from './_components/JobShareModal'
+import ListPagination from '@/shared/components/ListPagination'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 import { useAuth } from '@/shared/contexts/auth-context'
 import { hasSalesAgentRole } from '@/shared/lib/roles'
-import { buildPageWindow } from '@/shared/lib/pagination-items'
 import {
   listJobs,
+  getJobById,
+  getJobFilterOptions,
   deleteJob,
   exportJobsToExcel,
   importJobsFromExcel,
@@ -24,14 +26,24 @@ import {
   addJobBookmark,
   deleteJobBookmark,
   type JobBookmarkNote,
-  type JobsListParams,
+  type JobFilterOptions,
 } from '@/shared/lib/api/jobs'
+import {
+  buildJobExportParams,
+  buildJobListParams,
+  filterJobFacetOptions,
+  type JobSidebarFilters,
+} from '@/shared/lib/ats/job-list-filters'
+import {
+  DEFAULT_JOB_SORT_API,
+  sortOptionToApiSortBy,
+} from '@/shared/lib/ats/job-list-sort'
 import { listCandidates } from '@/shared/lib/api/candidates'
 import { listJobApplications, updateJobApplicationStatus, type JobApplication } from '@/shared/lib/api/jobApplications'
 import { initiateBolnaCall } from '@/shared/lib/api/bolna'
 import { createJobShareReferralLink } from '@/shared/lib/api/referralLeads'
 import { getApiErrorMessage } from '@/shared/lib/api/client'
-import { isJobSalarySpecified, mapJobToDisplay, type DisplayJob } from '@/shared/lib/ats/jobMappers'
+import { mapJobToDisplay, type DisplayJob } from '@/shared/lib/ats/jobMappers'
 import {
   formatJobDescriptionForDisplay,
   JOB_DESCRIPTION_PROSE_CLASS,
@@ -49,16 +61,7 @@ const DEFAULT_EXPERIENCE_RANGE = { min: 0, max: 20 }
 
 
 
-interface FilterState {
-  jobTitle: string[]
-  company: string[]
-  experience: [number, number] // [min, max] in years
-  location: string[]
-  salary: [number, number] // [min, max]
-  salaryNotSpecified: boolean
-  status: string // 'all' | actual backend status string (Active, Inactive, Draft, Archived, ...)
-  postingDate: string
-}
+interface FilterState extends JobSidebarFilters {}
 
 const salaryRangesConst = DEFAULT_SALARY_RANGE
 const experienceRangesConst = DEFAULT_EXPERIENCE_RANGE
@@ -112,17 +115,28 @@ const Jobs = () => {
   const { roleNames } = useAuth()
   const isSalesAgent = hasSalesAgentRole(roleNames)
   const [jobsData, setJobsData] = useState<DisplayJob[]>([])
-  /** In-flight GET /jobs (listing type, etc.). */
   const [jobsListFetching, setJobsListFetching] = useState(true)
-  /** After first successful/failed fetch; avoids full-page unmount on refetch so Preline offcanvas backdrops are not orphaned. */
   const jobsEverLoadedRef = useRef(false)
+  const fetchGenerationRef = useRef(0)
   const [listJobOrigin, setListJobOrigin] = useState<'' | 'internal' | 'external'>('')
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [totalResults, setTotalResults] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
+  const [sortBy, setSortBy] = useState<string>(DEFAULT_JOB_SORT_API)
+  const [debouncedJobNameSearch, setDebouncedJobNameSearch] = useState('')
+  /** Quick search — job name only (toolbar input). */
+  const [jobNameSearch, setJobNameSearch] = useState('')
+  const [filterOptions, setFilterOptions] = useState<JobFilterOptions>({
+    titles: [],
+    companies: [],
+    locations: [],
+    statuses: [],
+    experience: { min: DEFAULT_EXPERIENCE_RANGE.min, max: DEFAULT_EXPERIENCE_RANGE.max },
+  })
 
   const [bookmarkedJobs, setBookmarkedJobs] = useState<Set<string>>(new Set())
-  // Draft text of the "Go to page" field. Deliberately separate from react-table's
-  // pageIndex so a half-typed number never repaginates — the jump happens on submit.
-  const [gotoPageInput, setGotoPageInput] = useState('')
   const [previewJob, setPreviewJob] = useState<any>(null)
   const [companyModal, setCompanyModal] = useState<any>(null)
   const [bookmarkNotesJobId, setBookmarkNotesJobId] = useState<string | null>(null)
@@ -160,52 +174,117 @@ const Jobs = () => {
     postingDate: ''
   })
 
-  const listJobsParams = useMemo(() => {
-    const params: JobsListParams = {
-      limit: 500,
-      jobOrigin:
-        listJobOrigin === 'internal' || listJobOrigin === 'external'
-          ? listJobOrigin
-          : undefined,
+  const experienceRanges = useMemo(
+    () => ({
+      min: filterOptions.experience.min ?? experienceRangesConst.min,
+      max: filterOptions.experience.max ?? experienceRangesConst.max,
+    }),
+    [filterOptions.experience.min, filterOptions.experience.max]
+  )
+
+  const listQueryInput = useMemo(
+    () => ({
+      page: currentPage,
+      limit: pageSize,
+      sortBy,
+      search: debouncedJobNameSearch,
+      listJobOrigin,
+      filters,
+      salaryBounds: salaryRangesConst,
+      experienceBounds: experienceRanges,
+    }),
+    [currentPage, pageSize, sortBy, debouncedJobNameSearch, listJobOrigin, filters, experienceRanges]
+  )
+
+  const fetchJobs = useCallback(async (signal?: AbortSignal) => {
+    const generation = ++fetchGenerationRef.current
+    setJobsListFetching(true)
+    try {
+      const params = buildJobListParams(listQueryInput)
+      const res = await listJobs(params, signal ? { signal } : undefined)
+      if (generation !== fetchGenerationRef.current) return
+      setJobsData((res.results ?? []).map(mapJobToDisplay))
+      setTotalResults(res.totalResults ?? 0)
+      setTotalPages(res.totalPages ?? 0)
+    } catch (err: unknown) {
+      if (generation !== fetchGenerationRef.current) return
+      const aborted =
+        (err as { code?: string; name?: string })?.code === 'ERR_CANCELED' ||
+        (err as { name?: string })?.name === 'CanceledError'
+      if (aborted) return
+      setJobsData([])
+      setTotalResults(0)
+      setTotalPages(0)
+    } finally {
+      if (generation === fetchGenerationRef.current) {
+        jobsEverLoadedRef.current = true
+        setJobsListFetching(false)
+      }
     }
-    if (filters.salaryNotSpecified) {
-      params.salaryNotSpecified = true
-    } else if (
-      filters.salary[0] !== salaryRangesConst.min ||
-      filters.salary[1] !== salaryRangesConst.max
-    ) {
-      params.salaryMin = filters.salary[0]
-      params.salaryMax = filters.salary[1]
+  }, [listQueryInput])
+
+  const fetchFilterOptions = useCallback(async () => {
+    try {
+      const options = await getJobFilterOptions({
+        status: filters.status === 'all' ? 'all' : filters.status,
+        ...(debouncedJobNameSearch.trim() && { search: debouncedJobNameSearch.trim() }),
+        ...(listJobOrigin === 'internal' || listJobOrigin === 'external'
+          ? { jobOrigin: listJobOrigin }
+          : {}),
+      })
+      setFilterOptions(options)
+    } catch {
+      setFilterOptions({
+        titles: [],
+        companies: [],
+        locations: [],
+        statuses: [],
+        experience: { min: experienceRangesConst.min, max: experienceRangesConst.max },
+      })
     }
-    return params
-  }, [listJobOrigin, filters.salary, filters.salaryNotSpecified])
+  }, [filters.status, debouncedJobNameSearch, listJobOrigin])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedJobNameSearch(jobNameSearch)
+    }, 300)
+    return () => window.clearTimeout(timer)
+  }, [jobNameSearch])
+
+  useEffect(() => {
+    setCurrentPage(1)
+    setSelectedRows(new Set())
+  }, [filters, listJobOrigin, debouncedJobNameSearch, sortBy, pageSize])
+
+  useEffect(() => {
+    setSelectedRows(new Set())
+  }, [currentPage])
 
   useEffect(() => {
     const ac = new AbortController()
-    setJobsListFetching(true)
-    listJobs(listJobsParams, { signal: ac.signal })
-      .then((res) => {
-        if (ac.signal.aborted) return
-        setJobsData((res.results ?? []).map(mapJobToDisplay))
-      })
-      .catch((err: unknown) => {
-        const aborted =
-          ac.signal.aborted ||
-          (err as { code?: string; name?: string })?.code === "ERR_CANCELED" ||
-          (err as { name?: string })?.name === "CanceledError"
-        if (aborted) return
-        setJobsData([])
-      })
-      .finally(() => {
-        if (ac.signal.aborted) return
-        jobsEverLoadedRef.current = true
-        setJobsListFetching(false)
-      })
+    void fetchJobs(ac.signal)
     return () => ac.abort()
-  }, [listJobsParams])
+  }, [fetchJobs])
 
-  // Deep-link: ?view=<jobId> (e.g. from dashboard Recent Jobs) opens that job's
-  // preview panel once jobs are loaded. Guard against re-opening if the user closes it.
+  useEffect(() => {
+    void fetchFilterOptions()
+  }, [fetchFilterOptions])
+
+  useEffect(() => {
+    setFilters((prev) => {
+      const isStillDefault =
+        prev.experience[0] === experienceRangesConst.min &&
+        prev.experience[1] === experienceRangesConst.max
+      const needsSync =
+        prev.experience[0] !== experienceRanges.min || prev.experience[1] !== experienceRanges.max
+      if (isStillDefault && needsSync) {
+        return { ...prev, experience: [experienceRanges.min, experienceRanges.max] }
+      }
+      return prev
+    })
+  }, [experienceRanges.min, experienceRanges.max])
+
+  // Deep-link: ?view=<jobId> opens preview; fetch by id when job is not on the current page.
   const autoOpenedViewIdRef = useRef<string | null>(null)
   const viewJobIdParam = searchParams.get('view')?.trim() || null
   useEffect(() => {
@@ -214,20 +293,35 @@ const Jobs = () => {
       return
     }
     if (autoOpenedViewIdRef.current === viewJobIdParam) return
-    if (!jobsData.length) return
+
     const match = jobsData.find((job) => job.id === viewJobIdParam)
     if (match) {
       autoOpenedViewIdRef.current = viewJobIdParam
       setPreviewJob(match)
+      return
     }
-  }, [viewJobIdParam, jobsData])
 
-  // Search states for filter dropdowns
+    if (jobsListFetching) return
+
+    let cancelled = false
+    void getJobById(viewJobIdParam)
+      .then((job) => {
+        if (cancelled) return
+        autoOpenedViewIdRef.current = viewJobIdParam
+        setPreviewJob(mapJobToDisplay(job))
+      })
+      .catch(() => {
+        if (cancelled) return
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [viewJobIdParam, jobsData, jobsListFetching])
+
   const [searchJobTitle, setSearchJobTitle] = useState('')
   const [searchCompany, setSearchCompany] = useState('')
   const [searchLocation, setSearchLocation] = useState('')
-  /** Quick search — job name only (toolbar input). */
-  const [jobNameSearch, setJobNameSearch] = useState('')
 
   // Excel import
   const [excelImporting, setExcelImporting] = useState(false)
@@ -330,27 +424,23 @@ const Jobs = () => {
   }
 
   const refreshJobs = () => {
-    listJobs(listJobsParams)
-      .then((res) => setJobsData((res.results ?? []).map(mapJobToDisplay)))
-      .catch(() => {})
+    void fetchJobs()
   }
 
   const handleExportExcel = async () => {
     try {
-      // Export what the list is showing. Filtering happens client-side, so the ids
-      // of the filtered rows are the only faithful way to express it to the server.
-      const visibleIds = filteredData.map((job) => job.id).filter(Boolean)
-      if (visibleIds.length === 0) {
-        alert('No jobs match the current filters — nothing to export.')
-        return
-      }
-      const blob = await exportJobsToExcel(visibleIds)
+      const { blob, capped, totalResults: exportTotal, exportMax } = await exportJobsToExcel(
+        buildJobExportParams(listQueryInput)
+      )
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
       a.download = `jobs_export_${Date.now()}.xlsx`
       a.click()
       URL.revokeObjectURL(url)
+      if (capped && exportTotal != null && exportMax != null) {
+        alert(`Export capped at ${exportMax.toLocaleString()} of ${exportTotal.toLocaleString()} matching jobs.`)
+      }
     } catch (err) {
       alert('Failed to export jobs')
     }
@@ -912,158 +1002,33 @@ const Jobs = () => {
     [selectedRows, bookmarkedJobs, canDelete, canEdit, callingJobId, isSalesAgent]
   )
 
-  // Filter data based on filter state
-  const filteredData = useMemo(() => {
-    return jobsData.filter((job) => {
-      const nameQuery = jobNameSearch.trim().toLowerCase()
-      if (nameQuery && !job.jobTitle.toLowerCase().includes(nameQuery)) {
-        return false
-      }
+  const data = useMemo(() => jobsData, [jobsData])
 
-      // Job Title filter (array) — advanced panel only
-      if (filters.jobTitle.length > 0 && !filters.jobTitle.some(title =>
-        job.jobTitle.toLowerCase().includes(title.toLowerCase())
-      )) {
-        return false
-      }
-      
-      // Company filter (array)
-      if (filters.company.length > 0 && !filters.company.includes(job.company)) {
-        return false
-      }
-      
-      // Experience filter (range) — overlap test against numeric job range.
-      // Falls back to parsing the formatted string if the numeric range is
-      // missing (legacy rows). When the user narrows experience, jobs with no
-      // detectable range are excluded (they cannot satisfy the filter).
-      const expMinActive = filters.experience[0] !== experienceRangesConst.min
-      const expMaxActive = filters.experience[1] !== experienceRangesConst.max
-      if (expMinActive || expMaxActive) {
-        let jobMin: number | null = job.minExperienceNum ?? null
-        let jobMax: number | null = job.maxExperienceNum ?? null
-        if (jobMin == null && jobMax == null && job.experience) {
-          const range = job.experience.match(/(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)/)
-          const plus = job.experience.match(/(\d+(?:\.\d+)?)\s*\+/)
-          const upTo = job.experience.match(/Up to\s+(\d+(?:\.\d+)?)/i)
-          if (range) {
-            jobMin = parseFloat(range[1])
-            jobMax = parseFloat(range[2])
-          } else if (plus) {
-            jobMin = parseFloat(plus[1])
-            jobMax = experienceRangesConst.max
-          } else if (upTo) {
-            jobMin = 0
-            jobMax = parseFloat(upTo[1])
-          }
-        }
-        if (jobMin == null && jobMax == null) {
-          return false
-        }
-        const lo = jobMin ?? 0
-        const hi = jobMax ?? jobMin ?? experienceRangesConst.max
-        if (hi < filters.experience[0] || lo > filters.experience[1]) {
-          return false
-        }
-      }
-
-      // Location filter (array)
-      if (filters.location.length > 0 && !filters.location.includes(job.location)) {
-        return false
-      }
-
-      // Salary filter — "Not specified" or numeric range overlap.
-      if (filters.salaryNotSpecified) {
-        if (isJobSalarySpecified(job)) {
-          return false
-        }
-      } else {
-        const salMinActive = filters.salary[0] !== salaryRangesConst.min
-        const salMaxActive = filters.salary[1] !== salaryRangesConst.max
-        if (salMinActive || salMaxActive) {
-          let jobMin: number | null = job.salaryMinNum ?? null
-          let jobMax: number | null = job.salaryMaxNum ?? null
-          if (jobMin === 0 && jobMax === 0) {
-            jobMin = null
-            jobMax = null
-          }
-          if (jobMin == null && jobMax == null && job.salary) {
-            const matches = job.salary.match(/[\d,]+(?:\.\d+)?/g)
-            if (matches && matches.length >= 1) {
-              const nums = matches.map((m) => Number(m.replace(/,/g, ''))).filter((n) => Number.isFinite(n))
-              if (nums.length >= 2) {
-                jobMin = nums[0]
-                jobMax = nums[1]
-              } else if (nums.length === 1) {
-                jobMin = nums[0]
-                jobMax = nums[0]
-              }
-            }
-          }
-          if (jobMin == null && jobMax == null) {
-            return false
-          }
-          const lo = jobMin ?? 0
-          const hi = jobMax ?? jobMin ?? lo
-          if (hi < filters.salary[0] || lo > filters.salary[1]) {
-            return false
-          }
-        }
-      }
-      
-      // Status filter — exact match against backend status string
-      if (filters.status !== 'all') {
-        if ((job.status ?? '') !== filters.status) {
-          return false
-        }
-      }
-      
-      // Posting Date filter
-      if (filters.postingDate && job.postingDate !== filters.postingDate) {
-        return false
-      }
-      
-      return true
-    })
-  }, [jobsData, filters, jobNameSearch])
-
-  const data = useMemo(() => filteredData, [filteredData])
-
-  // Get active jobs for a company (function defined after filteredData)
   const getCompanyJobs = useMemo(() => {
     return (companyName: string) => {
-      return filteredData.filter(job => job.company === companyName && job.active === true)
+      return jobsData.filter(job => job.company === companyName && job.active === true)
     }
-  }, [filteredData])
+  }, [jobsData])
 
-  // Get unique values for dropdown filters
-  const uniqueCompanies = useMemo(() => [...new Set(jobsData.map(job => job.company))].filter(Boolean).sort(), [jobsData])
-  const uniqueLocations = useMemo(() => [...new Set(jobsData.map(job => job.location))].filter(Boolean).sort(), [jobsData])
-  const uniqueJobTitles = useMemo(() => [...new Set(jobsData.map(job => job.jobTitle))].filter(Boolean).sort(), [jobsData])
-  // Status options derived from data so filter always matches what backend actually emits
-  // (Active, Inactive, Draft, Archived, Closed, Published, ...).
-  const uniqueStatuses = useMemo(
-    () => [...new Set(jobsData.map(job => job.status).filter((s): s is string => Boolean(s)))].sort(),
-    [jobsData]
+  const uniqueCompanies = filterOptions.companies
+  const uniqueLocations = filterOptions.locations
+  const uniqueJobTitles = filterOptions.titles
+  const uniqueStatuses = filterOptions.statuses
+
+  const filteredJobTitles = useMemo(
+    () => filterJobFacetOptions(uniqueJobTitles, searchJobTitle),
+    [uniqueJobTitles, searchJobTitle]
   )
 
-  // Suggestion lists only while typing (same pattern as Employees → Name)
-  const filteredJobTitles = useMemo(() => {
-    const q = searchJobTitle.trim().toLowerCase()
-    if (!q) return []
-    return uniqueJobTitles.filter((title) => title.toLowerCase().includes(q))
-  }, [uniqueJobTitles, searchJobTitle])
+  const filteredCompanies = useMemo(
+    () => filterJobFacetOptions(uniqueCompanies, searchCompany),
+    [uniqueCompanies, searchCompany]
+  )
 
-  const filteredCompanies = useMemo(() => {
-    const q = searchCompany.trim().toLowerCase()
-    if (!q) return []
-    return uniqueCompanies.filter((company) => company.toLowerCase().includes(q))
-  }, [uniqueCompanies, searchCompany])
-
-  const filteredLocations = useMemo(() => {
-    const q = searchLocation.trim().toLowerCase()
-    if (!q) return []
-    return uniqueLocations.filter((location) => location.toLowerCase().includes(q))
-  }, [uniqueLocations, searchLocation])
+  const filteredLocations = useMemo(
+    () => filterJobFacetOptions(uniqueLocations, searchLocation),
+    [uniqueLocations, searchLocation]
+  )
 
   const handleMultiSelectChange = (key: 'jobTitle' | 'company' | 'location', value: string) => {
     setFilters(prev => {
@@ -1140,14 +1105,10 @@ const Jobs = () => {
     {
       columns,
       data,
-      initialState: {
-        pageIndex: 0,
-        pageSize: 100,
-        sortBy: [{ id: 'postingDate', desc: true }],
-      },
+      manualSortBy: true,
+      disableSortBy: true,
     },
-    useSortBy,
-    usePagination
+    useSortBy
   )
 
   const {
@@ -1155,83 +1116,31 @@ const Jobs = () => {
     getTableBodyProps,
     headerGroups,
     prepareRow,
-    state,
-    page,
-    nextPage,
-    previousPage,
-    canNextPage,
-    canPreviousPage,
-    gotoPage,
-    pageCount,
-    setPageSize,
-    setSortBy,
+    rows,
   } = tableInstance
 
-  const { pageIndex, pageSize } = state
-
-  // Handle sort selection
   const handleSortChange = (sortOption: string) => {
     setSelectedSort(sortOption)
-    
-    switch(sortOption) {
-      case 'title-asc':
-        setSortBy([{ id: 'jobTitle', desc: false }])
-        break
-      case 'title-desc':
-        setSortBy([{ id: 'jobTitle', desc: true }])
-        break
-      case 'company-asc':
-        setSortBy([{ id: 'company', desc: false }])
-        break
-      case 'company-desc':
-        setSortBy([{ id: 'company', desc: true }])
-        break
-      case 'location-asc':
-        setSortBy([{ id: 'location', desc: false }])
-        break
-      case 'location-desc':
-        setSortBy([{ id: 'location', desc: true }])
-        break
-      case 'date-newest':
-        setSortBy([{ id: 'postingDate', desc: true }])
-        break
-      case 'date-oldest':
-        setSortBy([{ id: 'postingDate', desc: false }])
-        break
-      case 'experience-asc':
-        setSortBy([{ id: 'experience', desc: false }])
-        break
-      case 'experience-desc':
-        setSortBy([{ id: 'experience', desc: true }])
-        break
-      case 'newest-first':
-        setSortBy([{ id: 'postingDate', desc: true }])
-        break
-      case 'oldest-first':
-        setSortBy([{ id: 'postingDate', desc: false }])
-        break
-      case 'clear-sort':
-        setSortBy([])
-        setSelectedSort('')
-        break
-      default:
-        setSortBy([])
+    if (sortOption === 'clear-sort') {
+      setSortBy(DEFAULT_JOB_SORT_API)
+      return
     }
+    setSortBy(sortOptionToApiSortBy(sortOption))
   }
 
-  // Handle select all checkbox - select ALL rows in filtered dataset
+  // Select-all applies to the current page only (matches Students).
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      const allIds = new Set(filteredData.map((job) => job.id))
-      setSelectedRows(allIds)
+      const pageIds = new Set(jobsData.map((job) => job.id))
+      setSelectedRows(pageIds)
     } else {
       setSelectedRows(new Set())
     }
   }
 
-  // Check if all rows in filtered dataset are selected
-  const isAllSelected = selectedRows.size === filteredData.length && filteredData.length > 0
-  const isIndeterminate = selectedRows.size > 0 && selectedRows.size < filteredData.length
+  const isAllSelected = jobsData.length > 0 && jobsData.every((job) => selectedRows.has(job.id))
+  const isIndeterminate =
+    jobsData.some((job) => selectedRows.has(job.id)) && !isAllSelected
 
   /** Preline only binds toggles that exist during autoInit; toolbar mounts after jobs load, so re-init then. */
   useEffect(() => {
@@ -1299,7 +1208,7 @@ const Jobs = () => {
               <div className="box-title">
                 Jobs
                 <span className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle">
-                  {filteredData.length}
+                  {totalResults}
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5 sm:gap-2 items-center w-full sm:w-auto">
@@ -1488,7 +1397,7 @@ const Jobs = () => {
               handleExperienceRangeChange={handleExperienceRangeChange}
               handleResetFilters={handleResetFilters}
               salaryRangesConst={salaryRangesConst}
-              experienceRangesConst={experienceRangesConst}
+              experienceRangesConst={experienceRanges}
             />
 
             <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden relative">
@@ -1503,12 +1412,12 @@ const Jobs = () => {
               ) : null}
               {/* Mobile card list — shown <md; mirrors paginated react-table `page` rows. */}
               <div className="md:hidden flex-1 overflow-y-auto px-3 py-3 space-y-3" style={{ minHeight: 0 }}>
-                {page.length === 0 ? (
+                {rows.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-defaultborder/60 dark:border-white/10 py-10 text-center text-sm text-defaulttextcolor/70">
                     No jobs match your filters.
                   </div>
                 ) : (
-                  page.map((row: any, i: number) => {
+                  rows.map((row: any, i: number) => {
                     prepareRow(row)
                     const job = row.original
                     const openPreview = () => {
@@ -1762,7 +1671,7 @@ const Jobs = () => {
                     ))}
                   </thead>
                   <tbody {...getTableBodyProps()}>
-                    {page.map((row: any, i: number) => {
+                    {rows.map((row: any, i: number) => {
                       prepareRow(row)
                       return (
                         <tr {...row.getRowProps()} className="border-b border-gray-300 dark:border-gray-600" key={row.id || `row-${i}`}>
@@ -1787,113 +1696,15 @@ const Jobs = () => {
               </div>
             </div>
             <div className="box-footer shrink-0 !border-t-0 bg-white dark:bg-bodybg">
-              {/* "Show N" used to lead this row; it now sits in the box-header toolbar
-                  with the other view controls. What is left here reports on the current
-                  view: the range, the pager, and the page jump. */}
-              <div className="flex items-center flex-wrap gap-4">
-                <div>
-                  Showing {pageIndex * pageSize + 1} to {Math.min((pageIndex + 1) * pageSize, data.length)} of {data.length} entries{' '}
-                  <i className="bi bi-arrow-right ms-2 font-semibold"></i>
-                </div>
-                {/* Pagination + "Go to page" travel together: the strip is capped at five
-                    numbers, so the input is the only way to reach a page outside it. */}
-                <div className="ms-auto flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <nav aria-label="Page navigation" className="pagination-style-4">
-                    <ul className="ti-pagination mb-0">
-                      <li className={`page-item ${!canPreviousPage ? 'disabled' : ''}`}>
-                        <button
-                          className="page-link px-3 py-[0.375rem]"
-                          onClick={() => previousPage()}
-                          disabled={!canPreviousPage}
-                        >
-                          Prev
-                        </button>
-                      </li>
-                      {/* Was: a first-page anchor, an ellipsis, a five-wide window, another
-                          ellipsis and a last-page anchor — up to seven numbers on screen
-                          (here: 1 2 3 4 5 … 12), which is what made this hard to scan.
-                          buildPageWindow returns a clamped, contiguous run of at most five,
-                          so the strip is a fixed width at every page and slides by one as
-                          you move. It speaks 1-based page numbers; react-table's gotoPage
-                          and pageIndex are 0-based, so the conversion happens here and only
-                          here. */}
-                      {buildPageWindow(pageIndex + 1, pageCount, 5).map((page) => (
-                        <li
-                          key={page}
-                          className={`page-item ${pageIndex === page - 1 ? 'active' : ''}`}
-                        >
-                          <button
-                            className="page-link px-3 py-[0.375rem]"
-                            onClick={() => gotoPage(page - 1)}
-                            aria-current={pageIndex === page - 1 ? 'page' : undefined}
-                            aria-label={`Go to page ${page}`}
-                          >
-                            {page}
-                          </button>
-                        </li>
-                      ))}
-                      <li className={`page-item ${!canNextPage ? 'disabled' : ''}`}>
-                        <button
-                          className="page-link px-3 py-[0.375rem] text-primary"
-                          onClick={() => nextPage()}
-                          disabled={!canNextPage}
-                        >
-                          Next
-                        </button>
-                      </li>
-                    </ul>
-                  </nav>
-
-                  {/* A real <form>, so Enter submits with no keydown handler of our own.
-                      Hidden at one page, where there is nowhere to jump to. */}
-                  {pageCount > 1 && (
-                    <form
-                      className="flex items-center gap-2"
-                      onSubmit={(e) => {
-                        e.preventDefault()
-                        const raw = gotoPageInput.trim()
-                        if (!raw) return
-                        const parsed = Number(raw)
-                        if (!Number.isFinite(parsed)) return
-                        // Clamp rather than reject: typing 99 on a 12-page list means "the
-                        // end", and an error message for that would be pedantic. min/max
-                        // below let the browser hint the same bounds.
-                        const target = Math.min(Math.max(Math.trunc(parsed), 1), pageCount)
-                        gotoPage(target - 1)
-                        setGotoPageInput('')
-                      }}
-                    >
-                      <label
-                        htmlFor="jobs-goto-page"
-                        className="whitespace-nowrap text-[0.8125rem] text-[#8c9097] dark:text-white/60"
-                      >
-                        Go to page
-                      </label>
-                      <input
-                        id="jobs-goto-page"
-                        type="number"
-                        inputMode="numeric"
-                        min={1}
-                        max={pageCount}
-                        value={gotoPageInput}
-                        onChange={(e) => setGotoPageInput(e.currentTarget.value)}
-                        placeholder={String(pageIndex + 1)}
-                        aria-describedby="jobs-goto-page-hint"
-                        className="ti-form-control form-control-sm !w-[4.5rem] !py-[0.375rem]"
-                      />
-                      <span id="jobs-goto-page-hint" className="sr-only">
-                        Enter a page number between 1 and {pageCount}
-                      </span>
-                      <button
-                        type="submit"
-                        className="ti-btn ti-btn-primary ti-btn-sm !mb-0 !py-[0.375rem]"
-                      >
-                        Go
-                      </button>
-                    </form>
-                  )}
-                </div>
-              </div>
+              <ListPagination
+                page={currentPage}
+                totalPages={totalPages}
+                totalResults={totalResults}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                ariaLabel="Jobs page navigation"
+                gotoInputId="jobs-goto-page"
+              />
             </div>
           </div>
         </div>

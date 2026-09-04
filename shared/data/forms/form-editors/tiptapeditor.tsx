@@ -162,6 +162,13 @@ const TiptapEditor: React.FC<TiptapEditorProps> = ({
   const [popoverError, setPopoverError] = useState('')
   const popoverInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const savedColorSelectionRef = useRef<{ from: number; to: number } | null>(null)
+
+  const saveColorSelection = () => {
+    if (!editor) return
+    const { from, to } = editor.state.selection
+    savedColorSelectionRef.current = { from, to }
+  }
 
   /** Uploaded images embed as base64 data URIs so the saved HTML stays self-contained
    *  (no expiring presigned URLs). Cap size to avoid bloating the stored description. */
@@ -329,16 +336,39 @@ const TiptapEditor: React.FC<TiptapEditorProps> = ({
             </option>
           ))}
         </select>
+        {/* The native colour swatch cannot be styled down to a toolbar icon (its chrome leaks past
+         *  `border-0`/`p-0`), so it is stretched invisibly over the button and the current colour
+         *  is drawn as a bar instead. Keeps this control the same square size as its siblings. */}
         <label
-          className="ti-btn ti-btn-sm ti-btn-light !h-8 !px-2 cursor-pointer flex items-center gap-1"
+          className="ti-btn ti-btn-sm ti-btn-light relative cursor-pointer"
           title="Text color"
+          onMouseDown={(e) => {
+            e.preventDefault()
+            saveColorSelection()
+          }}
         >
           <i className="ri-font-color"></i>
+          <span
+            aria-hidden
+            className="pointer-events-none absolute bottom-[3px] left-1/2 h-[3px] w-[13px] -translate-x-1/2 rounded-[1px]"
+            style={{ background: editor.getAttributes('textStyle').color || 'currentColor' }}
+          />
           <input
             type="color"
             value={editor.getAttributes('textStyle').color || '#000000'}
-            onChange={(e) => editor.chain().focus().setColor(e.target.value).run()}
-            className="w-4 h-4 border-0 bg-transparent p-0 cursor-pointer"
+            onFocus={saveColorSelection}
+            onClick={saveColorSelection}
+            /* React maps onChange to the DOM `input` event, and `type="color"` is a text-input
+             * type, so this fires on every drag inside the native picker — not once on close.
+             * The saved range is deliberately NOT cleared here: each fire must re-target the same
+             * text, and the next open refreshes it via mousedown/focus/click. */
+            onChange={(e) => {
+              const saved = savedColorSelectionRef.current
+              const chain = editor.chain().focus()
+              if (saved) chain.setTextSelection(saved)
+              chain.setColor(e.target.value).run()
+            }}
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
             aria-label="Text color"
           />
         </label>
@@ -594,8 +624,8 @@ const TiptapEditor: React.FC<TiptapEditorProps> = ({
           min-height: 200px;
         }
         .tiptap-editor .tiptap-select option {
-          color: #1f2937;
-          background: #ffffff;
+          color: rgb(var(--default-text-color));
+          background: rgb(var(--body-bg));
         }
         .tiptap-editor .ProseMirror p {
           margin: 0.5rem 0;
@@ -603,7 +633,7 @@ const TiptapEditor: React.FC<TiptapEditorProps> = ({
         .tiptap-editor .ProseMirror p.is-editor-empty:first-child::before {
           content: attr(data-placeholder);
           float: left;
-          color: #8c9097;
+          color: rgb(var(--text-muted));
           pointer-events: none;
           height: 0;
         }
@@ -636,7 +666,7 @@ const TiptapEditor: React.FC<TiptapEditorProps> = ({
           margin: 0;
         }
         .tiptap-editor .ProseMirror blockquote {
-          border-left: 3px solid #e5e7eb;
+          border-left: 3px solid rgb(var(--default-border));
           padding-left: 1rem;
           margin: 0.5rem 0;
           font-style: italic;

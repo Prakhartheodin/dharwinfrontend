@@ -263,44 +263,87 @@ th.text-center{
   text-align: center !important;
 }
 
-/* Schedule Interview — portaled react-datepicker (above modal, cohesive tokens) */
-.schedule-interview-dp-cal.react-datepicker {
+/* Portaled react-datepicker — Schedule Interview + PM project form */
+.schedule-interview-dp-cal.react-datepicker,
+.pm-project-form-dp-cal.react-datepicker {
   border-radius: 0.75rem;
   border: 1px solid rgb(226 232 240 / 0.95);
   box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.18);
   font-family: inherit;
 }
-.dark .schedule-interview-dp-cal.react-datepicker {
+.dark .schedule-interview-dp-cal.react-datepicker,
+.dark .pm-project-form-dp-cal.react-datepicker {
   border-color: rgb(255 255 255 / 0.12);
   box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.55);
+}
+.dark .schedule-interview-dp-cal.react-datepicker {
   background: rgb(15 23 42 / 1);
 }
-.schedule-interview-dp-cal .react-datepicker__header {
+.dark .pm-project-form-dp-cal.react-datepicker {
+  background: rgb(var(--body-bg));
+  color: rgb(var(--default-text-color));
+}
+.schedule-interview-dp-cal .react-datepicker__header,
+.pm-project-form-dp-cal .react-datepicker__header {
   background: linear-gradient(to bottom, rgb(248 250 252 / 1), rgb(255 255 255 / 1));
   border-bottom: 1px solid rgb(226 232 240 / 0.9);
   border-radius: 0.75rem 0.75rem 0 0;
 }
-.dark .schedule-interview-dp-cal .react-datepicker__header {
+.dark .schedule-interview-dp-cal .react-datepicker__header,
+.dark .pm-project-form-dp-cal .react-datepicker__header {
   background: linear-gradient(to bottom, rgb(0 0 0 / 0.35), rgb(0 0 0 / 0.2));
   border-bottom-color: rgb(255 255 255 / 0.1);
 }
+.dark .pm-project-form-dp-cal .react-datepicker__header {
+  color: rgb(var(--default-text-color));
+}
+.dark .pm-project-form-dp-cal .react-datepicker__day-name,
+.dark .pm-project-form-dp-cal .react-datepicker__day,
+.dark .pm-project-form-dp-cal .react-datepicker__current-month {
+  color: rgb(var(--default-text-color));
+}
 .schedule-interview-dp-cal .react-datepicker__day--selected,
-.schedule-interview-dp-cal .react-datepicker__day--keyboard-selected {
+.schedule-interview-dp-cal .react-datepicker__day--keyboard-selected,
+.pm-project-form-dp-cal .react-datepicker__day--selected,
+.pm-project-form-dp-cal .react-datepicker__day--keyboard-selected {
   background-color: rgb(var(--primary) / 1) !important;
   color: #fff !important;
 }
-.schedule-interview-dp-cal .react-datepicker__day:hover {
+.schedule-interview-dp-cal .react-datepicker__day:hover,
+.pm-project-form-dp-cal .react-datepicker__day:hover {
   background-color: rgb(var(--primary) / 0.12) !important;
 }
 .schedule-interview-dp-cal .react-datepicker-time-list-item--selected {
   background-color: rgb(var(--primary) / 1) !important;
   color: #fff !important;
 }
-.schedule-interview-dp-cal .react-datepicker__navigation-icon::before {
+.schedule-interview-dp-cal .react-datepicker__navigation-icon::before,
+.pm-project-form-dp-cal .react-datepicker__navigation-icon::before {
   border-color: rgb(100 116 139);
 }
-.dark .schedule-interview-dp-cal .react-datepicker__navigation-icon::before {
+.dark .schedule-interview-dp-cal .react-datepicker__navigation-icon::before,
+.dark .pm-project-form-dp-cal .react-datepicker__navigation-icon::before {
   border-color: rgb(226 232 240 / 0.75);
+}
+
+/* PM project form — portaled Select2 menus: undo global white-on-white focused/selected options in dark mode */
+.pm-project-form-select-menu .Select2__option--is-selected,
+.pm-project-form-select-menu .Select2__option--is-focused {
+  background-color: rgb(var(--primary) / 0.08) !important;
+  color: rgb(var(--default-text-color)) !important;
+}
+.pm-project-form-select-menu .Select2__option--is-selected {
+  background-color: rgb(var(--primary)) !important;
+  color: #fff !important;
+}
+.dark .pm-project-form-select-menu .Select2__option--is-selected,
+.dark .pm-project-form-select-menu .Select2__option--is-focused {
+  background-color: rgb(var(--primary) / 0.35) !important;
+  color: rgb(var(--default-text-color)) !important;
+}
+.dark .pm-project-form-select-menu .Select2__option--is-selected {
+  background-color: rgb(var(--primary)) !important;
+  color: #fff !important;
 }
 
 /* Schedule Interview — custom trigger + isClearable (library defaults overlap the control) */
@@ -326,6 +369,11 @@ th.text-center{
   justify-content: center !important;
   vertical-align: middle !important;
   background-color: rgb(var(--primary) / 1) !important;
+}
+
+/* Filter-bar date fields are standalone. Theme datepicker CSS only rounds the end corners. */
+.ymd-filter-date-input .react-datepicker__input-container input {
+  border-radius: 0.75rem !important;
 }
 
 /*

@@ -444,23 +444,41 @@ export async function removeHolidaysFromStudents(
 /**
  * Assign leave to multiple students (creates Attendance with status Leave).
  * POST /training/attendance/leave
+ * Body: `{ from, to }` as YYYY-MM-DD (YmdFilterDateInput / savedFrom+savedTo), optional `excludedDates`,
+ * or legacy `dates[]` of ISO/YYYY-MM-DD days.
  */
 export async function assignLeavesToStudents(
   studentIds: string[],
   dates: string[],
   leaveType: "casual" | "sick" | "unpaid",
-  notes?: string
+  notes?: string,
+  range?: { from: string; to: string; excludedDates?: string[] }
 ): Promise<{ success: boolean; message?: string; data?: { attendanceRecordsCreated: number } }> {
+  const body: {
+    studentIds: string[];
+    leaveType: "casual" | "sick" | "unpaid";
+    notes: string;
+    dates?: string[];
+    from?: string;
+    to?: string;
+    excludedDates?: string[];
+  } = {
+    studentIds,
+    leaveType,
+    notes: notes ?? "",
+  };
+  if (range?.from && range?.to) {
+    body.from = range.from;
+    body.to = range.to;
+    if (range.excludedDates?.length) body.excludedDates = range.excludedDates;
+  } else {
+    body.dates = dates;
+  }
   const { data } = await apiClient.post<{
     success: boolean;
     message?: string;
     data?: { attendanceRecordsCreated: number };
-  }>("/training/attendance/leave", {
-    studentIds,
-    dates,
-    leaveType,
-    notes: notes ?? "",
-  });
+  }>("/training/attendance/leave", body);
   return data;
 }
 
@@ -476,17 +494,36 @@ export interface RegularizeEntry {
  * Regularize attendance: admin adds back-dated attendance records for a student.
  * POST /training/attendance/student/:studentId/regularize
  */
+/**
+ * Admin instant backdated write.
+ *
+ * Omit `conflictPolicy` on the first call: if any day already carries a holiday, a recorded
+ * leave, or a week-off the API answers 409 with `errorCode: "ATTENDANCE_DAY_CONFLICTS"` and
+ * `details.conflicts`, so the admin can be asked before anything is overwritten. Re-send the
+ * same entries with "skip" or "overwrite" to go through.
+ */
 export async function regularizeAttendance(
   studentId: string,
-  attendanceEntries: RegularizeEntry[]
-): Promise<{ success: boolean; message?: string; createdOrUpdated?: number; errors?: { entryIndex: number; date: string; error: string }[] }> {
+  attendanceEntries: RegularizeEntry[],
+  conflictPolicy?: "skip" | "overwrite"
+): Promise<{
+  success: boolean;
+  message?: string;
+  createdOrUpdated?: number;
+  skipped?: { date: string; kind: string; label: string }[];
+  overwritten?: { date: string; kind: string; label: string }[];
+  errors?: { entryIndex: number; date: string; error: string }[];
+}> {
   const { data } = await apiClient.post<{
     success: boolean;
     message?: string;
     createdOrUpdated?: number;
+    skipped?: { date: string; kind: string; label: string }[];
+    overwritten?: { date: string; kind: string; label: string }[];
     errors?: { entryIndex: number; date: string; error: string }[];
   }>(`/training/attendance/student/${studentId}/regularize`, {
     attendanceEntries,
+    ...(conflictPolicy ? { conflictPolicy } : {}),
   });
   return data;
 }

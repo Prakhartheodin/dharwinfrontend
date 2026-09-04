@@ -10,6 +10,8 @@ export type AssignPersonRow =
       student: Student;
       /** Company employee ID when known (for search, mirrors label). */
       employeeId?: string | null;
+      /** Employee resign date when known (from linked candidate record). */
+      resignDate?: string | null;
     }
   | {
       kind: "candidate_only";
@@ -20,6 +22,10 @@ export type AssignPersonRow =
       fullName: string;
       email: string;
       employeeId?: string | null;
+      /** Employee joining date (attendance applies from this day). */
+      joiningDate?: string | null;
+      /** Employee resign date (attendance ends on this day). */
+      resignDate?: string | null;
     };
 
 function normId(id: string): string {
@@ -52,6 +58,19 @@ function buildOwnerUserIdToEmployeeId(candidates: CandidateListItem[]): Map<stri
     if (m.has(key)) continue;
     const eid = (c.employeeId ?? "").trim();
     if (eid) m.set(key, eid);
+  }
+  return m;
+}
+
+function buildOwnerUserIdToResignDate(candidates: CandidateListItem[]): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const c of candidates) {
+    const oid = ownerUserIdFromListCandidate(c);
+    if (!oid) continue;
+    const key = normId(oid);
+    if (m.has(key)) continue;
+    const rd = (c.resignDate ?? "").trim();
+    if (rd) m.set(key, rd);
   }
   return m;
 }
@@ -138,6 +157,7 @@ export function buildMergedAssignPeopleOptions(
   candidates: CandidateListItem[]
 ): AssignPersonRow[] {
   const ownerToEmployeeId = buildOwnerUserIdToEmployeeId(candidates);
+  const ownerToResignDate = buildOwnerUserIdToResignDate(candidates);
   const resignedOwnerUserIds = buildResignedOwnerUserIds(candidates);
 
   const studentRows: AssignPersonRow[] = students
@@ -155,6 +175,7 @@ export function buildMergedAssignPeopleOptions(
         label: `${s.user?.name ?? "Unknown"} (${secondary}) · Training`,
         student: s,
         employeeId,
+        resignDate: uid ? ownerToResignDate.get(uid) ?? null : null,
       };
     })
     .filter((o) => {
@@ -201,6 +222,8 @@ export function buildMergedAssignPeopleOptions(
       fullName: c.fullName || "",
       email: c.email || "",
       employeeId: eid,
+      joiningDate: c.joiningDate ?? null,
+      resignDate: c.resignDate ?? null,
     });
   }
 

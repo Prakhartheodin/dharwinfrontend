@@ -140,6 +140,19 @@ type Props = {
   formPanelFooter?: React.ReactNode
   /** Full job posting (JD) for the linked listing — sent to Enhance-with-AI when present. */
   jobPostingDoc?: string | null
+  /** New-offer flow: pick candidate + application instead of free-text name/title. */
+  applicationPicker?: OfferLetterApplicationPicker | null
+}
+
+export type OfferLetterApplicationPicker = {
+  loading: boolean
+  candidateOptions: { id: string; label: string }[]
+  applicationOptions: { id: string; label: string }[]
+  selectedCandidateId: string
+  selectedApplicationId: string
+  onCandidateChange: (candidateId: string) => void
+  onApplicationChange: (applicationId: string) => void
+  emptyHint?: string
 }
 
 function TopbarLogoIcon() {
@@ -203,6 +216,7 @@ export function OfferLetterGeneratorWorkspace({
   formPanelTop,
   formPanelFooter,
   jobPostingDoc = null,
+  applicationPicker = null,
 }: Props) {
   const jobUi = apiJobTypeToUi(letterForm.jobType)
   const isInternship = letterForm.jobType === 'INTERN_UNPAID'
@@ -639,13 +653,30 @@ export function OfferLetterGeneratorWorkspace({
             <div className={styles.sectionBody}>
               <div className={styles.field}>
                 <label htmlFor="olg-fullName">Full Name *</label>
-                <input
-                  id="olg-fullName"
-                  className={styles.input}
-                  value={letterForm.letterFullName}
-                  onChange={(e) => setLetterForm((f) => ({ ...f, letterFullName: e.target.value }))}
-                  placeholder="e.g. Prakhar Sharma"
-                />
+                {applicationPicker ? (
+                  <select
+                    id="olg-fullName"
+                    className={styles.select}
+                    value={applicationPicker.selectedCandidateId}
+                    disabled={applicationPicker.loading || letterBusy}
+                    onChange={(e) => applicationPicker.onCandidateChange(e.target.value)}
+                  >
+                    <option value="">Select candidate…</option>
+                    {applicationPicker.candidateOptions.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    id="olg-fullName"
+                    className={styles.input}
+                    value={letterForm.letterFullName}
+                    onChange={(e) => setLetterForm((f) => ({ ...f, letterFullName: e.target.value }))}
+                    placeholder="e.g. Prakhar Sharma"
+                  />
+                )}
               </div>
               <div className={styles.field}>
                 <label htmlFor="olg-address">Address (Full Line) *</label>
@@ -691,38 +722,68 @@ export function OfferLetterGeneratorWorkspace({
             </div>
             <div className={styles.sectionBody}>
               <div className={styles.field}>
-                <label htmlFor="olg-position">Position / Job Title *</label>
-                <input
-                  id="olg-position"
-                  className={styles.input}
-                  value={letterForm.positionTitle}
-                  onChange={(e) => setLetterForm((f) => ({ ...f, positionTitle: e.target.value }))}
-                  onBlur={handlePositionBlur}
-                  list="olg-position-suggestions"
-                />
-                <datalist id="olg-position-suggestions">
-                  {[
-                    'Data Analyst',
-                    'Business Analyst',
-                    'Senior Software Engineer',
-                    'Software Engineer',
-                    'Junior Software Engineer',
-                    'Full Stack Developer',
-                    'Frontend Developer',
-                    'Backend Developer',
-                    'DevOps Engineer',
-                    'Data Scientist',
-                    'Machine Learning Engineer',
-                    'Cloud Engineer',
-                    'QA Engineer',
-                    'Product Manager',
-                    'Project Manager',
-                    'UI/UX Designer',
-                    'Cybersecurity Analyst',
-                  ].map((x) => (
-                    <option key={x} value={x} />
-                  ))}
-                </datalist>
+                <label htmlFor="olg-position">
+                  {applicationPicker ? "Job applied for *" : "Position / Job Title *"}
+                </label>
+                {applicationPicker ? (
+                  <>
+                    <select
+                      id="olg-position"
+                      className={styles.select}
+                      value={applicationPicker.selectedApplicationId}
+                      disabled={
+                        !applicationPicker.selectedCandidateId || applicationPicker.loading || letterBusy
+                      }
+                      onChange={(e) => applicationPicker.onApplicationChange(e.target.value)}
+                    >
+                      <option value="">Select job applied for…</option>
+                      {applicationPicker.applicationOptions.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.label}
+                        </option>
+                      ))}
+                    </select>
+                    {!applicationPicker.loading &&
+                    applicationPicker.candidateOptions.length === 0 &&
+                    applicationPicker.emptyHint ? (
+                      <p className={styles.helpText}>{applicationPicker.emptyHint}</p>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <input
+                      id="olg-position"
+                      className={styles.input}
+                      value={letterForm.positionTitle}
+                      onChange={(e) => setLetterForm((f) => ({ ...f, positionTitle: e.target.value }))}
+                      onBlur={handlePositionBlur}
+                      list="olg-position-suggestions"
+                    />
+                    <datalist id="olg-position-suggestions">
+                      {[
+                        'Data Analyst',
+                        'Business Analyst',
+                        'Senior Software Engineer',
+                        'Software Engineer',
+                        'Junior Software Engineer',
+                        'Full Stack Developer',
+                        'Frontend Developer',
+                        'Backend Developer',
+                        'DevOps Engineer',
+                        'Data Scientist',
+                        'Machine Learning Engineer',
+                        'Cloud Engineer',
+                        'QA Engineer',
+                        'Product Manager',
+                        'Project Manager',
+                        'UI/UX Designer',
+                        'Cybersecurity Analyst',
+                      ].map((x) => (
+                        <option key={x} value={x} />
+                      ))}
+                    </datalist>
+                  </>
+                )}
               </div>
               <div className={styles.field}>
                 <div className={styles.jobTypeHeader}>

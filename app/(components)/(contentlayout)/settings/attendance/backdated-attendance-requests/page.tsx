@@ -7,7 +7,9 @@ import {
   rejectBackdatedAttendanceRequest,
   updateBackdatedAttendanceRequest,
   cancelBackdatedAttendanceRequest,
+  getBackdatedAttendanceRequestById,
   type BackdatedAttendanceRequest,
+  type BackdatedDayConflict,
   type AttendanceEntry,
 } from "@/shared/lib/api/backdated-attendance-requests";
 import { listStudents, getStudent, type Student } from "@/shared/lib/api/students";
@@ -22,10 +24,12 @@ import * as attendanceApi from "@/shared/lib/api/attendance";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import dynamic from "next/dynamic";
-import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-access";
+import { useAuth } from "@/shared/contexts/auth-context";
+import { hasAttendanceAssign } from "@/shared/lib/attendance-access";
 import { usePmReactSelectStyles } from "@/shared/hooks/usePmReactSelectStyles";
 import type { FilterOptionOption } from "react-select";
 import StudentAttendanceOverlay from "./StudentAttendanceOverlay";
+import AttendanceConflictOverlay, { type ConflictPolicy } from "./AttendanceConflictOverlay";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
@@ -47,14 +51,41 @@ function filterBackdatedListPersonOption(
   return filterAssignPersonSelectOption(option, inputValue);
 }
 
+/** Local-calendar YYYY-MM-DD. toISOString() is UTC, which is a day off east of Greenwich after 00:00 local. */
+function localYmd(d: Date): string {
+  const pad = (v: number) => String(v).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Everything interpolated into a Swal `html` string is user-controlled (names, notes, holiday titles). */
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function getStudentName(request: BackdatedAttendanceRequest): string {
   const s = request.student;
   if (typeof s === "object" && s?.user?.name) return s.user.name;
   if (typeof s === "object" && (s as { fullName?: string }).fullName) return (s as { fullName: string }).fullName;
-  // When student.user is not populated (e.g. missing ref), use requestedBy — student applies for self
+  // User-based request (someone with no training profile) — the owner is on `user`, not `student`.
+  const u = request.user;
+  if (u && typeof u === "object" && u.name) return u.name;
+  // When student.user is not populated (e.g. missing ref), use requestedBy — the employee applies for self
   if (request.requestedBy?.name) return request.requestedBy.name;
   if (request.studentEmail) return request.studentEmail;
+  if (typeof request.userEmail === "string" && request.userEmail) return request.userEmail;
   return "Unknown";
+}
+
+/** Why a requested day already has something on it. Approving replaces it. */
+function describeDayConflict(conflict: BackdatedDayConflict): string {
+  if (conflict.kind === "holiday") return `holiday (${escapeHtml(conflict.label)})`;
+  if (conflict.kind === "leave") return `already marked as ${escapeHtml(conflict.label)}`;
+  return `${escapeHtml(conflict.label)} is a week off`;
 }
 
 /** Resolve student's assigned shift and timezone from the loaded students list (so we show the shift's timezone, not stored UTC). */
@@ -75,7 +106,13 @@ function getStudentShiftForRequest(
 }
 
 export default function SettingsAttendanceBackdatedPage() {
-  const isAdmin = useAttendanceAdminAccess();
+  const { permissions, isAdministrator, permissionsLoaded } = useAuth();
+  /**
+   * One gate, shared with the nav link and matching `attendance.assign` on the API routes.
+   * This page used to check the Administrator/Agent role name instead, so an Agent could
+   * open it and then get a 403 the moment they clicked Approve.
+   */
+  const isAdmin = permissionsLoaded ? hasAttendanceAssign(permissions, isAdministrator) : null;
   const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } = usePmReactSelectStyles(10060);
   const [loadingRequests, setLoadingRequests] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
@@ -110,6 +147,11 @@ export default function SettingsAttendanceBackdatedPage() {
   const [addEntries, setAddEntries] = useState<Array<{ date: string; punchInTime: string; punchOutTime: string; notes: string; timezone: string }>>([]);
   const [addStudentWeekOff, setAddStudentWeekOff] = useState<string[]>([]);
   const [addingBackDate, setAddingBackDate] = useState(false);
+  /** Set when regularize 409s: the days already holding a holiday / leave / week-off, awaiting the admin's call. */
+  const [addConflicts, setAddConflicts] = useState<{
+    conflicts: BackdatedDayConflict[];
+    entries: Array<{ date: string; punchIn: string; punchOut: string; timezone: string; notes?: string }>;
+  } | null>(null);
 
   const addPersonRow = useMemo(
     () => (addPersonValue ? people.find((p) => p.value === addPersonValue) ?? null : null),
@@ -257,6 +299,40 @@ export default function SettingsAttendanceBackdatedPage() {
       return next;
     });
   };
+  /**
+   * Writes the batch. Without a policy the API 409s when a day already holds a holiday, a leave,
+   * or a week-off — that opens the consent overlay instead of silently replacing the record.
+   */
+  const submitRegularize = async (
+    attendanceEntries: Array<{ date: string; punchIn: string; punchOut: string; timezone: string; notes?: string }>,
+    conflictPolicy?: ConflictPolicy
+  ) => {
+    setAddingBackDate(true);
+    try {
+      const result = await attendanceApi.regularizeAttendance(addStudentId, attendanceEntries, conflictPolicy);
+      setAddConflicts(null);
+      await Swal.fire({
+        icon: "success",
+        title: "Done",
+        text: result.message ?? `Added ${result.createdOrUpdated ?? 0} attendance record(s).`,
+        confirmButtonText: "OK",
+      });
+      setShowAddSection(false);
+      fetchRequests();
+    } catch (err: unknown) {
+      const res = (err as { response?: { status?: number; data?: { errorCode?: string; message?: string; details?: { conflicts?: BackdatedDayConflict[] } } } })?.response;
+      const conflicts = res?.data?.details?.conflicts;
+      if (res?.status === 409 && res.data?.errorCode === "ATTENDANCE_DAY_CONFLICTS" && conflicts?.length) {
+        setAddConflicts({ conflicts, entries: attendanceEntries });
+        return;
+      }
+      const msg = res?.data?.message ?? (err as { message?: string })?.message ?? "Failed to add attendance.";
+      await Swal.fire({ icon: "error", title: "Error", text: msg, confirmButtonText: "OK" });
+    } finally {
+      setAddingBackDate(false);
+    }
+  };
+
   const handleSubmitAddBackdated = async () => {
     if (!addPersonRow) {
       await Swal.fire({
@@ -357,23 +433,7 @@ export default function SettingsAttendanceBackdatedPage() {
       });
     }
 
-    setAddingBackDate(true);
-    try {
-      const result = await attendanceApi.regularizeAttendance(addStudentId, attendanceEntries);
-      await Swal.fire({
-        icon: "success",
-        title: "Done",
-        text: result.message ?? `Added ${result.createdOrUpdated ?? 0} attendance record(s).`,
-        confirmButtonText: "OK",
-      });
-      setShowAddSection(false);
-      fetchRequests();
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ?? (err as { message?: string })?.message ?? "Failed to add attendance.";
-      await Swal.fire({ icon: "error", title: "Error", text: msg, confirmButtonText: "OK" });
-    } finally {
-      setAddingBackDate(false);
-    }
+    await submitRegularize(attendanceEntries);
   };
 
   const formatDate = (dateString: string) => {
@@ -414,6 +474,28 @@ export default function SettingsAttendanceBackdatedPage() {
     const requestId = request._id ?? (request as { id?: string }).id;
     if (!requestId) return;
     const entries = getEntries(request);
+    // Approving writes Present over whatever is on the day. Show the reviewer what that
+    // replaces first — a holiday, a recorded leave, or a week-off.
+    let conflicts: BackdatedDayConflict[] = [];
+    setProcessingId(requestId);
+    try {
+      conflicts = (await getBackdatedAttendanceRequestById(requestId)).dayConflicts ?? [];
+    } catch {
+      // Backend without dayConflicts yet: approve still works, just without the warning.
+    } finally {
+      setProcessingId(null);
+    }
+    const conflictHtml = conflicts.length
+      ? `<div class="mb-3 p-3 rounded text-left" style="background:#fff7ed;border:1px solid #fdba74;color:#7c2d12">
+          <p class="font-semibold">Check before approving</p>
+          <ul style="margin:0.35rem 0 0;padding-left:1.1rem;list-style:disc">
+            ${conflicts
+              .map((c) => `<li>${escapeHtml(formatDate(c.date))} — ${describeDayConflict(c)}</li>`)
+              .join("")}
+          </ul>
+          <p style="margin-top:0.35rem">Approving marks ${conflicts.length > 1 ? "these days" : "this day"} Present instead.</p>
+        </div>`
+      : "";
     const entriesHtml = entries.map((entry, i) => `
       <div class="mb-3 p-2 bg-gray-50 rounded text-left">
         <p><strong>Date ${entries.length > 1 ? `${i + 1}:` : ""}</strong> ${formatDate(entry.date)}</p>
@@ -425,9 +507,11 @@ export default function SettingsAttendanceBackdatedPage() {
       title: "Approve Backdated Attendance Request",
       html: `
         <div class="text-left mb-4">
-          <p><strong>Employee:</strong> ${getStudentName(request)}</p>
+          <p><strong>Employee:</strong> ${escapeHtml(getStudentName(request))}</p>
+          ${conflictHtml}
           ${entriesHtml}
         </div>
+        <label for="adminComment" class="swal2-input-label">Comment (optional)</label>
         <textarea id="adminComment" class="swal2-textarea" placeholder="Add a comment (optional)" maxlength="1000"></textarea>
       `,
       showCancelButton: true,
@@ -464,9 +548,10 @@ export default function SettingsAttendanceBackdatedPage() {
       title: "Reject Backdated Attendance Request",
       html: `
         <div class="text-left mb-4">
-          <p><strong>Employee:</strong> ${getStudentName(request)}</p>
+          <p><strong>Employee:</strong> ${escapeHtml(getStudentName(request))}</p>
           ${datesHtml}
         </div>
+        <label for="adminComment" class="swal2-input-label">Reason for rejection (optional)</label>
         <textarea id="adminComment" class="swal2-textarea" placeholder="Reason for rejection (optional)" maxlength="1000"></textarea>
       `,
       showCancelButton: true,
@@ -505,20 +590,24 @@ export default function SettingsAttendanceBackdatedPage() {
     const punchOutObj = first.punchOut ? new Date(first.punchOut) : null;
     const punchInTime = punchInObj.toTimeString().slice(0, 5);
     const punchOutTime = punchOutObj ? punchOutObj.toTimeString().slice(0, 5) : "";
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = localYmd(new Date());
     const { value: form } = await Swal.fire({
       title: "Update Backdated Attendance Request",
       html: `
-        <div class="text-left mb-2"><p><strong>Employee:</strong> ${getStudentName(request)}</p></div>
-        <div class="text-left text-xs text-gray-500 mb-2">Punch In/Out apply to every working day in the range (weekends excluded).</div>
-        <label class="swal2-input-label">From</label>
+        <div class="text-left mb-2"><p><strong>Employee:</strong> ${escapeHtml(getStudentName(request))}</p></div>
+        <div class="text-left text-xs text-gray-500 mb-2">Punch In/Out apply to every working day in the range (week-offs excluded). Max 8 hours per day.</div>
+        <label for="fromDate" class="swal2-input-label">From</label>
         <input id="fromDate" type="date" value="${fromStr}" class="swal2-input" max="${todayStr}">
-        <label class="swal2-input-label">To</label>
+        <label for="toDate" class="swal2-input-label">To</label>
         <input id="toDate" type="date" value="${toStr}" class="swal2-input" max="${todayStr}">
+        <label for="punchIn" class="swal2-input-label">Punch in</label>
         <input id="punchIn" type="time" value="${punchInTime}" class="swal2-input">
+        <label for="punchOut" class="swal2-input-label">Punch out</label>
         <input id="punchOut" type="time" value="${punchOutTime}" class="swal2-input">
-        <input id="timezone" type="text" value="${first.timezone || "UTC"}" class="swal2-input" placeholder="Timezone">
-        <textarea id="notes" class="swal2-textarea" placeholder="Notes">${request.notes ?? ""}</textarea>
+        <label for="timezone" class="swal2-input-label">Timezone</label>
+        <input id="timezone" type="text" value="${escapeHtml(first.timezone || "UTC")}" class="swal2-input" placeholder="Timezone">
+        <label for="notes" class="swal2-input-label">Notes</label>
+        <textarea id="notes" class="swal2-textarea" maxlength="1000" placeholder="Notes">${escapeHtml(request.notes ?? "")}</textarea>
       `,
       showCancelButton: true,
       confirmButtonText: "Update",
@@ -716,7 +805,6 @@ export default function SettingsAttendanceBackdatedPage() {
 
   const pageStyles = (
     <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
       .backdated-page { font-family: 'Figtree', ui-sans-serif, system-ui, sans-serif; }
       @keyframes backdated-card-enter {
         from { opacity: 0; transform: translateY(12px); }
@@ -784,7 +872,7 @@ return (
               </span>
               <div className="min-w-0">
                 <h2 className="text-lg font-semibold text-defaulttextcolor dark:text-white tracking-tight">Add Backdated Attendance</h2>
-                <p className="text-xs text-defaulttextcolor/60 dark:text-white/50 mt-0.5">Admin only · Apply attendance for past dates</p>
+                <p className="text-xs text-defaulttextcolor/60 dark:text-white/50 mt-0.5">Writes attendance immediately — no request, no approval step. Employee requests are reviewed below.</p>
               </div>
             </div>
             {!showAddSection ? (
@@ -1232,9 +1320,10 @@ return (
                               </div>
                             </div>
 
-                            {/* Actions */}
-                            {request.status === "pending" && (
-                              <div className="flex flex-wrap gap-2 shrink-0 sm:flex-col sm:items-end">
+                            {/* Actions. View works at any status — a reviewer needs to confirm what the
+                                approval actually wrote. The decisions stay pending-only. */}
+                            <div className="flex flex-wrap gap-2 shrink-0 sm:flex-col sm:items-end">
+                              {request.status === "pending" && (
                                 <div className="flex gap-2" role="group" aria-label="Primary actions">
                                   <button
                                     type="button"
@@ -1271,51 +1360,55 @@ return (
                                     )}
                                   </button>
                                 </div>
-                                <div className="flex gap-2" role="group" aria-label="Secondary actions">
-                                  <button
-                                    type="button"
-                                    onClick={() => void openAttendanceView(request)}
-                                    disabled={isProcessing}
-                                    className={`
-                                      inline-flex items-center justify-center gap-2 min-h-[2.25rem] px-3.5 rounded-lg
-                                      border border-sky-400/60 text-sky-700 bg-sky-50/70
-                                      hover:bg-sky-100/80 hover:border-sky-500 text-sm font-medium
-                                      transition-colors duration-150
-                                      disabled:opacity-50 disabled:pointer-events-none
-                                    `}
-                                  >
-                                    <i className="ri-calendar-check-line text-sm" /> View
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdate(request)}
-                                    disabled={isProcessing}
-                                    className={`
-                                      inline-flex items-center justify-center gap-2 min-h-[2.25rem] px-3.5 rounded-lg
-                                      border-2 border-primary/50 text-primary bg-transparent
-                                      hover:bg-primary/10 hover:border-primary text-sm font-medium
-                                      transition-colors duration-150
-                                      disabled:opacity-50 disabled:pointer-events-none
-                                    `}
-                                  >
-                                    <i className="ri-edit-line text-sm" /> Update
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleCancel(request)}
-                                    disabled={isProcessing}
-                                    className={`
-                                      inline-flex items-center justify-center gap-2 min-h-[2.25rem] px-3.5 rounded-lg
-                                      text-defaulttextcolor/80 hover:text-defaulttextcolor hover:bg-defaultborder/30
-                                      text-sm font-medium transition-colors duration-150
-                                      disabled:opacity-50 disabled:pointer-events-none
-                                    `}
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
+                              )}
+                              <div className="flex gap-2" role="group" aria-label="Secondary actions">
+                                <button
+                                  type="button"
+                                  onClick={() => void openAttendanceView(request)}
+                                  disabled={isProcessing}
+                                  className={`
+                                    inline-flex items-center justify-center gap-2 min-h-[2.25rem] px-3.5 rounded-lg
+                                    border border-sky-400/60 text-sky-700 bg-sky-50/70
+                                    hover:bg-sky-100/80 hover:border-sky-500 text-sm font-medium
+                                    transition-colors duration-150
+                                    disabled:opacity-50 disabled:pointer-events-none
+                                  `}
+                                >
+                                  <i className="ri-calendar-check-line text-sm" /> View
+                                </button>
+                                {request.status === "pending" && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdate(request)}
+                                      disabled={isProcessing}
+                                      className={`
+                                        inline-flex items-center justify-center gap-2 min-h-[2.25rem] px-3.5 rounded-lg
+                                        border-2 border-primary/50 text-primary bg-transparent
+                                        hover:bg-primary/10 hover:border-primary text-sm font-medium
+                                        transition-colors duration-150
+                                        disabled:opacity-50 disabled:pointer-events-none
+                                      `}
+                                    >
+                                      <i className="ri-edit-line text-sm" /> Update
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCancel(request)}
+                                      disabled={isProcessing}
+                                      className={`
+                                        inline-flex items-center justify-center gap-2 min-h-[2.25rem] px-3.5 rounded-lg
+                                        text-defaulttextcolor/80 hover:text-defaulttextcolor hover:bg-defaultborder/30
+                                        text-sm font-medium transition-colors duration-150
+                                        disabled:opacity-50 disabled:pointer-events-none
+                                      `}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </>
+                                )}
                               </div>
-                            )}
+                            </div>
                           </div>
                         </div>
                       </article>
@@ -1409,6 +1502,19 @@ return (
           color: inherit;
         }
       `}</style>
+
+      <AttendanceConflictOverlay
+        key={addConflicts ? addConflicts.conflicts.map((c) => c.date).join(",") : "closed"}
+        open={!!addConflicts}
+        conflicts={addConflicts?.conflicts ?? []}
+        totalDays={addConflicts?.entries.length ?? 0}
+        personName={addPersonRow?.label}
+        submitting={addingBackDate}
+        onCancel={() => setAddConflicts(null)}
+        onConfirm={(policy) => {
+          if (addConflicts) void submitRegularize(addConflicts.entries, policy);
+        }}
+      />
 
       <StudentAttendanceOverlay
         open={!!attendanceViewStudent}

@@ -539,7 +539,7 @@ export const RecruiterWizard = () => {
                 </div>
                 <div className="xl:col-span-12 col-span-12">
                   <label htmlFor="profileSummary" className="form-label">Profile Summary</label>
-                  <textarea name="profileSummary" id="profileSummary" rows={3} value={formData.profileSummary} onChange={handleChange} className="form-control w-full !rounded-md" placeholder="Brief profile summary" />
+                  <textarea name="profileSummary" id="profileSummary" rows={3} maxLength={4000} value={formData.profileSummary} onChange={handleChange} className="form-control w-full !rounded-md" placeholder="Brief profile summary" />
                 </div>
               </div>
 

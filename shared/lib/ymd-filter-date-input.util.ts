@@ -37,7 +37,7 @@ function daysInMonth(year: number, month: number): number {
  * year that has not been typed yet, so it is allowed through until the year settles it.
  */
 export function describeDmyProblem(value: string): string | null {
-  const digits = value.replace(/\D+/g, "").slice(0, 8);
+  const digits = (value ?? "").replace(/\D+/g, "").slice(0, 8);
   if (digits.length < 2) return null;
 
   const day = Number(digits.slice(0, 2));
@@ -71,8 +71,9 @@ export function describeDmyProblem(value: string): string | null {
  * separator would be re-added immediately and the slash could never be deleted.
  */
 export function maskDmyInput(raw: string, previous?: string): string {
-  if (previous && previous.endsWith("/") && previous.slice(0, -1) === raw) return raw;
-  const digits = raw.replace(/\D+/g, "").slice(0, 8);
+  const text = raw ?? "";
+  if (previous && previous.endsWith("/") && previous.slice(0, -1) === text) return text;
+  const digits = text.replace(/\D+/g, "").slice(0, 8);
   if (digits.length < 2) return digits;
   let out = `${digits.slice(0, 2)}/`;
   if (digits.length === 2) return out;
@@ -89,13 +90,13 @@ export function maskDmyInput(raw: string, previous?: string): string {
  * other caller speak YYYY-MM-DD, so this must not reject its own output on a round trip.
  */
 export function sanitizeReferralLeadsDateInput(raw: string): string | null {
-  const value = raw.trim();
+  const value = (raw ?? "").trim();
   if (!value) return "";
   if (isValidYmdLocal(value)) return value;
   const parts = value.split("/");
   if (parts.length !== 3) return null;
   const [dd, mm, yyyy] = parts;
-  if (dd.length !== 2 || mm.length !== 2 || yyyy.length !== 4) return null;
+  if (!dd || !mm || !yyyy || dd.length !== 2 || mm.length !== 2 || yyyy.length !== 4) return null;
   // isValidYmdLocal re-checks that these are digits and round-trips through the
   // calendar, so 31/02, month 13 and non-numeric junk all die there.
   const ymd = `${yyyy}-${mm}-${dd}`;
@@ -105,14 +106,16 @@ export function sanitizeReferralLeadsDateInput(raw: string): string | null {
 export const REFERRAL_LEADS_INVALID_DATE_RANGE_MESSAGE = "From date must be on or before To date";
 
 /** True when both ends are set and From is after To. */
-export function isReferralLeadsDateRangeInvalid(from: string, to: string): boolean {
-  if (!from.trim() || !to.trim()) return false;
-  const fromDate = parseYmdLocal(from.trim());
-  const toDate = parseYmdLocal(to.trim());
+export function isReferralLeadsDateRangeInvalid(from?: string | null, to?: string | null): boolean {
+  const fromStr = (from ?? "").trim();
+  const toStr = (to ?? "").trim();
+  if (!fromStr || !toStr) return false;
+  const fromDate = parseYmdLocal(fromStr);
+  const toDate = parseYmdLocal(toStr);
   if (!fromDate || !toDate) return false;
   return fromDate.getTime() > toDate.getTime();
 }
 
-export function getReferralLeadsDateRangeError(from: string, to: string): string | null {
+export function getReferralLeadsDateRangeError(from?: string | null, to?: string | null): string | null {
   return isReferralLeadsDateRangeInvalid(from, to) ? REFERRAL_LEADS_INVALID_DATE_RANGE_MESSAGE : null;
 }
