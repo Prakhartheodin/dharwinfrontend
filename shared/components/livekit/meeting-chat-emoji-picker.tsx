@@ -125,7 +125,7 @@ export function MeetingChatEmojiPicker({
   };
 
   return (
-    <>
+    <div className="meeting-chat-composer">
       {open && (
         <div
           ref={pickerRef}
@@ -159,10 +159,22 @@ export function MeetingChatEmojiPicker({
           ))}
         </div>
       )}
+      <button
+        ref={btnRef}
+        type="button"
+        className="meeting-emoji-btn"
+        aria-label={open ? "Close emoji picker" : "Open emoji picker"}
+        aria-expanded={open}
+        aria-haspopup="grid"
+        disabled={disabled}
+        onClick={() => onOpenChange(!open)}
+      >
+        <i className="ri-emotion-happy-line" aria-hidden="true" />
+      </button>
       <div className="meeting-chat-form-input-wrap">
         <input
           ref={inputRef}
-          className="lk-form-control lk-chat-form-input meeting-chat-form-input"
+          className="lk-chat-form-input meeting-chat-form-input"
           disabled={disabled}
           type="text"
           placeholder="Enter a message..."
@@ -171,20 +183,8 @@ export function MeetingChatEmojiPicker({
           onKeyDown={(ev) => ev.stopPropagation()}
           onKeyUp={(ev) => ev.stopPropagation()}
         />
-        <button
-          ref={btnRef}
-          type="button"
-          className="meeting-emoji-btn"
-          aria-label={open ? "Close emoji picker" : "Open emoji picker"}
-          aria-expanded={open}
-          aria-haspopup="grid"
-          disabled={disabled}
-          onClick={() => onOpenChange(!open)}
-        >
-          <i className="ri-emotion-happy-line" aria-hidden="true" />
-        </button>
       </div>
-    </>
+    </div>
   );
 }
 

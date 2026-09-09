@@ -27,6 +27,12 @@ import {
 } from "@/shared/hooks/use-meeting-raise-hand";
 import { ConnectionState, Track } from "livekit-client";
 import { MEETING_CONTROL_BAR_RESPONSIVE_CSS } from "./meeting-control-bar-responsive.css";
+import { MeetingTileHandInMetadata } from "./meeting-tile-hand-badge";
+import {
+  BADGE_COUNT_CAP,
+  formatBadgeCount,
+  formatCountLocale,
+} from "@/shared/lib/format-badge-count";
 
 /** ControlBar chat is disabled — we inject ChatToggle beside screen share instead. */
 export const MEETING_CONTROL_BAR_CONTROLS = {
@@ -39,25 +45,46 @@ export const MEETING_CONTROL_BAR_CONTROLS = {
 
 export const MEETING_CHAT_BUTTON_SLOT_ID = "chat-button-slot";
 
+/** Count pill shows at this unread minimum (header bell uses the same ≥1 rule). */
+export const MEETING_CHAT_UNREAD_BADGE_THRESHOLD = 1;
+
 const LEAVE_BUTTON_SELECTOR =
   ".lk-disconnect-button, [data-lk-disconnect], button[aria-label*='Leave'], button[aria-label*='Disconnect']";
 
 /** Portals ChatToggle into `.lk-control-bar` (after screen share, before leave). */
 function MeetingControlBarChatToggle({ narrow }: { narrow: boolean }) {
   const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const [liveAnnouncement, setLiveAnnouncement] = useState("");
+  const prevUnreadRef = useRef(0);
   const layoutContext = useMaybeLayoutContext();
   const chatOpen = layoutContext?.widget.state?.showChat === true;
   const unreadCount = layoutContext?.widget.state?.unreadMessages ?? 0;
   const hasUnread = !chatOpen && unreadCount > 0;
   const unreadLabel =
-    unreadCount > 9
-      ? "9+ unread messages"
-      : `${unreadCount} unread message${unreadCount === 1 ? "" : "s"}`;
+    unreadCount > BADGE_COUNT_CAP
+      ? "99+ unread messages"
+      : `${formatCountLocale(unreadCount)} unread message${unreadCount === 1 ? "" : "s"}`;
   const chatToggleLabel = chatOpen
     ? "Close chat"
     : hasUnread
       ? `Open chat, ${unreadLabel}`
       : "Open chat";
+
+  useEffect(() => {
+    if (chatOpen || unreadCount <= 0) {
+      prevUnreadRef.current = unreadCount;
+      setLiveAnnouncement("");
+      return;
+    }
+    if (unreadCount > prevUnreadRef.current) {
+      setLiveAnnouncement(
+        unreadCount > BADGE_COUNT_CAP
+          ? "99+ new chat messages"
+          : `${formatCountLocale(unreadCount)} new chat message${unreadCount === 1 ? "" : "s"}`
+      );
+    }
+    prevUnreadRef.current = unreadCount;
+  }, [chatOpen, unreadCount]);
 
   useEffect(() => {
     const tryInject = () => {
@@ -93,15 +120,22 @@ function MeetingControlBarChatToggle({ narrow }: { narrow: boolean }) {
   if (!slot) return null;
 
   return createPortal(
-    <ChatToggle aria-label={chatToggleLabel} aria-pressed={chatOpen}>
-      <ChatIcon />
-      {!narrow && <span>Chat</span>}
-      {hasUnread && unreadCount > 1 && (
-        <span className="meeting-chat-unread-badge" aria-hidden="true">
-          {formatUnreadCount(unreadCount)}
-        </span>
-      )}
-    </ChatToggle>,
+    <>
+      <span className="meeting-sr-only" aria-live="polite" aria-atomic="true">
+        {liveAnnouncement}
+      </span>
+      <ChatToggle aria-label={chatToggleLabel} aria-pressed={chatOpen}>
+        <ChatIcon />
+        {!narrow && <span className="meeting-chat-toggle-label">Chat</span>}
+        {hasUnread && unreadCount >= MEETING_CHAT_UNREAD_BADGE_THRESHOLD && (
+          <span className="meeting-chat-unread-badge-anchor" aria-hidden="true">
+            <span className="meeting-chat-unread-badge">
+              {formatBadgeCount(unreadCount)}
+            </span>
+          </span>
+        )}
+      </ChatToggle>
+    </>,
     slot
   );
 }
@@ -117,10 +151,6 @@ function useNarrowControlBar(breakpointPx = 760) {
     return () => mq.removeEventListener("change", update);
   }, [breakpointPx]);
   return narrow;
-}
-
-function formatUnreadCount(count: number): string {
-  return count > 9 ? "9+" : String(count);
 }
 
 /**
@@ -185,6 +215,7 @@ function CamTile({
   handRaised?: boolean;
   onTogglePin: () => void;
 }) {
+  const tileRef = useRef<HTMLDivElement>(null);
   const displayName = participantDisplayName(trackRef.participant);
   const tileLabel = [
     displayName,
@@ -196,6 +227,7 @@ function CamTile({
 
   return (
     <div
+      ref={tileRef}
       className="lk-cam-tile"
       data-pinned={pinned ? "true" : undefined}
       data-hand-raised={handRaised ? "true" : undefined}
@@ -233,11 +265,10 @@ function CamTile({
           )}
         </svg>
       </button>
-      {handRaised && (
-        <span className="meeting-tile-hand-badge" aria-hidden="true">
-          <i className="ri-hand" aria-hidden="true" />
-        </span>
-      )}
+      <MeetingTileHandInMetadata
+        active={Boolean(handRaised)}
+        containerRef={tileRef}
+      />
     </div>
   );
 }
@@ -703,23 +734,31 @@ const SVC_CSS = `
 }
 
 .meeting-tile-hand-badge {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 4;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: rgba(11,13,14,0.72);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(0,230,195,0.35);
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: rgba(0,230,195,0.18);
+  border: 1px solid rgba(0,230,195,0.4);
   color: var(--obs-accent, #00E6C3);
-  font-size: 14px;
+  font-size: 11px;
   line-height: 1;
+}
+.lk-cam-tile .lk-participant-metadata .lk-participant-metadata-item:has(.meeting-tile-hand-badge) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+.lk-cam-tile .lk-participant-metadata .lk-participant-metadata-item:has(.meeting-tile-hand-badge) .lk-participant-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .lk-control-bar .meeting-raise-hand-btn .ri-hand {
@@ -950,12 +989,21 @@ const SVC_CSS = `
 }
 
 .lk-chat-panel .lk-chat-entry {
-.lk-chat-panel .lk-chat-entry {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
   width: fit-content;
   max-width: 88%;
+  margin: 0;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.055);
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(255,255,255,0.92);
+  overflow-wrap: anywhere;
+  animation: lkChatIn 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .lk-chat-panel .lk-chat-entry[data-lk-message-origin="remote"] {
   align-self: flex-start;
@@ -999,19 +1047,28 @@ const SVC_CSS = `
 .lk-chat-panel .meeting-chat-form {
   position: relative;
   flex-wrap: wrap;
+  align-items: center;
+}
+.lk-chat-panel .meeting-chat-composer {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 1 1 12rem;
+  min-width: 0;
 }
 .lk-chat-panel .meeting-chat-form .meeting-chat-form-input-wrap {
-  flex: 1 1 12rem;
+  flex: 1 1 auto;
   min-width: 0;
 }
 .meeting-chat-form-input-wrap {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  min-height: 44px;
   border: 1px solid rgba(255,255,255,0.1);
   border-radius: 12px;
   background: rgba(255,255,255,0.05);
-  padding: 0 0.35rem 0 0.75rem;
+  padding: 0 0.75rem;
 }
 .meeting-chat-form-input-wrap:focus-within {
   outline: 2px solid var(--obs-accent, #00E6C3);
@@ -1023,10 +1080,19 @@ const SVC_CSS = `
   min-width: 0;
   min-height: 44px;
   border: 0 !important;
+  border-radius: 0 !important;
   background: transparent !important;
   padding: 0 !important;
+  box-shadow: none !important;
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
 }
-.lk-chat-panel .meeting-chat-form-input:focus { outline: none; }
+.lk-chat-panel .meeting-chat-form-input::placeholder { color: rgba(255,255,255,0.36); }
+.lk-chat-panel .meeting-chat-form-input:focus,
+.lk-chat-panel .meeting-chat-form-input:focus-visible {
+  outline: none;
+}
 
 .meeting-emoji-btn {
   display: inline-flex;
@@ -1043,6 +1109,12 @@ const SVC_CSS = `
   cursor: pointer;
   flex-shrink: 0;
   font-size: 18px;
+  line-height: 1;
+  padding: 0;
+}
+.meeting-emoji-btn i {
+  display: block;
+  line-height: 1;
 }
 .meeting-emoji-btn:hover,
 .meeting-emoji-btn[aria-expanded="true"] {
@@ -1057,8 +1129,8 @@ const SVC_CSS = `
 
 .meeting-emoji-picker {
   position: absolute;
-  left: 0.75rem;
-  right: 0.75rem;
+  left: 0;
+  right: 0;
   bottom: calc(100% + 0.35rem);
   z-index: 40;
   display: flex;
@@ -1107,39 +1179,44 @@ const SVC_CSS = `
   cursor: not-allowed;
 }
 
-.meeting-chat-unread-badge {
+#chat-button-slot .lk-button {
+  position: relative;
+  overflow: visible;
+}
+#chat-button-slot .lk-chat-toggle[data-lk-unread-msgs]:not([data-lk-unread-msgs="0"])::after {
+  display: none;
+  content: none;
+}
+.meeting-chat-unread-badge-anchor {
+  pointer-events: none;
   position: absolute;
-  top: 2px;
-  right: 2px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
+  top: 0;
+  right: 0;
+  transform: translate(20%, -10%);
+  z-index: 2;
+}
+.meeting-chat-unread-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
   border-radius: 999px;
   background: var(--obs-accent, #00E6C3);
   color: #06231f;
   font-size: 10px;
   font-weight: 700;
-  line-height: 16px;
-  text-align: center;
-  box-shadow: 0 0 0 2px rgba(15,17,19,0.9);
-  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.9),
+    0 0 0 3px rgba(15,17,19,0.92);
 }
-.lk-video-conference[data-unread="true"] #chat-button-slot .lk-button:has(.meeting-chat-unread-badge)::after {
-  display: none;
+.meeting-chat-toggle-label {
+  line-height: 1;
 }
 
-  max-width: 88%;
-  margin: 0;
-  padding: 0.45rem 0.7rem;
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 12px;
-  background: rgba(255,255,255,0.055);
-  font-size: 13px;
-  line-height: 1.5;
-  color: rgba(255,255,255,0.92);
-  overflow-wrap: anywhere;
-  animation: lkChatIn 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
 .lk-chat-panel .lk-chat-entry[data-lk-message-origin="local"] {
   align-self: flex-end;
   background: rgba(0,230,195,0.13);
@@ -1175,11 +1252,12 @@ const SVC_CSS = `
 
 .lk-chat-panel .lk-chat-form {
   display: flex;
+  align-items: center;
   gap: 0.5rem;
   padding: 0.75rem;
   border-top: 1px solid rgba(255,255,255,0.07);
 }
-.lk-chat-panel .lk-chat-form-input {
+.lk-chat-panel .lk-chat-form-input:not(.meeting-chat-form-input) {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 44px;
@@ -1191,8 +1269,8 @@ const SVC_CSS = `
   font: inherit;
   font-size: 14px;
 }
-.lk-chat-panel .lk-chat-form-input::placeholder { color: rgba(255,255,255,0.36); }
-.lk-chat-panel .lk-chat-form-input:focus-visible {
+.lk-chat-panel .lk-chat-form-input:not(.meeting-chat-form-input)::placeholder { color: rgba(255,255,255,0.36); }
+.lk-chat-panel .lk-chat-form-input:not(.meeting-chat-form-input):focus-visible {
   outline: 2px solid var(--obs-accent, #00E6C3);
   outline-offset: 1px;
   border-color: transparent;
@@ -1211,10 +1289,12 @@ const SVC_CSS = `
 }
 .lk-chat-panel .lk-chat-form-button:hover:not(:disabled) { filter: brightness(1.08); }
 .lk-chat-panel .lk-chat-form-input:disabled,
+.lk-chat-panel .meeting-chat-form-input:disabled,
 .lk-chat-panel .lk-chat-form-button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Offline: submit is blocked upstream, so the form must not look ready to send. */
 .lk-chat-panel[data-offline="true"] .lk-chat-form-input,
+.lk-chat-panel[data-offline="true"] .meeting-chat-form-input,
 .lk-chat-panel[data-offline="true"] .lk-chat-form-button {
   opacity: 0.45;
   cursor: not-allowed;
@@ -1231,18 +1311,22 @@ const SVC_CSS = `
   line-height: 1.45;
 }
 
-/* Unread dot on the chat toggle — Chat only counts unreads while it is closed. */
-#chat-button-slot .lk-button { position: relative; }
-.lk-video-conference[data-unread="true"] #chat-button-slot .lk-button::after {
+/* Unread dot when no count pill — chat only counts unreads while closed. */
+.lk-video-conference[data-unread="true"] #chat-button-slot .lk-button:not(:has(.meeting-chat-unread-badge))::after {
   content: "";
   position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 8px;
-  height: 8px;
+  top: 0;
+  right: 0;
+  transform: translate(20%, -10%);
+  width: 10px;
+  height: 10px;
   border-radius: 999px;
   background: var(--obs-accent, #00E6C3);
-  box-shadow: 0 0 0 2px rgba(15,17,19,0.9);
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.9),
+    0 0 0 3px rgba(15,17,19,0.92);
+  pointer-events: none;
+  z-index: 2;
 }
 
 @keyframes lkChatIn {
@@ -1273,185 +1357,7 @@ const SVC_CSS = `
     transition: opacity 120ms linear, visibility 0s linear 120ms;
   }
   .lk-chat-panel[data-open="true"] { transition: opacity 120ms linear, visibility 0s; }
-  .lk-chat-panel .lk-chat-entry {
-.lk-chat-panel .lk-chat-entry {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  width: fit-content;
-  max-width: 88%;
-}
-.lk-chat-panel .lk-chat-entry[data-lk-message-origin="remote"] {
-  align-self: flex-start;
-}
-.lk-chat-panel .lk-meta-data {
-  flex-wrap: wrap;
-  min-width: 0;
-}
-.lk-chat-panel .lk-chat-entry .lk-participant-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-.lk-chat-panel .lk-timestamp { margin-left: auto; }
-.lk-chat-panel .lk-message-body {
-  width: auto;
-  max-width: none;
-  min-width: 2.5ch;
-  margin: 0;
-  padding: 0 !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  overflow-wrap: anywhere;
-  word-break: normal;
-}
-.lk-chat-panel .lk-message-body .meeting-chat-link {
-  color: var(--obs-accent, #00E6C3);
-  text-decoration: none;
-  text-underline-offset: 2px;
-}
-.lk-chat-panel .lk-message-body .meeting-chat-link:hover { text-decoration: underline; }
-.lk-chat-panel .lk-message-body .meeting-chat-link:focus-visible {
-  outline: 2px solid var(--obs-accent, #00E6C3);
-  outline-offset: 2px;
-  border-radius: 2px;
-}
-
-.lk-chat-panel .meeting-chat-form {
-  position: relative;
-  flex-wrap: wrap;
-}
-.lk-chat-panel .meeting-chat-form .meeting-chat-form-input-wrap {
-  flex: 1 1 12rem;
-  min-width: 0;
-}
-.meeting-chat-form-input-wrap {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 12px;
-  background: rgba(255,255,255,0.05);
-  padding: 0 0.35rem 0 0.75rem;
-}
-.meeting-chat-form-input-wrap:focus-within {
-  outline: 2px solid var(--obs-accent, #00E6C3);
-  outline-offset: 1px;
-  border-color: transparent;
-}
-.lk-chat-panel .meeting-chat-form-input {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 44px;
-  border: 0 !important;
-  background: transparent !important;
-  padding: 0 !important;
-}
-.lk-chat-panel .meeting-chat-form-input:focus { outline: none; }
-
-.meeting-emoji-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 44px;
-  min-height: 44px;
-  width: 44px;
-  height: 44px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: rgba(255,255,255,0.7);
-  cursor: pointer;
-  flex-shrink: 0;
-  font-size: 18px;
-}
-.meeting-emoji-btn:hover,
-.meeting-emoji-btn[aria-expanded="true"] {
-  background: rgba(255,255,255,0.08);
-  color: #fff;
-}
-.meeting-emoji-btn:focus-visible {
-  outline: 2px solid var(--obs-accent, #00E6C3);
-  outline-offset: 1px;
-}
-.meeting-emoji-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-
-.meeting-emoji-picker {
-  position: absolute;
-  left: 0.75rem;
-  right: 0.75rem;
-  bottom: calc(100% + 0.35rem);
-  z-index: 40;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  max-height: min(40vh, 220px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 0.5rem;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.1);
-  background: rgba(15,17,19,0.95);
-  backdrop-filter: blur(16px);
-  box-shadow: 0 12px 32px -8px rgba(0,0,0,0.65);
-  scrollbar-width: thin;
-}
-.meeting-emoji-picker-row {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(44px, 1fr));
-  gap: 0.25rem;
-}
-.meeting-emoji-picker button {
-  min-width: 44px;
-  min-height: 44px;
-  width: 100%;
-  aspect-ratio: 1;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  font-size: 1.25rem;
-  cursor: pointer;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.meeting-emoji-picker button:hover { background: rgba(255,255,255,0.08); }
-.meeting-emoji-picker button:focus-visible {
-  outline: 2px solid var(--obs-accent, #00E6C3);
-  outline-offset: 1px;
-  background: rgba(255,255,255,0.08);
-}
-
-.lk-chat-panel[data-offline="true"] .meeting-emoji-btn {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.meeting-chat-unread-badge {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: var(--obs-accent, #00E6C3);
-  color: #06231f;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 16px;
-  text-align: center;
-  box-shadow: 0 0 0 2px rgba(15,17,19,0.9);
-  pointer-events: none;
-}
-.lk-video-conference[data-unread="true"] #chat-button-slot .lk-button:has(.meeting-chat-unread-badge)::after {
-  display: none;
-}
- animation: none; }
+  .lk-chat-panel .lk-chat-entry { animation: none; }
   .lk-layout-toggle { transition: none; }
   .meeting-hand-toast { animation: meetingHandToastFadeIn 200ms linear; }
 

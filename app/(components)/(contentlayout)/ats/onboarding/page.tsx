@@ -9,11 +9,8 @@ import { listPlacements } from '@/shared/lib/api/placements'
 import type { Placement } from '@/shared/lib/api/placements'
 import { getPlacementStatusActorSummary } from '@/shared/lib/ats/placementActorText'
 import { JoiningDateTableCell } from '@/shared/components/ats/JoiningDateTableCell'
-import ListPagination from '@/shared/components/ListPagination'
+import ListPagination, { DEFAULT_LIST_PAGE_SIZE } from '@/shared/components/ListPagination'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
-
-/** Same default as Jobs / Students / Recruiters. */
-const LIST_PAGE_SIZE = 10
 
 function parseListPage(raw: string | null | undefined): number {
   const n = Number.parseInt(String(raw ?? ''), 10)
@@ -254,6 +251,7 @@ const Onboarding = () => {
   const [listSearch, setListSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [apiPage, setApiPage] = useState(() => parseListPage(searchParams.get('page')))
+  const [pageSize, setPageSize] = useState(DEFAULT_LIST_PAGE_SIZE)
   const [totalResults, setTotalResults] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
   const fetchGenerationRef = useRef(0)
@@ -285,6 +283,11 @@ const Onboarding = () => {
     setApiPage(1)
   }, [debouncedSearch])
 
+  const handlePageSizeChange = useCallback((nextSize: number) => {
+    setPageSize(nextSize)
+    setApiPage(1)
+  }, [])
+
   /**
    * Onboarding queue: status=Onboarding (pre-boarding completed, awaiting joining) ∪
    * status=Joined (already started). Promotion Onboarding → Joined happens in Onboarding edit.
@@ -296,7 +299,7 @@ const Onboarding = () => {
     setError(null)
     listPlacements({
       stage: 'onboarding',
-      limit: LIST_PAGE_SIZE,
+      limit: pageSize,
       page: apiPage,
       ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
     })
@@ -316,7 +319,7 @@ const Onboarding = () => {
       .finally(() => {
         if (generation === fetchGenerationRef.current) setLoading(false)
       })
-  }, [canView, apiPage, debouncedSearch])
+  }, [canView, apiPage, debouncedSearch, pageSize])
 
   useEffect(() => {
     fetchPlacements()
@@ -548,10 +551,12 @@ const Onboarding = () => {
                   page={apiPage}
                   totalPages={totalPages}
                   totalResults={totalResults}
-                  pageSize={LIST_PAGE_SIZE}
+                  pageSize={pageSize}
                   onPageChange={setApiPage}
+                  onPageSizeChange={handlePageSizeChange}
                   ariaLabel="Onboarding page navigation"
                   gotoInputId="onboarding-goto-page"
+                  pageSizeSelectId="onboarding-page-size"
                 />
               )}
             </div>

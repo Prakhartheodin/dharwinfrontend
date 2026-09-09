@@ -228,10 +228,7 @@ export default function BrowseJobsPage() {
       <div className="container-fluid pt-6">
         <div className="box custom-box mb-4">
           <div className="box-body">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3 mb-3 border-b border-defaultborder/60 dark:border-defaultborder/10">
-              <p className="text-sm text-defaulttextcolor/70 dark:text-white/60 mb-0 min-w-0 flex-1">
-                Get notified when new roles match your filters.
-              </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end pb-3 mb-3 border-b border-defaultborder/60 dark:border-defaultborder/10">
               {user ? (
                 <button
                   type="button"
@@ -300,16 +297,19 @@ export default function BrowseJobsPage() {
                 </div>
                 <button
                   type="button"
-                  className="form-select text-start min-h-[2.75rem] flex items-center justify-between w-full"
+                  className="form-select relative min-h-[2.75rem] w-full text-start !bg-none cursor-pointer"
                   aria-expanded={jobTypesOpen}
                   aria-controls="job-type-filter-panel"
                   aria-labelledby="job-type-filter-label"
                   onClick={() => setJobTypesOpen((o) => !o)}
                 >
-                  <span className="truncate text-defaulttextcolor dark:text-white/90">
+                  <span className="block truncate text-defaulttextcolor dark:text-white/90">
                     {formatJobTypesLabel(jobTypes)}
                   </span>
-                  <i className={`bi bi-chevron-${jobTypesOpen ? "up" : "down"} shrink-0`} aria-hidden />
+                  <i
+                    className={`bi bi-chevron-${jobTypesOpen ? "up" : "down"} pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-[0.75rem] opacity-60`}
+                    aria-hidden
+                  />
                 </button>
                 {jobTypesOpen && (
                   <div

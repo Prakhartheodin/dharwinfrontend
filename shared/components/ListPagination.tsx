@@ -3,14 +3,21 @@
 import React, { useId, useState } from "react";
 import { buildPaginationItems, getPaginationRange } from "@/shared/lib/pagination-items";
 
+export const DEFAULT_LIST_PAGE_SIZE = 100;
+export const DEFAULT_LIST_PAGE_SIZE_OPTIONS: readonly number[] = [10, 25, 50, 100];
+
 export type ListPaginationProps = {
   page: number;
   totalPages: number;
   totalResults: number;
   pageSize: number;
   onPageChange: (page: number) => void;
+  /** When set, shows a rows-per-page control (server- or client-side lists). */
+  onPageSizeChange?: (pageSize: number) => void;
+  pageSizeOptions?: readonly number[];
   ariaLabel?: string;
   gotoInputId?: string;
+  pageSizeSelectId?: string;
   className?: string;
   /** 44px min touch targets on pager controls (mobile-friendly lists). */
   touchFriendly?: boolean;
@@ -27,8 +34,11 @@ export default function ListPagination({
   totalResults,
   pageSize,
   onPageChange,
+  onPageSizeChange,
+  pageSizeOptions = DEFAULT_LIST_PAGE_SIZE_OPTIONS,
   ariaLabel = "Page navigation",
   gotoInputId,
+  pageSizeSelectId,
   className,
   touchFriendly = false,
   hideWhenSinglePage = false,
@@ -38,6 +48,7 @@ export default function ListPagination({
     : "";
   const autoId = useId();
   const inputId = gotoInputId ?? `${autoId}-goto-page`;
+  const rowsSelectId = pageSizeSelectId ?? `${autoId}-page-size`;
   const hintId = `${inputId}-hint`;
   const [gotoPageInput, setGotoPageInput] = useState("");
   const { start, end } = getPaginationRange(totalResults, page, pageSize);
@@ -50,6 +61,29 @@ export default function ListPagination({
 
   return (
     <div className={`flex flex-wrap items-center gap-4 ${touchClass} ${className ?? ""}`}>
+      {onPageSizeChange ? (
+        <div className="flex items-center gap-2">
+          <label
+            htmlFor={rowsSelectId}
+            className="text-[0.6875rem] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+          >
+            Rows
+          </label>
+          <select
+            id={rowsSelectId}
+            className="form-control select-show-page-size !w-auto !min-w-[4.5rem] !h-8 !py-1 !px-2 !text-[0.75rem] !rounded-lg"
+            value={pageSize}
+            onChange={(e) => onPageSizeChange(Number(e.target.value))}
+            aria-label="Rows per page"
+          >
+            {pageSizeOptions.map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
       <div>
         Showing {start} to {end} of {totalResults} entries{" "}
         <i className="bi bi-arrow-right ms-2 font-semibold" />

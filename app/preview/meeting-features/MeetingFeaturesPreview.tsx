@@ -16,6 +16,7 @@ import {
 } from "@livekit/components-react";
 import { splitTextLinks } from "@/app/(components)/(contentlayout)/communication/chats/_utils/chatHelpers";
 import { PREVIEW_MEETING_CSS, PREVIEW_OBSIDIAN_CSS } from "./preview-meeting-styles";
+import { MeetingTileHandBadge } from "@/shared/components/livekit/meeting-tile-hand-badge";
 
 const EMOJI_OPTIONS = ["👍", "❤️", "😂", "🎉", "👏", "🙏", "🔥", "✨", "😊", "👋", "🤔", "💯"];
 const EMOJI_COLS = 6;
@@ -583,6 +584,7 @@ export default function MeetingFeaturesPreview() {
                         </div>
                         <div className="lk-participant-metadata">
                           <div className="lk-participant-metadata-item">
+                            {raised && <MeetingTileHandBadge />}
                             <span
                               className="lk-participant-name"
                               data-lk-local={p.local ? "true" : undefined}
@@ -592,12 +594,6 @@ export default function MeetingFeaturesPreview() {
                             </span>
                           </div>
                         </div>
-                        {raised && (
-                          <span className="preview-tile-hand-badge" aria-hidden="true">
-                            {/* RemixIcon ri-hand — decorative; state announced on tile aria-label */}
-                            <i className="ri-hand" aria-hidden="true" />
-                          </span>
-                        )}
                       </div>
                     </div>
                   );
@@ -680,55 +676,40 @@ export default function MeetingFeaturesPreview() {
                   )}
 
                   <form className="lk-chat-form preview-chat-form" onSubmit={sendMessage}>
-                    {emojiOpen && (
-                      <div
-                        ref={emojiPickerRef}
-                        className="preview-emoji-picker"
-                        role="grid"
-                        aria-label="Emoji picker"
-                        onKeyDown={handleEmojiPickerKeyDown}
-                      >
-                        {emojiRows.map((row, rowIdx) => (
-                          <div key={rowIdx} role="row" className="preview-emoji-picker-row">
-                            {row.map((emoji, colIdx) => {
-                              const globalIndex = rowIdx * EMOJI_COLS + colIdx;
-                              return (
-                                <button
-                                  key={`${emoji}-${globalIndex}`}
-                                  type="button"
-                                  role="gridcell"
-                                  tabIndex={globalIndex === emojiFocusIndex ? 0 : -1}
-                                  aria-label={`Insert ${emoji}`}
-                                  ref={(el) => {
-                                    emojiCellRefs.current[globalIndex] = el;
-                                  }}
-                                  onClick={() => insertEmoji(emoji)}
-                                  onFocus={() => setEmojiFocusIndex(globalIndex)}
-                                >
-                                  {emoji}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <div className="preview-chat-form-input-wrap">
-                      <input
-                        ref={inputRef}
-                        type="text"
-                        className="lk-chat-form-input preview-chat-form-input"
-                        placeholder="Enter a message..."
-                        value={draft}
-                        onChange={(e) => {
-                          setDraft(e.target.value);
-                          if (sendError) setSendError("");
-                        }}
-                        aria-label="Chat message"
-                        disabled={chatFormDisabled}
-                        aria-invalid={sendError ? true : undefined}
-                        aria-describedby={sendError ? "preview-chat-send-error" : undefined}
-                      />
+                    <div className="preview-chat-composer">
+                      {emojiOpen && (
+                        <div
+                          ref={emojiPickerRef}
+                          className="preview-emoji-picker"
+                          role="grid"
+                          aria-label="Emoji picker"
+                          onKeyDown={handleEmojiPickerKeyDown}
+                        >
+                          {emojiRows.map((row, rowIdx) => (
+                            <div key={rowIdx} role="row" className="preview-emoji-picker-row">
+                              {row.map((emoji, colIdx) => {
+                                const globalIndex = rowIdx * EMOJI_COLS + colIdx;
+                                return (
+                                  <button
+                                    key={`${emoji}-${globalIndex}`}
+                                    type="button"
+                                    role="gridcell"
+                                    tabIndex={globalIndex === emojiFocusIndex ? 0 : -1}
+                                    aria-label={`Insert ${emoji}`}
+                                    ref={(el) => {
+                                      emojiCellRefs.current[globalIndex] = el;
+                                    }}
+                                    onClick={() => insertEmoji(emoji)}
+                                    onFocus={() => setEmojiFocusIndex(globalIndex)}
+                                  >
+                                    {emoji}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <button
                         ref={emojiBtnRef}
                         type="button"
@@ -741,6 +722,23 @@ export default function MeetingFeaturesPreview() {
                       >
                         <i className="ri-emotion-happy-line" aria-hidden="true" />
                       </button>
+                      <div className="preview-chat-form-input-wrap">
+                        <input
+                          ref={inputRef}
+                          type="text"
+                          className="lk-chat-form-input preview-chat-form-input"
+                          placeholder="Enter a message..."
+                          value={draft}
+                          onChange={(e) => {
+                            setDraft(e.target.value);
+                            if (sendError) setSendError("");
+                          }}
+                          aria-label="Chat message"
+                          disabled={chatFormDisabled}
+                          aria-invalid={sendError ? true : undefined}
+                          aria-describedby={sendError ? "preview-chat-send-error" : undefined}
+                        />
+                      </div>
                     </div>
                     {sendError && (
                       <p id="preview-chat-send-error" className="preview-chat-send-error" role="alert">

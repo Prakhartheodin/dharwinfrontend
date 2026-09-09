@@ -4,7 +4,7 @@ import React, { Fragment, useMemo, useState, useEffect, useLayoutEffect, useCall
 import { createPortal } from 'react-dom'
 import offersStyles from './offers-placement.module.css'
 import pipelineStyles from '../ats-pipeline-list.module.css'
-import ListPagination from '@/shared/components/ListPagination'
+import ListPagination, { DEFAULT_LIST_PAGE_SIZE } from '@/shared/components/ListPagination'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useTable, useSortBy, usePagination } from 'react-table'
 import Link from 'next/link'
@@ -848,7 +848,7 @@ const OffersPlacement = () => {
     {
       columns,
       data,
-      initialState: { pageIndex: 0, pageSize: 100 },
+      initialState: { pageIndex: 0, pageSize: DEFAULT_LIST_PAGE_SIZE },
     },
     useSortBy,
     usePagination
@@ -997,21 +997,6 @@ const OffersPlacement = () => {
                   </Link>
                 </div>
                 <div className="flex min-w-0 w-full flex-wrap items-center gap-2 sm:w-auto sm:border-l sm:border-slate-200/80 sm:pl-3 dark:sm:border-white/10 relative z-20">
-                <label className="sr-only" htmlFor="offers-page-size">
-                  Rows per page
-                </label>
-                <select
-                  id="offers-page-size"
-                  className={`form-control select-show-page-size !w-auto !text-[0.8125rem] ${TOOLBAR_BTN}`}
-                  value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
-                >
-                  {[10, 25, 50, 100].map((size) => (
-                    <option key={size} value={size}>
-                      Show {size}
-                    </option>
-                  ))}
-                </select>
                 {canCreate && (
                   <Link
                     href="/ats/offers-placement/offer-letter/new"
@@ -1385,11 +1370,13 @@ const OffersPlacement = () => {
                 <ListPagination
                   page={pageIndex + 1}
                   totalPages={pageCount}
-                  totalResults={data.length}
+                  totalResults={filteredData.length}
                   pageSize={pageSize}
                   onPageChange={(p) => gotoPage(p - 1)}
+                  onPageSizeChange={setPageSize}
                   ariaLabel="Offers page navigation"
                   gotoInputId="offers-goto-page"
+                  pageSizeSelectId="offers-page-size"
                   touchFriendly
                 />
               ) : (

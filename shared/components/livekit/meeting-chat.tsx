@@ -129,7 +129,9 @@ export function MeetingChat({
     }
 
     const unreadMessageCount = chatMessages.filter(
-      (msg) => !lastReadMsgAt.current || msg.timestamp > lastReadMsgAt.current
+      (msg) =>
+        !msg.from?.isLocal &&
+        (!lastReadMsgAt.current || msg.timestamp > lastReadMsgAt.current)
     ).length;
 
     const { widget } = layoutContext;

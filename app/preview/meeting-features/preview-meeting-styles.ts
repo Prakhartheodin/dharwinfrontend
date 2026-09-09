@@ -380,24 +380,34 @@ export const PREVIEW_MEETING_CSS = `
     to { opacity: 1; }
   }
 
-  .preview-tile-hand-badge {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    z-index: 4;
+  .meeting-tile-hand-badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
-    border-radius: 8px;
-    background: rgba(11,13,14,0.72);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border: 1px solid rgba(0,230,195,0.35);
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    background: rgba(0,230,195,0.18);
+    border: 1px solid rgba(0,230,195,0.4);
     color: var(--obs-accent);
-    font-size: 14px;
+    font-size: 11px;
     line-height: 1;
+  }
+
+  .room-meeting-container .lk-participant-metadata .lk-participant-metadata-item:has(.meeting-tile-hand-badge) {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .room-meeting-container .lk-participant-metadata .lk-participant-metadata-item:has(.meeting-tile-hand-badge) .lk-participant-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .room-meeting-container .lk-control-bar {
@@ -697,18 +707,27 @@ export const PREVIEW_MEETING_CSS = `
     position: relative;
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 0.5rem;
     padding: 0.75rem;
     border-top: 1px solid rgba(255,255,255,0.07);
     max-height: none;
   }
 
-  .lk-chat-panel .preview-chat-form .preview-chat-form-input-wrap,
+  .lk-chat-panel .preview-chat-composer {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex: 1 1 12rem;
+    min-width: 0;
+  }
+
   .lk-chat-panel .preview-chat-form .lk-chat-form-button {
     flex: 0 0 auto;
   }
 
-  .lk-chat-panel .preview-chat-form .preview-chat-form-input-wrap {
+  .lk-chat-panel .preview-chat-form .preview-chat-composer {
     flex: 1 1 12rem;
   }
 
@@ -717,11 +736,11 @@ export const PREVIEW_MEETING_CSS = `
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 0.35rem;
+    min-height: 44px;
     border: 1px solid rgba(255,255,255,0.1);
     border-radius: 12px;
     background: rgba(255,255,255,0.05);
-    padding: 0 0.35rem 0 0.75rem;
+    padding: 0 0.75rem;
   }
 
   .preview-chat-form-input-wrap:focus-within {
@@ -746,7 +765,8 @@ export const PREVIEW_MEETING_CSS = `
     color: rgba(255,255,255,0.36);
   }
 
-  .lk-chat-panel .preview-chat-form-input:focus {
+  .lk-chat-panel .preview-chat-form-input:focus,
+  .lk-chat-panel .preview-chat-form-input:focus-visible {
     outline: none;
   }
 
@@ -765,6 +785,13 @@ export const PREVIEW_MEETING_CSS = `
     cursor: pointer;
     flex-shrink: 0;
     font-size: 18px;
+    line-height: 1;
+    padding: 0;
+  }
+
+  .preview-emoji-btn i {
+    display: block;
+    line-height: 1;
   }
 
   .preview-emoji-btn:hover,
@@ -785,8 +812,8 @@ export const PREVIEW_MEETING_CSS = `
 
   .preview-emoji-picker {
     position: absolute;
-    left: 0.75rem;
-    right: 0.75rem;
+    left: 0;
+    right: 0;
     bottom: calc(100% + 0.35rem);
     z-index: 40;
     display: flex;

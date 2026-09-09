@@ -12,10 +12,7 @@ import Link from 'next/link'
 import { useModalBehavior } from '@/shared/hooks/useModalBehavior'
 import ConfirmDiscardDialog from '@/shared/components/ConfirmDiscardDialog'
 import PreBoardingDocumentsModal from './modals/PreBoardingDocumentsModal'
-import ListPagination from '@/shared/components/ListPagination'
-
-/** Same default as Jobs / Students / Recruiters. */
-const LIST_PAGE_SIZE = 10
+import ListPagination, { DEFAULT_LIST_PAGE_SIZE } from '@/shared/components/ListPagination'
 
 function parseListPage(raw: string | null | undefined): number {
   const n = Number.parseInt(String(raw ?? ''), 10)
@@ -175,6 +172,7 @@ const PreBoarding = () => {
   const [listSearch, setListSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [apiPage, setApiPage] = useState(() => parseListPage(searchParams.get('page')))
+  const [pageSize, setPageSize] = useState(DEFAULT_LIST_PAGE_SIZE)
   const [totalResults, setTotalResults] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
   const fetchGenerationRef = useRef(0)
@@ -211,7 +209,7 @@ const PreBoarding = () => {
     listPlacements({
       stage: 'preBoarding',
       ...(placementStatusFilter ? { status: placementStatusFilter } : {}),
-      limit: LIST_PAGE_SIZE,
+      limit: pageSize,
       page: apiPage,
       ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
     })
@@ -231,7 +229,7 @@ const PreBoarding = () => {
       .finally(() => {
         if (generation === fetchGenerationRef.current) setLoading(false)
       })
-  }, [canView, placementStatusFilter, apiPage, debouncedSearch])
+  }, [canView, placementStatusFilter, apiPage, debouncedSearch, pageSize])
 
   useEffect(() => {
     const fromUrl = parseListPage(searchParams.get('page'))
@@ -258,6 +256,11 @@ const PreBoarding = () => {
     prevDebouncedSearchRef.current = debouncedSearch
     setApiPage(1)
   }, [debouncedSearch])
+
+  const handlePageSizeChange = useCallback((nextSize: number) => {
+    setPageSize(nextSize)
+    setApiPage(1)
+  }, [])
 
   useEffect(() => {
     if (prevStatusFilterRef.current === placementStatusFilter) return
@@ -779,10 +782,12 @@ const PreBoarding = () => {
                   page={apiPage}
                   totalPages={totalPages}
                   totalResults={totalResults}
-                  pageSize={LIST_PAGE_SIZE}
+                  pageSize={pageSize}
                   onPageChange={setApiPage}
+                  onPageSizeChange={handlePageSizeChange}
                   ariaLabel="Pre-boarding page navigation"
                   gotoInputId="preboarding-goto-page"
+                  pageSizeSelectId="preboarding-page-size"
                   touchFriendly
                 />
               )}
