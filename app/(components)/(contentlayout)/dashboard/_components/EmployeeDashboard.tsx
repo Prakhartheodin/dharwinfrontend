@@ -20,6 +20,7 @@ import { getMyMatchingJobs, type JobMatch } from "@/shared/lib/api/employees";
 import { getAllLeaveRequests, type LeaveRequest } from "@/shared/lib/api/leave-requests";
 import { listStudentCourses, type StudentCourseListItem } from "@/shared/lib/api/student-courses";
 import { getTaskId, listTasks, updateTaskStatus, type Task, type TaskStatus } from "@/shared/lib/api/tasks";
+import { OPEN_TASK_STATUS_PARAM } from "@/shared/lib/dashboard/dashboardTasks";
 import { listInternalMeetings, type InternalMeeting } from "@/shared/lib/api/internal-meetings";
 import { listProjects, type Project } from "@/shared/lib/api/projects";
 import { listMyTeamGroups } from "@/shared/lib/api/projectTeams";
@@ -84,6 +85,7 @@ export default function EmployeeDashboard(): JSX.Element {
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(true);
+  const [tasksError, setTasksError] = useState<string | null>(null);
   const [detailTask, setDetailTask] = useState<Task | null>(null);
 
   const [meetings, setMeetings] = useState<InternalMeeting[]>([]);
@@ -239,11 +241,23 @@ export default function EmployeeDashboard(): JSX.Element {
   }, []);
 
   const loadTasks = useCallback(async () => {
+    setTasksLoading(true);
     try {
-      const r = await listTasks({ assignedToMe: true, limit: 200 });
+      const r = await listTasks({
+        assignedToMe: true,
+        status: OPEN_TASK_STATUS_PARAM,
+        sortBy: "dueDate:asc,_id:asc",
+        limit: 200,
+      });
       setTasks(r.results ?? []);
-    } catch {
+      setTasksError(null);
+    } catch (err: unknown) {
       setTasks([]);
+      const msg =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: string }).message)
+          : "Could not load your tasks";
+      setTasksError(msg);
     } finally {
       setTasksLoading(false);
     }
@@ -412,11 +426,12 @@ export default function EmployeeDashboard(): JSX.Element {
             <DueTodayCard
               tasks={tasks}
               loading={tasksLoading}
+              error={tasksError}
               onToggle={handleToggle}
               onOpen={handleOpenTask}
             />
             <MeetingsCard meetings={meetings} loading={meetingsLoading} />
-            <MyTasksCard tasks={tasks} loading={tasksLoading} />
+            <MyTasksCard tasks={tasks} loading={tasksLoading} error={tasksError} />
           </div>
 
           {/* [&>.box]:mb-0 cancels the legacy .box mb-6 on the reused holidays card. */}

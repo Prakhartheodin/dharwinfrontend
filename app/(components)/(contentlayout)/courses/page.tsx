@@ -75,6 +75,7 @@ export default function CandidateCoursesPage() {
   const [courses, setCourses] = useState<CourseCardItem[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [instructors, setInstructors] = useState<string[]>([])
+  const [titles, setTitles] = useState<string[]>([])
   const [totalResults, setTotalResults] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
@@ -130,6 +131,7 @@ export default function CandidateCoursesPage() {
         setTotalPages(Math.max(1, res.totalPages || 1))
         setCategories(res.facets?.categories ?? [])
         setInstructors(res.facets?.instructors ?? [])
+        setTitles(res.facets?.titles ?? [])
         if ((res.totalPages ?? 1) > 0 && currentPage > (res.totalPages ?? 1)) {
           setCurrentPage(1)
         }
@@ -211,6 +213,7 @@ export default function CandidateCoursesPage() {
       <CourseCatalogToolbar
         searchQuery={searchQuery}
         searchPlaceholder="Search my courses"
+        suggestions={titles}
         onSearchQueryChange={(value) => {
           setSearchQuery(value)
           setCurrentPage(1)

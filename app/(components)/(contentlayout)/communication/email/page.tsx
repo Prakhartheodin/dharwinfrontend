@@ -22,7 +22,12 @@ import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } fr
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { buildReplyAllRecipients } from "@/shared/lib/email-recipient-utils";
+import {
+  buildReplyAllRecipients,
+  recipientsFromHeaderString,
+  validateRecipientList,
+} from "@/shared/lib/email-recipient-utils";
+import EmailRecipientField from "@/shared/components/email/EmailRecipientField";
 import { hasEmailManageAccess, hasEmailReadAccess } from "@/shared/lib/permissions";
 import { buildMailQuery } from "@/shared/lib/mailQuery";
 import { escapeHtmlForTextNode, sanitizeRichHtml } from "@/shared/lib/sanitize-html";
@@ -276,6 +281,13 @@ function replaceComposeBody(existingHtml: string, draftHtml: string): string {
   return joinComposeBodyAndSignature(String(draftHtml || "").trim(), signatureHtml);
 }
 
+/**
+ * Below this viewport width the mail app is master-detail: the thread list and
+ * the reading pane take turns owning the row instead of sharing it. Mirrored in
+ * mail-app.module.css — change both together.
+ */
+const MASTER_DETAIL_MAX_WIDTH = 1600;
+
 const Mailapp = () => {
   const searchParams = useSearchParams();
   const pathname = usePathname();
@@ -451,12 +463,28 @@ const Mailapp = () => {
   const [isTotalMailsVisible, setTotalMailsVisible] = useState(true);
   const [isTotalMailsHidden, setTotalMailsHidden] = useState(false);
   const [isMailsInformationVisible, setMailsInformationVisible] = useState(false);
+  const selectedThreadIdRef = useRef<string | null>(null);
+  selectedThreadIdRef.current = selectedThreadId;
+
+  /** Drives single-pane layout below MASTER_DETAIL_MAX_WIDTH via data-mail-view on the column shell. */
+  const mailView = useMemo((): "folders" | "list" | "detail" => {
+    if (isMailNavigationVisible && !isTotalMailsVisible) return "folders";
+    if (isMailsInformationVisible && selectedThreadId) return "detail";
+    return "list";
+  }, [isMailNavigationVisible, isTotalMailsVisible, isMailsInformationVisible, selectedThreadId]);
 
   const [showComposeModal, setShowComposeModal] = useState(false);
   const [composeMode, setComposeMode] = useState<ComposeMode>("new");
   const [composeTo, setComposeTo] = useState("");
   const [composeCc, setComposeCc] = useState("");
   const [composeBcc, setComposeBcc] = useState("");
+  const [showComposeCc, setShowComposeCc] = useState(false);
+  const [showComposeBcc, setShowComposeBcc] = useState(false);
+  const [composeRecipientErrors, setComposeRecipientErrors] = useState<{
+    to?: string;
+    cc?: string;
+    bcc?: string;
+  }>({});
   const [composeSubject, setComposeSubject] = useState("");
   const [composeHtml, setComposeHtml] = useState("");
   const [inlineReplyHtml, setInlineReplyHtml] = useState("");
@@ -636,16 +664,17 @@ const Mailapp = () => {
   }, [notice]);
 
   const Toggle1 = useCallback(() => {
-    if (typeof window !== "undefined" && window.innerWidth <= 992) {
+    if (typeof window !== "undefined" && window.innerWidth < MASTER_DETAIL_MAX_WIDTH) {
       setMailNavigationVisible(true);
       setTotalMailsVisible(false);
       setTotalMailsHidden(true);
+      setMailsInformationVisible(false);
     }
   }, []);
 
   /** Opening a thread on a narrow screen: hand the width to the reading pane. */
   const Medium = useCallback(() => {
-    if (typeof window !== "undefined" && window.innerWidth <= 1399) {
+    if (typeof window !== "undefined" && window.innerWidth < MASTER_DETAIL_MAX_WIDTH) {
       setMailsInformationVisible(true);
       setTotalMailsVisible(false);
       setTotalMailsHidden(true);
@@ -654,7 +683,7 @@ const Mailapp = () => {
 
   /** The exact inverse of Medium(): give the width back to the thread list. */
   const restoreMobileListLayout = useCallback(() => {
-    if (typeof window !== "undefined" && window.innerWidth <= 1399) {
+    if (typeof window !== "undefined" && window.innerWidth < MASTER_DETAIL_MAX_WIDTH) {
       setMailsInformationVisible(false);
       setTotalMailsVisible(true);
       setTotalMailsHidden(false);
@@ -665,14 +694,14 @@ const Mailapp = () => {
    * Chose a folder: show its thread list.
    *
    * This used to act only at 992px and under, while Medium() hides the list all
-   * the way up to 1399px. Between those two widths - every tablet - opening a
+   * the way up to MASTER_DETAIL_MAX_WIDTH. Between those two widths - every tablet - opening a
    * thread hid the list and nothing brought it back, so picking another folder
    * left the reading pane on screen showing the previous thread.
    */
   const Toggle2 = useCallback(() => {
     if (typeof window === "undefined") return;
     restoreMobileListLayout();
-    if (window.innerWidth <= 992) setMailNavigationVisible(false);
+    if (window.innerWidth < MASTER_DETAIL_MAX_WIDTH) setMailNavigationVisible(false);
   }, [restoreMobileListLayout]);
 
   /**
@@ -704,28 +733,35 @@ const Mailapp = () => {
   }, [router, pathname, searchParams, restoreMobileListLayout]);
 
   useEffect(() => {
-    const handleResize = () => {
-      if (typeof window === "undefined") return;
-      if (window.innerWidth <= 992) {
-        setMailNavigationVisible(true);
-        setTotalMailsVisible(false);
-        setTotalMailsHidden(true);
-      } else if (window.innerWidth <= 1399) {
+    const syncLayoutForWidth = (width: number) => {
+      if (width >= MASTER_DETAIL_MAX_WIDTH) {
+        setMailNavigationVisible(false);
+        setTotalMailsVisible(true);
+        setTotalMailsHidden(false);
+        if (!selectedThreadIdRef.current) {
+          setMailsInformationVisible(false);
+        }
+        return;
+      }
+      setMailNavigationVisible(false);
+      if (selectedThreadIdRef.current) {
         setMailsInformationVisible(true);
         setTotalMailsVisible(false);
         setTotalMailsHidden(true);
       } else {
-        setMailNavigationVisible(false);
+        setMailsInformationVisible(false);
         setTotalMailsVisible(true);
         setTotalMailsHidden(false);
       }
     };
+    const handleResize = () => {
+      if (typeof window === "undefined") return;
+      syncLayoutForWidth(window.innerWidth);
+    };
     // Initial state is wrong for desktop (total-mails flags start false). Sync only wide viewports;
     // do not call full handleResize() on mount — that would hide the thread list on tablet before a thread is opened.
-    if (typeof window !== "undefined" && window.innerWidth > 1399) {
-      setMailNavigationVisible(false);
-      setTotalMailsVisible(true);
-      setTotalMailsHidden(false);
+    if (typeof window !== "undefined" && window.innerWidth >= MASTER_DETAIL_MAX_WIDTH) {
+      syncLayoutForWidth(window.innerWidth);
     }
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
@@ -1582,6 +1618,9 @@ const Mailapp = () => {
       setComposeAiOptions([]);
       setComposeAttachmentError(null);
       setAttachmentsBusy(false);
+      setComposeRecipientErrors({});
+      setShowComposeCc(false);
+      setShowComposeBcc(false);
       if (mode === "new") {
         setComposeTo("");
         setComposeCc("");
@@ -1606,6 +1645,7 @@ const Mailapp = () => {
           const { to, cc } = buildReplyAllRecipients(msg, selfEmail);
           setComposeTo(to);
           setComposeCc(cc);
+          if (cc.trim()) setShowComposeCc(true);
           setComposeSubject(subject.startsWith("Re:") ? subject : `Re: ${subject}`);
           setComposeHtml(quoteReply);
         } else {
@@ -1831,10 +1871,7 @@ const Mailapp = () => {
     setComposeAiLoading(true);
     setComposeAiError(null);
     try {
-      const firstRecipient = composeTo
-        .split(/[,;]/)
-        .map((value) => value.trim())
-        .find(Boolean);
+      const firstRecipient = recipientsFromHeaderString(composeTo)[0];
       const recipientName =
         firstRecipient && firstRecipient.includes("@") ? emailToDisplayName(firstRecipient) : firstRecipient || "";
       const result = await emailApi.generateDraft({
@@ -1926,11 +1963,34 @@ const Mailapp = () => {
 
     // Validate before entering the sending state, so a missing recipient never
     // looks like a failed send.
-    const explicitTo = composeTo.split(/[,;]/).map((e) => e.trim()).filter(Boolean);
+    const explicitTo = recipientsFromHeaderString(composeTo);
+    const explicitCc = composeCc ? recipientsFromHeaderString(composeCc) : [];
+    const explicitBcc = composeBcc ? recipientsFromHeaderString(composeBcc) : [];
+    const nextErrors: { to?: string; cc?: string; bcc?: string } = {};
+
     if ((composeMode === "new" || composeMode === "forward") && explicitTo.length === 0) {
-      showError("Enter at least one recipient before sending.");
+      nextErrors.to = "Enter at least one recipient.";
+    }
+    if (explicitTo.length) {
+      const toCheck = validateRecipientList(explicitTo);
+      if (!toCheck.valid) nextErrors.to = `Invalid address: ${toCheck.invalid[0]}`;
+    }
+    if (explicitCc.length) {
+      const ccCheck = validateRecipientList(explicitCc);
+      if (!ccCheck.valid) nextErrors.cc = `Invalid address: ${ccCheck.invalid[0]}`;
+    }
+    if (explicitBcc.length) {
+      const bccCheck = validateRecipientList(explicitBcc);
+      if (!bccCheck.valid) nextErrors.bcc = `Invalid address: ${bccCheck.invalid[0]}`;
+    }
+
+    if (Object.keys(nextErrors).length) {
+      setComposeRecipientErrors(nextErrors);
+      if (nextErrors.cc) setShowComposeCc(true);
+      if (nextErrors.bcc) setShowComposeBcc(true);
       return;
     }
+    setComposeRecipientErrors({});
     if (composeMode !== "new" && composeMode !== "forward" && !composeMessageRef.current) {
       showError("The message being replied to is no longer loaded. Close and reopen the thread.");
       return;
@@ -1945,8 +2005,8 @@ const Mailapp = () => {
           {
             accountId: selectedAccountId,
             to,
-            cc: composeCc ? composeCc.split(/[,;]/).map((e) => e.trim()).filter(Boolean) : undefined,
-            bcc: composeBcc ? composeBcc.split(/[,;]/).map((e) => e.trim()).filter(Boolean) : undefined,
+            cc: explicitCc.length ? explicitCc : undefined,
+            bcc: explicitBcc.length ? explicitBcc : undefined,
             subject: composeSubject,
             html: cleanHtmlForSend(composeHtml),
             attachments:
@@ -2785,6 +2845,20 @@ const Mailapp = () => {
 
   const mailLabelsForNav = mailLabelsOrdered;
 
+  /** Icon-only folder shortcuts for the 992px–MASTER_DETAIL_MAX_WIDTH collapsed rail. */
+  const folderRailShortcuts = useMemo(() => {
+    const shortcuts: { id: string; icon: string; label: string }[] = [
+      { id: "INBOX", icon: "ri-inbox-line", label: "Inbox" },
+    ];
+    const sent = mailLabelsForNav.find(
+      (l) => l.id === "SENT" || l.name?.toLowerCase() === "sent"
+    );
+    if (sent) {
+      shortcuts.push({ id: sent.id, icon: getLabelIcon(sent.id), label: sent.name });
+    }
+    return shortcuts;
+  }, [mailLabelsForNav]);
+
   // For Outlook, user folders are already included in mailLabelsForNav; no separate "Labels" section
   const userLabelsForNav = currentProvider === "outlook"
     ? []
@@ -2943,7 +3017,36 @@ const Mailapp = () => {
                 </div>
               </div>
             ) : null}
-            <div className="flex gap-x-2 min-h-0 flex-1 min-w-0">
+            <div
+              className={`flex gap-x-2 min-h-0 flex-1 min-w-0 ${mailStyles.mailColumns}`}
+              data-mail-view={mailView}
+            >
+            <nav className={mailStyles.folderRail} aria-label="Folder shortcuts">
+              {folderRailShortcuts.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => selectFolder(item.id)}
+                  className={`${mailStyles.folderRailBtn} ${
+                    selectedLabelId === item.id ? mailStyles.folderRailBtnActive : ""
+                  }`}
+                  title={item.label}
+                  aria-label={item.label}
+                  aria-current={selectedLabelId === item.id ? "true" : undefined}
+                >
+                  <i className={item.icon} aria-hidden />
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={Toggle1}
+                className={mailStyles.folderRailBtn}
+                title="All folders"
+                aria-label="All folders"
+              >
+                <i className="ri-menu-line" aria-hidden />
+              </button>
+            </nav>
             <div
               // !flex, not !block: the SCSS lays this column out with flex, and
               // display:block !important silently disabled that.
@@ -3291,6 +3394,15 @@ const Mailapp = () => {
                   }}
                   onChange={(e) => handleSelectAll(e.target.checked)}
                 />
+                <button
+                  onClick={Toggle1}
+                  aria-label="Show folders"
+                  title="Show folders"
+                  type="button"
+                  className={`ti-btn ti-btn-icon ti-btn-light !mb-0 ${mailStyles.listFolderToggle}`}
+                >
+                  <i className="ri-menu-line" aria-hidden></i>
+                </button>
                 <div className="flex-grow min-w-0">
                   <h6
                     className={`${mailDisplay.className} font-semibold mb-0 text-lg text-stone-800 dark:text-stone-100 truncate`}
@@ -3450,17 +3562,6 @@ const Mailapp = () => {
                       document.body
                     )}
                 </div>
-                {/* Closes the list and reveals the folder nav behind it. Labelled
-                    just "Close" before, which said nothing about where it lands. */}
-                <button
-                  onClick={Toggle1}
-                  aria-label="Close the list and show folders"
-                  title="Show folders"
-                  type="button"
-                  className="ti-btn ti-btn-icon ti-btn-light lg:hidden total-mails-close !mb-0"
-                >
-                  <i className="ri-close-line" aria-hidden></i>
-                </button>
               </div>
               {liveSelectedCount > 0 && (
                 <div
@@ -3676,7 +3777,7 @@ const Mailapp = () => {
               // !flex, not !block. This pane is a flex column with a fixed height
               // and overflow:hidden; its body scrolls via flex:1 + min-height:0.
               // display:block !important made those inert, so on every screen
-              // under 1400px the message body was clipped with no scrollbar and
+              // under MASTER_DETAIL_MAX_WIDTH the message body was clipped with no scrollbar and
               // the reply composer and footer actions could not be reached.
               className={`mails-information ${isMailsInformationVisible ? "!flex" : ""} border dark:border-defaultborder/10 text-defaulttextcolor text-defaultsize ${mailStyles.readingPane}`}
             >
@@ -3720,6 +3821,15 @@ const Mailapp = () => {
                   <div
                     className={`mail-info-header relative z-20 flex flex-wrap gap-2 items-center !p-5 border-b border-stone-200/80 dark:border-white/10 ${mailStyles.readingHeader} ${mailStyles.readingPaneHeader}`}
                   >
+                    <button
+                      type="button"
+                      onClick={backToThreadList}
+                      className={mailStyles.threadBackBtn}
+                      aria-label="Back to conversation list"
+                    >
+                      <i className="ri-arrow-left-line" aria-hidden />
+                      <span className={mailStyles.threadBackBtnLabel}>Back</span>
+                    </button>
                     <div className="me-2">
                       <span className="avatar avatar-md online avatar-rounded flex items-center justify-center !bg-amber-100 !text-amber-900 dark:!bg-amber-900/40 dark:!text-amber-200 ring-2 ring-amber-200/50 dark:ring-amber-700/40">
                         {headerFrom?.[0]?.toUpperCase() || "?"}
@@ -4575,53 +4685,80 @@ const Mailapp = () => {
                       </div>
                     ) : (
                       <>
-                        <div>
-                          <label className="form-label block mb-1" htmlFor="compose-to">
-                            To<sup className="text-danger">*</sup>
-                          </label>
-                          <input
-                            id="compose-to"
-                            type="email"
-                            multiple
-                            autoComplete="email"
-                            className="form-control w-full"
-                            placeholder="recipient@example.com"
-                            value={composeTo}
-                            onChange={(e) => setComposeTo(e.target.value)}
+                        <EmailRecipientField
+                          id="compose-to"
+                          label="To"
+                          required
+                          value={composeTo}
+                          onChange={(next) => {
+                            setComposeTo(next);
+                            setComposeRecipientErrors((prev) => ({ ...prev, to: undefined }));
+                          }}
+                          placeholder="recipient@example.com"
+                          error={composeRecipientErrors.to ?? null}
+                          onErrorChange={(message) =>
+                            setComposeRecipientErrors((prev) => ({ ...prev, to: message ?? undefined }))
+                          }
+                          enableDirectory
+                          quickContacts={quickRecipientList}
+                          showQuickSuggestions
+                        />
+                        {!showComposeCc || !showComposeBcc ? (
+                          <div className="flex flex-wrap gap-3 -mt-1">
+                            {!showComposeCc ? (
+                              <button
+                                type="button"
+                                className="text-[0.8125rem] text-primary hover:underline p-0 bg-transparent border-0"
+                                onClick={() => setShowComposeCc(true)}
+                              >
+                                Cc
+                              </button>
+                            ) : null}
+                            {!showComposeBcc ? (
+                              <button
+                                type="button"
+                                className="text-[0.8125rem] text-primary hover:underline p-0 bg-transparent border-0"
+                                onClick={() => setShowComposeBcc(true)}
+                              >
+                                Bcc
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {showComposeCc ? (
+                          <EmailRecipientField
+                            id="compose-cc"
+                            label="Cc"
+                            value={composeCc}
+                            onChange={(next) => {
+                              setComposeCc(next);
+                              setComposeRecipientErrors((prev) => ({ ...prev, cc: undefined }));
+                            }}
+                            placeholder="cc@example.com"
+                            error={composeRecipientErrors.cc ?? null}
+                            onErrorChange={(message) =>
+                              setComposeRecipientErrors((prev) => ({ ...prev, cc: message ?? undefined }))
+                            }
+                            enableDirectory
                           />
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div>
-                            <label className="form-label block mb-1" htmlFor="compose-cc">
-                              Cc
-                            </label>
-                            <input
-                              id="compose-cc"
-                              type="email"
-                              multiple
-                              autoComplete="email"
-                              className="form-control w-full"
-                              placeholder="cc@example.com"
-                              value={composeCc}
-                              onChange={(e) => setComposeCc(e.target.value)}
-                            />
-                          </div>
-                          <div>
-                            <label className="form-label block mb-1" htmlFor="compose-bcc">
-                              Bcc
-                            </label>
-                            <input
-                              id="compose-bcc"
-                              type="email"
-                              multiple
-                              autoComplete="email"
-                              className="form-control w-full"
-                              placeholder="bcc@example.com"
-                              value={composeBcc}
-                              onChange={(e) => setComposeBcc(e.target.value)}
-                            />
-                          </div>
-                        </div>
+                        ) : null}
+                        {showComposeBcc ? (
+                          <EmailRecipientField
+                            id="compose-bcc"
+                            label="Bcc"
+                            value={composeBcc}
+                            onChange={(next) => {
+                              setComposeBcc(next);
+                              setComposeRecipientErrors((prev) => ({ ...prev, bcc: undefined }));
+                            }}
+                            placeholder="bcc@example.com"
+                            error={composeRecipientErrors.bcc ?? null}
+                            onErrorChange={(message) =>
+                              setComposeRecipientErrors((prev) => ({ ...prev, bcc: message ?? undefined }))
+                            }
+                            enableDirectory
+                          />
+                        ) : null}
                       </>
                     )}
                     <div>

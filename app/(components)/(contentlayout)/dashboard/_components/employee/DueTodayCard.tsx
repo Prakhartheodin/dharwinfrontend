@@ -8,11 +8,13 @@ import { getTaskId, type Task, type TaskStatus } from "@/shared/lib/api/tasks";
 export default function DueTodayCard({
   tasks,
   loading,
+  error,
   onToggle,
   onOpen,
 }: {
   tasks: Task[];
   loading: boolean;
+  error?: string | null;
   onToggle: (id: string, next: TaskStatus) => void;
   onOpen: (task: Task) => void;
 }) {
@@ -51,6 +53,11 @@ export default function DueTodayCard({
     >
       {loading ? (
         <div className="h-32 animate-pulse rounded-lg bg-defaultborder/60 dark:bg-white/5" />
+      ) : error ? (
+        <div className="py-6 text-center" role="alert">
+          <p className="text-[0.8125rem] font-semibold">Couldn&apos;t load your tasks</p>
+          <p className="mt-1 text-[0.72rem] text-textmuted dark:text-white/50">{error}</p>
+        </div>
       ) : due.length === 0 ? (
         <div className="py-6 text-center">
           <p className="text-[0.8125rem] font-semibold">Nothing due today</p>

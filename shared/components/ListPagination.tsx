@@ -23,6 +23,12 @@ export type ListPaginationProps = {
   touchFriendly?: boolean;
   /** When true, hide page controls when totalPages <= 1 (summary row still visible). */
   hideWhenSinglePage?: boolean;
+  /** Rows-per-page selector. Default true. */
+  showPageSize?: boolean;
+  /** "Showing X to Y of Z entries" text. Default true. */
+  showSummary?: boolean;
+  /** Prev/Next, page numbers, and go-to-page. Default true. */
+  showPager?: boolean;
 };
 
 /**
@@ -42,6 +48,9 @@ export default function ListPagination({
   className,
   touchFriendly = false,
   hideWhenSinglePage = false,
+  showPageSize = true,
+  showSummary = true,
+  showPager = true,
 }: ListPaginationProps) {
   const touchClass = touchFriendly
     ? "[&_.page-link]:!min-h-11 [&_.page-link]:!min-w-11 [&_.page-link]:!inline-flex [&_.page-link]:!items-center [&_.page-link]:!justify-center [&_.ti-btn]:!min-h-11 [&_input.ti-form-control]:!min-h-11"
@@ -55,13 +64,18 @@ export default function ListPagination({
   const safeTotalPages = Math.max(0, totalPages);
   const atStart = page <= 1;
   const atEnd = page >= safeTotalPages || safeTotalPages === 0;
-  const showPager = !hideWhenSinglePage || safeTotalPages > 1;
+  const showPagerControls = showPager && (!hideWhenSinglePage || safeTotalPages > 1);
+  const showPageSizeControl = showPageSize && onPageSizeChange;
   const disabledNavClass = (disabled: boolean) =>
     disabled ? "opacity-50 cursor-not-allowed" : "";
 
+  if (!showPageSizeControl && !showSummary && !showPagerControls) {
+    return null;
+  }
+
   return (
     <div className={`flex flex-wrap items-center gap-4 ${touchClass} ${className ?? ""}`}>
-      {onPageSizeChange ? (
+      {showPageSizeControl ? (
         <div className="flex items-center gap-2">
           <label
             htmlFor={rowsSelectId}
@@ -84,11 +98,13 @@ export default function ListPagination({
           </select>
         </div>
       ) : null}
-      <div>
-        Showing {start} to {end} of {totalResults} entries{" "}
-        <i className="bi bi-arrow-right ms-2 font-semibold" />
-      </div>
-      {showPager ? (
+      {showSummary ? (
+        <div>
+          Showing {start} to {end} of {totalResults} entries{" "}
+          <i className="bi bi-arrow-right ms-2 font-semibold" />
+        </div>
+      ) : null}
+      {showPagerControls ? (
       <div className="ms-auto flex flex-wrap items-center gap-x-4 gap-y-2">
         <nav aria-label={ariaLabel} className="pagination-style-4">
           <ul className="ti-pagination mb-0">

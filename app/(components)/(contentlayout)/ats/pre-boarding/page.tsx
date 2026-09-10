@@ -476,8 +476,8 @@ const PreBoarding = () => {
       <div className={`preboarding-page-shell mt-5 grid grid-cols-12 gap-6 min-w-0 sm:mt-6 ${pipelineStyles.listShell}`}>
         <div className="col-span-12 h-full min-h-0 min-w-0 flex flex-col">
           <div className="box mb-0 h-full min-h-0 min-w-0 flex flex-col">
-            <div className="box-header shrink-0 flex flex-wrap items-center justify-between gap-2 overflow-visible">
-              <div className="box-title min-w-0 flex-1">
+            <div className="box-header shrink-0 flex flex-wrap items-center gap-2 overflow-visible">
+              <div className="box-title min-w-0 shrink-0">
                 Pre-boarding
                 <span className="ms-1 align-middle text-[0.7rem] font-normal text-slate-500 dark:text-slate-400 sm:text-[0.75rem]">
                   (Not yet joined: Pending, Deferred, or Cancelled)
@@ -489,15 +489,26 @@ const PreBoarding = () => {
                   {totalResults}
                 </span>
               </div>
+              {!loading && !error ? (
+                <ListPagination
+                  page={apiPage}
+                  totalPages={totalPages}
+                  totalResults={totalResults}
+                  pageSize={pageSize}
+                  onPageChange={setApiPage}
+                  onPageSizeChange={handlePageSizeChange}
+                  showSummary={false}
+                  showPager={false}
+                  ariaLabel="Pre-boarding list rows per page"
+                  pageSizeSelectId="preboarding-page-size"
+                  touchFriendly
+                  className="!gap-2 shrink-0"
+                />
+              ) : null}
               <div
-                className="flex max-w-full flex-col gap-2 sm:max-w-none sm:flex-row sm:flex-wrap sm:items-center sm:gap-3"
-                role="toolbar"
-                aria-label="Pre-boarding list tools"
+                className="inline-flex flex-wrap items-center gap-0.5 rounded-lg border border-slate-200/90 bg-slate-50/90 p-0.5 shadow-sm dark:border-white/10 dark:bg-slate-900/40"
+                aria-label="Pipeline pages"
               >
-                <div
-                  className="inline-flex flex-wrap items-center gap-0.5 rounded-lg border border-slate-200/90 bg-slate-50/90 p-0.5 shadow-sm dark:border-white/10 dark:bg-slate-900/40"
-                  aria-label="Pipeline pages"
-                >
                   <Link
                     href="/ats/offers-placement"
                     className={`ti-btn ti-btn-light !border-0 !bg-transparent shadow-none hover:!bg-white dark:hover:!bg-slate-800/80 ${TOOLBAR_BTN}`}
@@ -518,9 +529,13 @@ const PreBoarding = () => {
                     <i className="ri-user-received-2-line me-1 align-middle opacity-80" aria-hidden />
                     Onboarding
                   </Link>
-                </div>
-                <div className="flex min-w-0 flex-wrap items-center gap-2 sm:ms-0 sm:border-l sm:border-slate-200/80 sm:pl-3 dark:sm:border-white/10">
-                  <label className="sr-only" htmlFor="preboard-placement-status-filter">
+              </div>
+              <div
+                className="ms-auto flex min-w-0 flex-wrap items-center gap-2 sm:border-l sm:border-slate-200/80 sm:pl-3 dark:sm:border-white/10"
+                role="toolbar"
+                aria-label="Pre-boarding list tools"
+              >
+                <label className="sr-only" htmlFor="preboard-placement-status-filter">
                     Placement status
                   </label>
                   <select
@@ -558,7 +573,6 @@ const PreBoarding = () => {
                     <i className="ri-refresh-line me-1 align-middle text-[0.85rem] opacity-80" aria-hidden />
                     Refresh
                   </button>
-                </div>
               </div>
             </div>
             <div className="box-body !p-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -784,10 +798,9 @@ const PreBoarding = () => {
                   totalResults={totalResults}
                   pageSize={pageSize}
                   onPageChange={setApiPage}
-                  onPageSizeChange={handlePageSizeChange}
+                  showPageSize={false}
                   ariaLabel="Pre-boarding page navigation"
                   gotoInputId="preboarding-goto-page"
-                  pageSizeSelectId="preboarding-page-size"
                   touchFriendly
                 />
               )}

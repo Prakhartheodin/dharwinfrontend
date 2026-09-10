@@ -6,7 +6,15 @@ import DashboardCard from "./DashboardCard";
 import { countByStatus, TASK_STATUS_META } from "@/shared/lib/dashboard/employeeDashboard";
 import { getTaskId, type Task, type TaskStatus } from "@/shared/lib/api/tasks";
 
-export default function MyTasksCard({ tasks, loading }: { tasks: Task[]; loading: boolean }) {
+export default function MyTasksCard({
+  tasks,
+  loading,
+  error,
+}: {
+  tasks: Task[];
+  loading: boolean;
+  error?: string | null;
+}) {
   const [active, setActive] = useState<TaskStatus | "all">("all");
   const counts = countByStatus(tasks);
   const shown = active === "all" ? tasks : tasks.filter((t) => t.status === active);
@@ -40,6 +48,11 @@ export default function MyTasksCard({ tasks, loading }: { tasks: Task[]; loading
       <div className="px-5 pb-3.5 pt-1">
         {loading ? (
           <div className="h-32 animate-pulse rounded-lg bg-defaultborder/60 dark:bg-white/5" />
+        ) : error ? (
+          <div className="py-6 text-center" role="alert">
+            <p className="text-[0.8125rem] font-semibold">Couldn&apos;t load your tasks</p>
+            <p className="mt-1 text-[0.72rem] text-textmuted dark:text-white/50">{error}</p>
+          </div>
         ) : shown.length === 0 ? (
           <p className="py-6 text-center text-[0.75rem] text-textmuted dark:text-white/50">
             Nothing in {active === "all" ? "your list" : TASK_STATUS_META.find((s) => s.key === active)?.label}.

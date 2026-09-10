@@ -347,8 +347,8 @@ const Onboarding = () => {
       <div className={`onboarding-page-shell mt-5 grid grid-cols-12 gap-6 min-w-0 sm:mt-6 ${pipelineStyles.listShell}`}>
         <div className="col-span-12 h-full min-h-0 min-w-0 flex flex-col">
           <div className="box mb-0 h-full min-h-0 min-w-0 flex flex-col">
-            <div className="box-header shrink-0 flex flex-wrap items-center justify-between gap-2 overflow-visible">
-              <div className="box-title min-w-0 flex-1">
+            <div className="box-header shrink-0 flex flex-wrap items-center gap-2 overflow-visible">
+              <div className="box-title min-w-0 shrink-0">
                 Onboarding
                 <span className="ms-1 align-middle text-[0.7rem] font-normal text-slate-500 dark:text-slate-400 sm:text-[0.75rem]">
                   (Joined employees – HRMS)
@@ -360,15 +360,25 @@ const Onboarding = () => {
                   {totalResults}
                 </span>
               </div>
+              {!loading && !error ? (
+                <ListPagination
+                  page={apiPage}
+                  totalPages={totalPages}
+                  totalResults={totalResults}
+                  pageSize={pageSize}
+                  onPageChange={setApiPage}
+                  onPageSizeChange={handlePageSizeChange}
+                  showSummary={false}
+                  showPager={false}
+                  ariaLabel="Onboarding list rows per page"
+                  pageSizeSelectId="onboarding-page-size"
+                  className="!gap-2 shrink-0"
+                />
+              ) : null}
               <div
-                className="flex max-w-full flex-col gap-2 sm:max-w-none sm:flex-row sm:flex-wrap sm:items-center sm:gap-3"
-                role="toolbar"
-                aria-label="Onboarding list tools"
+                className="inline-flex flex-wrap items-center gap-0.5 rounded-lg border border-slate-200/90 bg-slate-50/90 p-0.5 shadow-sm dark:border-white/10 dark:bg-slate-900/40"
+                aria-label="Pipeline pages"
               >
-                <div
-                  className="inline-flex flex-wrap items-center gap-0.5 rounded-lg border border-slate-200/90 bg-slate-50/90 p-0.5 shadow-sm dark:border-white/10 dark:bg-slate-900/40"
-                  aria-label="Pipeline pages"
-                >
                   <Link
                     href="/ats/offers-placement"
                     className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !rounded-md !border-0 !bg-transparent !py-1.5 !px-2.5 !text-[0.75rem] shadow-none hover:!bg-white dark:hover:!bg-slate-800/80"
@@ -389,9 +399,13 @@ const Onboarding = () => {
                     <i className="ri-user-received-2-line me-1 align-middle" aria-hidden />
                     Onboarding
                   </span>
-                </div>
-                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:ms-0 sm:max-w-md sm:border-l sm:border-slate-200/80 sm:pl-3 dark:sm:border-white/10">
-                  <div className="relative min-w-0 flex-1 sm:max-w-xs">
+              </div>
+              <div
+                className="ms-auto flex min-w-0 flex-wrap items-center gap-2 sm:max-w-md sm:border-l sm:border-slate-200/80 sm:pl-3 dark:sm:border-white/10"
+                role="toolbar"
+                aria-label="Onboarding list tools"
+              >
+                <div className="relative min-w-0 flex-1 sm:max-w-xs">
                     <i
                       className="ri-search-line pointer-events-none absolute left-2.5 top-1/2 z-[1] -translate-y-1/2 text-[0.75rem] text-slate-400"
                       aria-hidden
@@ -414,7 +428,6 @@ const Onboarding = () => {
                     <i className="ri-refresh-line me-1 align-middle text-[0.85rem] opacity-80" aria-hidden />
                     Refresh
                   </button>
-                </div>
               </div>
             </div>
             <div className="box-body !p-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -553,10 +566,9 @@ const Onboarding = () => {
                   totalResults={totalResults}
                   pageSize={pageSize}
                   onPageChange={setApiPage}
-                  onPageSizeChange={handlePageSizeChange}
+                  showPageSize={false}
                   ariaLabel="Onboarding page navigation"
                   gotoInputId="onboarding-goto-page"
-                  pageSizeSelectId="onboarding-page-size"
                 />
               )}
             </div>

@@ -1,4 +1,5 @@
 import type { TrainingModule as ApiTrainingModule } from '@/shared/lib/api/training-modules'
+import { matchesCourseQuery } from '@/shared/lib/course-search-match'
 
 const haystackByModule = new WeakMap<ApiTrainingModule, string>()
 
@@ -20,6 +21,9 @@ function moduleSearchHaystack(module: ApiTrainingModule): string {
  * Instant list search over a catalog we already fetched (name, blurb, mentor names).
  * Skips another round-trip when the unfiltered load was complete.
  *
+ * Uses the shared catalog matcher so "ML" finds "Machine Learning" here too, the same
+ * way it does on My Courses and Curriculum.
+ *
  * @param modules - Last unfiltered catalog page(s)
  * @param query - Live search string (not debounced)
  */
@@ -27,7 +31,7 @@ export function filterModulesByLocalSearch(
   modules: ApiTrainingModule[],
   query: string
 ): ApiTrainingModule[] {
-  const q = query.trim().toLowerCase()
+  const q = query.trim()
   if (!q) return modules
-  return modules.filter((m) => moduleSearchHaystack(m).includes(q))
+  return modules.filter((m) => matchesCourseQuery(moduleSearchHaystack(m), q))
 }

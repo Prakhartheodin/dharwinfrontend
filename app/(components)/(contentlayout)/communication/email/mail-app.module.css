@@ -1760,3 +1760,256 @@
   border-color: rgba(255, 255, 255, 0.18);
   background: rgba(255, 255, 255, 0.04);
 }
+
+/* ── Responsive master-detail (matches preview v2 breakpoints) ─────────── */
+
+.mailColumns {
+  position: relative;
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.listFolderToggle {
+  flex-shrink: 0;
+}
+
+.threadBackBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 2.75rem;
+  padding: 0 0.875rem;
+  margin-right: 0.25rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(28, 25, 23, 0.12);
+  background: var(--mail-paper-elevated);
+  color: var(--mail-accent);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.threadBackBtn:hover {
+  border-color: rgba(194, 65, 12, 0.35);
+  background: var(--mail-accent-mist);
+}
+
+.threadBackBtn:focus-visible {
+  outline: 2px solid var(--mail-accent);
+  outline-offset: 2px;
+}
+
+:global(.dark) .threadBackBtn {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.folderRail {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  width: 3rem;
+  min-width: 3rem;
+  flex-shrink: 0;
+  padding: 0.5rem 0.25rem;
+  border-radius: var(--mail-radius-sm);
+  border: 1px solid rgba(28, 25, 23, 0.08);
+  background: var(--mail-paper-elevated);
+}
+
+:global(.dark) .folderRail {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.folderRailBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--mail-ink-soft);
+  font-size: 1.125rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.folderRailBtn:hover {
+  background: var(--mail-accent-mist);
+  color: var(--mail-accent);
+}
+
+.folderRailBtnActive {
+  background: var(--mail-accent-mist);
+  color: var(--mail-accent);
+}
+
+.folderRailBtn:focus-visible {
+  outline: 2px solid var(--mail-accent);
+  outline-offset: 2px;
+}
+
+@media (min-width: 992px) and (max-width: 1399.98px) {
+  .folderRail {
+    display: flex;
+  }
+
+  .mailColumns[data-mail-view="folders"] .folderRail {
+    display: none;
+  }
+}
+
+@media (max-width: 1599.98px) {
+  .threadBackBtn {
+    display: inline-flex;
+  }
+
+  .readingPaneHeader {
+    padding-top: max(1.25rem, env(safe-area-inset-top, 0px));
+  }
+
+  .threadListPane > :first-child {
+    padding-top: max(1rem, env(safe-area-inset-top, 0px));
+  }
+
+  /* List pane: full width when list is active */
+  .mailColumns[data-mail-view="list"] :global(.total-mails) {
+    display: flex !important;
+    flex: 1 1 0%;
+    width: 100% !important;
+    /* The global sheet pins this column to 24rem from 1400px up; the list owns
+       the whole row here, so both bounds have to go. */
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  .mailColumns[data-mail-view="list"] :global(.mails-information) {
+    display: none !important;
+  }
+
+  /* Detail pane: full width when a thread is open */
+  .mailColumns[data-mail-view="detail"] :global(.mails-information) {
+    display: flex !important;
+    flex: 1 1 0%;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .mailColumns[data-mail-view="detail"] :global(.total-mails) {
+    display: none !important;
+  }
+}
+
+/* Under 1400px the sidebar costs more width than it earns: collapse it to the
+   icon rail and reach the full panel through the list header's hamburger. From
+   1400px to 1599px the sidebar stays put and only the list/detail pair swaps. */
+@media (max-width: 1399.98px) {
+  .listFolderToggle {
+    display: inline-flex;
+  }
+
+  .mailColumns :global(.mail-navigation) {
+    display: none !important;
+  }
+
+  .mailColumns[data-mail-view="folders"] :global(.mail-navigation) {
+    display: flex !important;
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+}
+
+@media (min-width: 1600px) {
+  .listFolderToggle,
+  .threadBackBtn,
+  .folderRail {
+    display: none !important;
+  }
+
+  .mailColumns :global(.mail-navigation),
+  .mailColumns :global(.total-mails),
+  .mailColumns :global(.mails-information) {
+    display: flex !important;
+  }
+
+  .mailColumns :global(.total-mails) {
+    flex: 0 0 auto;
+  }
+
+  .mailColumns :global(.mails-information) {
+    flex: 1 1 0%;
+  }
+}
+
+@media (pointer: coarse) {
+  .listFolderToggle,
+  .folderRailBtn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .threadBackBtn {
+    min-height: 44px;
+  }
+}
+
+/* ── Mail HTML containment ─────────────────────────────────────────────────
+   Newsletter HTML ships fixed-width tables, images and unbreakable headings
+   wider than the reading column. Nothing constrained them, and
+   .readingPaneScroll is overflow-x:hidden, so the excess was clipped rather
+   than reachable. Clamp what can be clamped; let the rest scroll inside the
+   canvas. */
+
+.mailHtmlCanvas {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-wrap: anywhere;
+}
+
+.mailHtmlCanvas :global(img),
+.mailHtmlCanvas :global(video),
+.mailHtmlCanvas :global(iframe) {
+  max-width: 100%;
+  height: auto;
+}
+
+.mailHtmlCanvas :global(table) {
+  max-width: 100%;
+}
+
+.mailHtmlCanvas :global(pre) {
+  white-space: pre-wrap;
+}
+
+/* The global sheet turns every .total-mails .mail-msg span into a 17rem
+   inline-block from 1400px up. That stayed invisible while this column was
+   pinned to 24rem — two 17rem boxes could not share a line. Now that the list
+   can own the full row they do, so the subject and the snippet run side by side
+   and the snippet drops its line clamp. Outrank it; these two stack. */
+
+.threadSubject {
+  display: block !important;
+  max-width: 100% !important;
+}
+
+.threadSnippet {
+  display: -webkit-box !important;
+  max-width: 100% !important;
+}

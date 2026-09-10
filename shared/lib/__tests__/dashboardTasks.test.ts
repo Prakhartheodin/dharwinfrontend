@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Task, TaskStatus } from "@/shared/lib/api/tasks";
 import {
+  DASHBOARD_TASKS_FETCH_LIMIT,
   DASHBOARD_TASKS_LIMIT,
   DASHBOARD_TASKS_SORT,
   OPEN_TASK_STATUSES,
@@ -10,6 +11,7 @@ import {
   dueBucket,
   dueTodayOrOverdue,
   openOnly,
+  prepareDashboardTasks,
   sortByDueDate,
 } from "@/shared/lib/dashboard/dashboardTasks";
 
@@ -28,13 +30,12 @@ const at = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h)
 const dueOn = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h).toISOString();
 
 describe("the query the dashboard actually sends", () => {
-  it("asks the server for open, dated, assigned-to-me tasks in due order", () => {
+  it("asks the server for open, assigned-to-me tasks (incl. undated)", () => {
     expect(dashboardTaskQuery()).toEqual({
       assignedToMe: true,
       status: "new,todo,on_going,in_review",
-      hasDueDate: true,
       sortBy: "dueDate:asc,_id:asc",
-      limit: DASHBOARD_TASKS_LIMIT,
+      limit: DASHBOARD_TASKS_FETCH_LIMIT,
     });
   });
 
@@ -146,8 +147,8 @@ describe("sortByDueDate", () => {
   });
 
   it("sinks undated tasks to the end rather than the front", () => {
-    // Mongo would sort missing values FIRST; the query excludes them, and if one
-    // slipped through it must not displace a real overdue task.
+    // Mongo sorts missing values FIRST; client-side ordering must not let undated
+    // rows displace a real overdue task.
     const rows = [task({ _id: "undated" }), task({ _id: "dated", dueDate: dueOn(2026, 9, 5) })];
     expect(sortByDueDate(rows).map((t) => t._id)).toEqual(["dated", "undated"]);
   });
@@ -163,6 +164,25 @@ describe("sortByDueDate", () => {
 
   it("returns an empty array unchanged", () => {
     expect(sortByDueDate([])).toEqual([]);
+  });
+});
+
+describe("prepareDashboardTasks", () => {
+  it("shows overdue first, then dated upcoming, then undated open tasks", () => {
+    const rows = [
+      task({ _id: "undated", status: "new" }),
+      task({ _id: "later", dueDate: dueOn(2026, 9, 20), status: "todo" }),
+      task({ _id: "late", dueDate: dueOn(2026, 9, 1), status: "todo" }),
+      task({ _id: "done", status: "completed", dueDate: dueOn(2026, 9, 1) }),
+    ];
+    expect(prepareDashboardTasks(rows).map((t) => t._id)).toEqual(["late", "later", "undated"]);
+  });
+
+  it("caps at the widget row limit", () => {
+    const rows = Array.from({ length: DASHBOARD_TASKS_LIMIT + 3 }, (_, i) =>
+      task({ _id: String(i), dueDate: dueOn(2026, 9, i + 1) })
+    );
+    expect(prepareDashboardTasks(rows)).toHaveLength(DASHBOARD_TASKS_LIMIT);
   });
 });
 

@@ -66,12 +66,10 @@ import {
   type DashboardEvent,
 } from "@/shared/lib/dashboard/todayEvents";
 import {
-  DASHBOARD_TASKS_LIMIT,
   dashboardTaskQuery,
   daysOverdue,
   dueBucket,
-  openOnly,
-  sortByDueDate,
+  prepareDashboardTasks,
 } from "@/shared/lib/dashboard/dashboardTasks";
 /* Only the unread badge is rendered here; the notification LIST was fetched every load
    and every window focus without ever being displayed. */
@@ -798,7 +796,10 @@ export default function DashboardPage() {
        Without this, the first render fires unconditional calls (projects,
        meetings, training analytics, tasks) before permissionsLoaded flips true,
        triggering 403s for non-admin roles like sales_agent. */
-    if (!permissionsLoaded || isSalesAgentOnly) {
+    if (!permissionsLoaded) {
+      return;
+    }
+    if (isSalesAgentOnly) {
       setLoading(false);
       return;
     }
@@ -823,9 +824,8 @@ export default function DashboardPage() {
       studentRes,
     ] = await Promise.allSettled([
       hasAtsJobsAccess ? getAtsAnalytics() : Promise.resolve(null as AtsAnalyticsResponse | null),
-      /* Open, dated, assigned-to-me tasks, ordered and limited by the SERVER. Was
-         limit:50 unsorted, then sliced in JS — which made "the first 6" mean whatever
-         Mongo happened to return. */
+      /* Open, assigned-to-me tasks (incl. undated). Over-fetch, then order client-side
+         so overdue rows are never hidden behind an undated backlog. */
       listTasks(dashboardTaskQuery()),
       hasAtsJobsAccess
         ? listJobs({ limit: 8, sortBy: "createdAt:desc,_id:desc", status: "Active" })
@@ -1245,18 +1245,8 @@ export default function DashboardPage() {
   };
 
   /* ---- Derived data ---- */
-  /**
-   * The single task list.
-   *
-   * The server already returned open, dated, assigned-to-me tasks in dueDate order, so
-   * this only re-applies that order locally — which keeps rendering stable while an
-   * optimistic toggle is in flight, and holds if the server ever ignores sortBy.
-   * `openOnly` drops a row the moment it is ticked, so completing a task removes it.
-   */
-  const dashboardTasks = useMemo(
-    () => sortByDueDate(openOnly(myTasks)).slice(0, DASHBOARD_TASKS_LIMIT),
-    [myTasks]
-  );
+  /** Open assigned tasks: overdue first, then by due date, undated last. */
+  const dashboardTasks = useMemo(() => prepareDashboardTasks(myTasks), [myTasks]);
   const funnelChart = useMemo(
     () =>
       atsData?.applicationFunnel?.length
@@ -1895,7 +1885,7 @@ export default function DashboardPage() {
               <div>
                 <h2 className="box-title !mb-0">My Tasks</h2>
                 <p className="mb-0 text-[0.75rem] text-[#8c9097] dark:text-white/50">
-                  Overdue and upcoming, soonest first
+                  Your assigned open tasks
                 </p>
               </div>
               <Link href="/task/my-tasks" className="px-2 font-normal text-[0.75rem] text-[#8c9097] dark:text-white/50">View All <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i></Link>
@@ -1925,9 +1915,9 @@ export default function DashboardPage() {
                   <span className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-success/10 text-success">
                     <i className="ri-check-double-line text-[1.25rem]" aria-hidden />
                   </span>
-                  <p className="mb-1 text-[0.8125rem] font-semibold">Nothing due</p>
+                  <p className="mb-1 text-[0.8125rem] font-semibold">No open tasks</p>
                   <p className="mb-0 text-[0.75rem] text-[#8c9097] dark:text-white/50">
-                    Dated tasks assigned to you appear here.
+                    Tasks assigned to you appear here.
                   </p>
                 </div>
               ) : (
@@ -1968,9 +1958,13 @@ export default function DashboardPage() {
                             </span>
                           ) : bucket === "today" ? (
                             <span className="badge shrink-0 bg-warning/10 text-warning text-[0.75rem]">Today</span>
-                          ) : (
+                          ) : t.dueDate ? (
                             <span className="shrink-0 text-[0.75rem] tabular-nums text-[#8c9097] dark:text-white/50">
                               {formatDate(t.dueDate)}
+                            </span>
+                          ) : (
+                            <span className="shrink-0 text-[0.75rem] text-[#8c9097] dark:text-white/50">
+                              No due date
                             </span>
                           )}
                           <span className={`${getStatusBadgeClass(t.status)} shrink-0 hidden sm:inline-flex`}>

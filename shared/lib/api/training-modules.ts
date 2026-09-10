@@ -94,7 +94,8 @@ export interface TrainingModulesListResponse {
   limit: number;
   totalPages: number;
   totalResults: number;
-  facets?: { categories: string[]; instructors: string[] };
+  /** `titles` feeds the search typeahead; all three list every assigned module, not just this page. */
+  facets?: { categories: string[]; instructors: string[]; titles?: string[] };
 }
 
 export interface ListTrainingModulesParams {

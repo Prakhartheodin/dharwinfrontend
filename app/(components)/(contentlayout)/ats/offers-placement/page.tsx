@@ -956,8 +956,8 @@ const OffersPlacement = () => {
       <div className={`offers-page-shell mt-2 grid grid-cols-12 gap-6 min-w-0 sm:mt-6 ${offersStyles.listShell}`}>
         <div className="col-span-12 h-full min-h-0 min-w-0 flex flex-col">
           <div className="box mb-0 h-full min-h-0 min-w-0 flex flex-col">
-            <div className="box-header shrink-0 flex flex-col gap-3 overflow-visible sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2">
-              <span className="box-title min-w-0">
+            <div className="box-header shrink-0 flex flex-wrap items-center gap-2 overflow-visible">
+              <span className="box-title min-w-0 shrink-0">
                 Offers &amp; Placement
                 <span
                   className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle tabular-nums"
@@ -966,15 +966,26 @@ const OffersPlacement = () => {
                   {filteredData.length}
                 </span>
               </span>
+              {filteredData.length > 0 ? (
+                <ListPagination
+                  page={pageIndex + 1}
+                  totalPages={pageCount}
+                  totalResults={filteredData.length}
+                  pageSize={pageSize}
+                  onPageChange={(p) => gotoPage(p - 1)}
+                  onPageSizeChange={setPageSize}
+                  showSummary={false}
+                  showPager={false}
+                  ariaLabel="Offers list rows per page"
+                  pageSizeSelectId="offers-page-size"
+                  touchFriendly
+                  className="!gap-2 shrink-0"
+                />
+              ) : null}
               <div
-                className="flex w-full min-w-0 max-w-full flex-col gap-2 sm:w-auto sm:max-w-none sm:flex-row sm:flex-wrap sm:items-center sm:gap-3"
-                role="toolbar"
-                aria-label="Offer list tools"
+                className="inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-lg border border-slate-200/90 bg-slate-50/90 p-0.5 shadow-sm dark:border-white/10 dark:bg-slate-900/40"
+                aria-label="Pipeline pages"
               >
-                <div
-                  className="inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-lg border border-slate-200/90 bg-slate-50/90 p-0.5 shadow-sm dark:border-white/10 dark:bg-slate-900/40"
-                  aria-label="Pipeline pages"
-                >
                   <span className="inline-flex items-center rounded-md bg-white dark:bg-slate-800/80 py-1.5 px-2.5 text-[0.75rem] shadow-sm font-semibold text-primary cursor-default select-none" aria-current="page">
                     <i className="ri-file-paper-2-line me-1 align-middle" aria-hidden />
                     Offers &amp; Placement
@@ -995,8 +1006,12 @@ const OffersPlacement = () => {
                     <i className="ri-user-received-2-line me-1 align-middle opacity-80" aria-hidden />
                     Onboarding
                   </Link>
-                </div>
-                <div className="flex min-w-0 w-full flex-wrap items-center gap-2 sm:w-auto sm:border-l sm:border-slate-200/80 sm:pl-3 dark:sm:border-white/10 relative z-20">
+              </div>
+              <div
+                className="relative z-20 ms-auto flex min-w-0 flex-wrap items-center gap-2 sm:border-l sm:border-slate-200/80 sm:pl-3 dark:sm:border-white/10"
+                role="toolbar"
+                aria-label="Offer list tools"
+              >
                 {canCreate && (
                   <Link
                     href="/ats/offers-placement/offer-letter/new"
@@ -1181,7 +1196,6 @@ const OffersPlacement = () => {
                     Delete ({selectedRows.size})
                   </button>
                 )}
-                </div>
               </div>
             </div>
             <div className="box-body !p-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -1373,10 +1387,9 @@ const OffersPlacement = () => {
                   totalResults={filteredData.length}
                   pageSize={pageSize}
                   onPageChange={(p) => gotoPage(p - 1)}
-                  onPageSizeChange={setPageSize}
+                  showPageSize={false}
                   ariaLabel="Offers page navigation"
                   gotoInputId="offers-goto-page"
-                  pageSizeSelectId="offers-page-size"
                   touchFriendly
                 />
               ) : (

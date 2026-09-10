@@ -1363,7 +1363,7 @@ const ATSAnalytics = () => {
             {/* ---- Summary Cards ---- */}
             <div className="col-span-12 grid grid-cols-12 gap-x-6 gap-y-4">
               <StatCard
-                title="Total Candidates" value={data.totals.totalCandidates}
+                title="Total Employee" value={data.totals.totalCandidates}
                 icon="ri-contacts-book-line" iconBg="bg-primary"
               />
               <StatCard

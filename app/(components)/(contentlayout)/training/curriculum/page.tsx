@@ -71,6 +71,7 @@ const TrainingCurriculum = () => {
   const [courses, setCourses] = useState<CurriculumCourse[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [instructors, setInstructors] = useState<string[]>([])
+  const [titles, setTitles] = useState<string[]>([])
   const [totalResults, setTotalResults] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
   const [apiLoading, setApiLoading] = useState(true)
@@ -120,6 +121,7 @@ const TrainingCurriculum = () => {
         setTotalPages(Math.max(1, first.totalPages || 1))
         setCategories(first.facets?.categories ?? [])
         setInstructors(first.facets?.instructors ?? [])
+        setTitles(first.facets?.titles ?? [])
         if ((first.totalPages ?? 1) > 0 && currentPage > (first.totalPages ?? 1)) {
           setCurrentPage(1)
         }
@@ -239,6 +241,7 @@ const TrainingCurriculum = () => {
       <CourseCatalogToolbar
         searchQuery={searchQuery}
         searchPlaceholder="Search my modules"
+        suggestions={titles}
         onSearchQueryChange={(value) => {
           setSearchQuery(value)
           setCurrentPage(1)

@@ -4,6 +4,7 @@ import React from "react"
 import CourseCatalogSortDropdown, {
   type CourseCatalogSortBy,
 } from "@/shared/components/course-catalog-sort-dropdown"
+import { suggestCourseTitles } from "@/shared/lib/course-search-match"
 
 type FilterKey = "category" | "progress" | "instructor"
 
@@ -11,6 +12,8 @@ type CourseCatalogToolbarProps = {
   searchQuery: string
   searchPlaceholder: string
   onSearchQueryChange: (value: string) => void
+  /** Course titles offered as typeahead suggestions. Omit to disable the dropdown. */
+  suggestions?: string[]
   categories: string[]
   categoryFilter: string
   onCategoryFilterChange: (value: string) => void
@@ -128,6 +131,7 @@ export default function CourseCatalogToolbar({
   searchQuery,
   searchPlaceholder,
   onSearchQueryChange,
+  suggestions,
   categories,
   categoryFilter,
   onCategoryFilterChange,
@@ -143,12 +147,53 @@ export default function CourseCatalogToolbar({
   openFilter,
   onOpenFilterChange,
 }: CourseCatalogToolbarProps) {
+  const [suggestOpen, setSuggestOpen] = React.useState(false)
+  const [activeSuggestion, setActiveSuggestion] = React.useState(-1)
+
+  const suggestedTitles = React.useMemo(
+    () => suggestCourseTitles(suggestions ?? [], searchQuery),
+    [suggestions, searchQuery]
+  )
+  const showSuggestions = suggestOpen && suggestedTitles.length > 0
+
   /**
-   * Opens one filter menu and closes the others, including sort.
+   * Opens one filter menu and closes the others, including sort and suggestions.
    */
   const toggleFilter = (key: FilterKey) => {
     onOpenSortChange(false)
+    setSuggestOpen(false)
     onOpenFilterChange(openFilter === key ? null : key)
+  }
+
+  /**
+   * Puts a suggested title into the search box and closes the dropdown.
+   */
+  const acceptSuggestion = (title: string) => {
+    onSearchQueryChange(title)
+    setSuggestOpen(false)
+    setActiveSuggestion(-1)
+  }
+
+  /**
+   * Arrow keys move through suggestions, Enter accepts, Escape dismisses.
+   */
+  const onSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      setSuggestOpen(false)
+      setActiveSuggestion(-1)
+      return
+    }
+    if (!showSuggestions) return
+    if (e.key === "ArrowDown") {
+      e.preventDefault()
+      setActiveSuggestion((i) => (i + 1) % suggestedTitles.length)
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault()
+      setActiveSuggestion((i) => (i <= 0 ? suggestedTitles.length - 1 : i - 1))
+    } else if (e.key === "Enter" && activeSuggestion >= 0) {
+      e.preventDefault()
+      acceptSuggestion(suggestedTitles[activeSuggestion])
+    }
   }
 
   return (
@@ -161,13 +206,33 @@ export default function CourseCatalogToolbar({
         <input
           type="text"
           value={searchQuery}
-          onChange={(e) => onSearchQueryChange(e.target.value)}
+          onChange={(e) => {
+            onSearchQueryChange(e.target.value)
+            setSuggestOpen(true)
+            setActiveSuggestion(-1)
+          }}
           onFocus={() => {
             onOpenFilterChange(null)
             onOpenSortChange(false)
+            setSuggestOpen(true)
           }}
+          onBlur={() => {
+            setSuggestOpen(false)
+            setActiveSuggestion(-1)
+          }}
+          onKeyDown={onSearchKeyDown}
           placeholder={searchPlaceholder}
           aria-label={searchPlaceholder}
+          role="combobox"
+          aria-expanded={showSuggestions}
+          aria-controls="course-search-suggestions"
+          aria-autocomplete="list"
+          aria-activedescendant={
+            showSuggestions && activeSuggestion >= 0
+              ? `course-search-suggestion-${activeSuggestion}`
+              : undefined
+          }
+          autoComplete="off"
           className="form-control !h-auto w-full !min-h-0 !py-1.5 !ps-9 !pe-9 !text-[0.75rem] border border-solid !border-[#c5cad1] !bg-white dark:!border-white/20 dark:!bg-[#1c1d1f]"
         />
         {searchQuery ? (
@@ -179,6 +244,35 @@ export default function CourseCatalogToolbar({
           >
             <i className="ti ti-x text-[0.9375rem]" aria-hidden />
           </button>
+        ) : null}
+        {showSuggestions ? (
+          <ul
+            id="course-search-suggestions"
+            role="listbox"
+            aria-label="Course suggestions"
+            className={`${MENU} right-0`}
+          >
+            {suggestedTitles.map((title, index) => (
+              <li key={title} role="presentation">
+                <button
+                  type="button"
+                  id={`course-search-suggestion-${index}`}
+                  role="option"
+                  aria-selected={index === activeSuggestion}
+                  // Keeps focus on the input so onBlur does not close the list first.
+                  onMouseDown={(e) => e.preventDefault()}
+                  onMouseEnter={() => setActiveSuggestion(index)}
+                  onClick={() => acceptSuggestion(title)}
+                  className={`${MENU_ITEM} !justify-start ${
+                    index === activeSuggestion ? "bg-primary/10 text-primary" : ""
+                  }`}
+                >
+                  <i className="ti ti-search text-[0.75rem] opacity-60" aria-hidden />
+                  <span className="truncate">{title}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
         ) : null}
       </div>
       <FilterMenu

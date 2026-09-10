@@ -3,6 +3,9 @@
  * Mirrors server logic in gmailProvider (keep in sync when changing rules).
  */
 
+/** Keep in sync with EMAIL_RE in uat.dharwin.backend/src/validations/email.validation.js */
+export const EMAIL_ADDRESS_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export function extractEmailAddress(raw: string): string {
   const s = String(raw || "").trim();
   const m = s.match(/<([^>]+)>/);
@@ -60,4 +63,63 @@ export function buildReplyAllRecipients(
   }
 
   return { to: toOut.join(", "), cc: ccOut.join(", ") };
+}
+
+/** Bare address for validation; accepts `Name <email>` form. */
+export function extractBareEmail(raw: string): string {
+  const s = String(raw || "").trim();
+  const m = s.match(/<([^>]+)>/);
+  return (m ? m[1] : s).trim();
+}
+
+export function isValidEmailAddress(raw: string): boolean {
+  const email = extractBareEmail(raw);
+  return EMAIL_ADDRESS_RE.test(email);
+}
+
+export function recipientsFromHeaderString(value: string | undefined | null): string[] {
+  return splitAddressHeader(value);
+}
+
+export function dedupeRecipients(addresses: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of addresses) {
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const key = extractEmailAddress(trimmed);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(trimmed);
+  }
+  return out;
+}
+
+/** Split pasted or typed multi-address text into individual tokens. */
+export function parseRecipientInput(text: string): string[] {
+  const normalized = text.replace(/[;\n\t]+/g, ",");
+  const parts = splitAddressHeader(normalized);
+  const out: string[] = [];
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    if (/\s/.test(trimmed) && !trimmed.includes("<")) {
+      for (const token of trimmed.split(/\s+/)) {
+        const t = token.trim().replace(/^,+|,+$/g, "");
+        if (t) out.push(t);
+      }
+    } else {
+      out.push(trimmed);
+    }
+  }
+  return dedupeRecipients(out);
+}
+
+export function joinRecipients(addresses: string[]): string {
+  return addresses.join(", ");
+}
+
+export function validateRecipientList(addresses: string[]): { valid: boolean; invalid: string[] } {
+  const invalid = addresses.filter((a) => !isValidEmailAddress(a));
+  return { valid: invalid.length === 0, invalid };
 }
