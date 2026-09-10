@@ -261,48 +261,6 @@ th.text-center{
   text-align: center !important;
 }
 
-/* Portaled react-datepicker — Schedule Interview */
-.schedule-interview-dp-cal.react-datepicker {
-  border-radius: 0.75rem;
-  border: 1px solid rgb(226 232 240 / 0.95);
-  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.18);
-  font-family: inherit;
-}
-.dark .schedule-interview-dp-cal.react-datepicker {
-  border-color: rgb(255 255 255 / 0.12);
-  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.55);
-}
-.dark .schedule-interview-dp-cal.react-datepicker {
-  background: rgb(15 23 42 / 1);
-}
-.schedule-interview-dp-cal .react-datepicker__header {
-  background: linear-gradient(to bottom, rgb(248 250 252 / 1), rgb(255 255 255 / 1));
-  border-bottom: 1px solid rgb(226 232 240 / 0.9);
-  border-radius: 0.75rem 0.75rem 0 0;
-}
-.dark .schedule-interview-dp-cal .react-datepicker__header {
-  background: linear-gradient(to bottom, rgb(0 0 0 / 0.35), rgb(0 0 0 / 0.2));
-  border-bottom-color: rgb(255 255 255 / 0.1);
-}
-.schedule-interview-dp-cal .react-datepicker__day--selected,
-.schedule-interview-dp-cal .react-datepicker__day--keyboard-selected {
-  background-color: rgb(var(--primary) / 1) !important;
-  color: #fff !important;
-}
-.schedule-interview-dp-cal .react-datepicker__day:hover {
-  background-color: rgb(var(--primary) / 0.12) !important;
-}
-.schedule-interview-dp-cal .react-datepicker-time-list-item--selected {
-  background-color: rgb(var(--primary) / 1) !important;
-  color: #fff !important;
-}
-.schedule-interview-dp-cal .react-datepicker__navigation-icon::before {
-  border-color: rgb(100 116 139);
-}
-.dark .schedule-interview-dp-cal .react-datepicker__navigation-icon::before {
-  border-color: rgb(226 232 240 / 0.75);
-}
-
 /* ---------------------------------------------------------------------------------------------
  * Select2 (react-select) option states — opt in with the `ats-select-menu` class
  * (see `atsSelectClassNames` in shared/lib/reactSelectTheme.ts).
@@ -388,31 +346,6 @@ th.text-center{
   background-color: transparent !important;
   color: rgb(var(--default-text-color) / 0.45) !important;
   cursor: not-allowed;
-}
-
-/* Schedule Interview — custom trigger + isClearable (library defaults overlap the control) */
-.schedule-interview-dp-wrap {
-  position: relative;
-}
-.schedule-interview-dp-wrap .react-datepicker__close-icon {
-  position: absolute !important;
-  right: 0.75rem !important;
-  top: 50% !important;
-  transform: translateY(-50%) !important;
-  height: auto !important;
-  max-height: none !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  padding: 0 !important;
-  margin: 0 !important;
-}
-.schedule-interview-dp-wrap .react-datepicker__close-icon::after {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  vertical-align: middle !important;
-  background-color: rgb(var(--primary) / 1) !important;
 }
 
 /* Filter-bar date fields are standalone. Theme datepicker CSS only rounds the end corners. */
@@ -616,8 +549,25 @@ html.swal2-shown {
 
 /* ATS jobs/interviews table — keep body scrollable for sticky header/footer shells */
 .jobs-table-scroll,
-.interviews-table-scroll {
+.interviews-table-scroll,
+.applications-table-scroll {
   overflow-y: auto !important;
+}
+
+/*
+ * Applications table header pins to the top of its own scrollport. These th cells
+ * carry no background of their own (theme `.table` paints the row), so an opaque
+ * one is required or rows show through as they scroll under it.
+ */
+.applications-table-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: rgb(249 250 251);
+}
+
+.dark .applications-table-scroll thead th {
+  background-color: rgb(var(--body-bg));
 }
 
 /*
@@ -626,7 +576,8 @@ html.swal2-shown {
  * (date + map-pin location) draws into the header. Separate borders keep thead
  * in flow; rows clip under the opaque header inside this overflow:auto port.
  */
-.jobs-table-scroll table {
+.jobs-table-scroll table,
+.applications-table-scroll table {
   border-collapse: separate;
   border-spacing: 0;
 }
@@ -646,7 +597,9 @@ html.swal2-shown {
 /* ATS table pages: fixed viewport shell so header/footer remain pinned */
 .jobs-page-shell,
 .interviews-page-shell,
-.offers-page-shell {
+.offers-page-shell,
+.onboarding-page-shell,
+.preboarding-page-shell {
   height: calc(100dvh - 8rem);
   max-height: calc(100dvh - 8rem);
   min-height: 0;
@@ -655,10 +608,11 @@ html.swal2-shown {
 }
 
 /*
- * ATS employees list: fill viewport below app chrome so box-footer
+ * ATS employees / applications lists: fill viewport below app chrome so box-footer
  * stays pinned to the bottom with no gap; table body scrolls inside.
  */
-.employees-page-root {
+.employees-page-root,
+.applications-page-root {
   display: flex;
   flex-direction: column;
   /* header (60px) + main-content + container top padding */
@@ -669,7 +623,8 @@ html.swal2-shown {
 }
 
 @media (min-width: 640px) {
-  .employees-page-root {
+  .employees-page-root,
+  .applications-page-root {
     height: calc(100dvh - 6.25rem);
     max-height: calc(100dvh - 6.25rem);
     min-height: 0;

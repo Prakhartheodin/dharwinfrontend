@@ -37,9 +37,17 @@
   min-width: 100% !important;
 }
 
-/* Onboarding fitted table — fills the card; no mid-table horizontal bar. */
+/*
+  Onboarding fitted table — fills the card; no mid-table horizontal bar.
+
+  `clip`, not `hidden`: pairing `overflow-x: hidden` with `overflow-y: visible`
+  makes the spec coerce overflow-y to `auto`, turning this div into a scroll
+  container. A sticky `thead` would then pin to a box that never scrolls and the
+  header would not stay put. `clip` pairs with `visible` uncoerced, so the card
+  above stays the scrollport. Needs Chrome 90 / Firefox 81 / Safari 16.
+*/
 .tableNoHScroll {
-  overflow-x: hidden !important;
+  overflow-x: clip !important;
   overflow-y: visible !important;
 }
 

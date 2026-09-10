@@ -80,19 +80,19 @@ export function CourseDetailCurriculum({
                     </span>
                   </span>
                 </span>
-                <span
-                  className="flex items-center gap-2 shrink-0"
-                  role="progressbar"
-                  aria-valuenow={pct}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-label={`${pct}% of lectures completed`}
-                >
-                  <span className="text-[0.75rem] font-semibold tabular-nums text-[#6a6f73] dark:text-white/55 min-w-[2.5rem] text-right">
-                    {pct}%
-                  </span>
-                  <span className="hidden sm:block w-20 h-1.5 rounded-full bg-[#e4e8eb] dark:bg-white/10 overflow-hidden" aria-hidden>
+                <span className="flex flex-col items-end gap-1 shrink-0 min-w-[5rem]">
+                  <span
+                    className="hidden sm:block w-20 h-1.5 rounded-full bg-[#e4e8eb] dark:bg-white/10 overflow-hidden"
+                    role="progressbar"
+                    aria-valuenow={pct}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label={`${pct}% of lectures completed`}
+                  >
                     <span className="block h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${pct}%` }} />
+                  </span>
+                  <span className="text-[0.75rem] font-semibold tabular-nums text-[#6a6f73] dark:text-white/55">
+                    {pct}%
                   </span>
                 </span>
               </button>

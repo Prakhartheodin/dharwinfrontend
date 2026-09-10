@@ -107,8 +107,35 @@ function sortModules(
 }
 
 /**
- * Drafts/Archived are first-class folders (not mixed into category rows).
- * Published modules stay grouped by category / Uncategorized.
+ * Bucket modules into category folders and Uncategorized.
+ */
+function bucketModulesByCategory(
+  modules: ApiTrainingModule[],
+  byCategoryId: Map<string, ApiTrainingModule[]>,
+  uncategorized: ApiTrainingModule[],
+): void {
+  for (const m of modules) {
+    const cats = m.categories ?? []
+    const catIds = cats.map((c) => categoryRefId(c)).filter((id): id is string => Boolean(id))
+    if (catIds.length === 0) {
+      uncategorized.push(m)
+      continue
+    }
+    for (const id of catIds) {
+      let bucket = byCategoryId.get(id)
+      if (!bucket) {
+        bucket = []
+        byCategoryId.set(id, bucket)
+      }
+      bucket.push(m)
+    }
+  }
+}
+
+/**
+ * Drafts/Archived are first-class folders on their tabs.
+ * On All: published + drafts with assigned folders appear under category rows (draft badge on cards).
+ * Draft tab still lists every draft in the Drafts pseudo-folder.
  *
  * @param search Live search string or boolean; empty folders are hidden while searching
  * @param options Optional list-tab filters; omitted keeps legacy empty-Drafts + archived-on-All
@@ -141,25 +168,16 @@ export function groupTrainingModulesIntoFolders(
 
   const byCategoryId = new Map<string, ApiTrainingModule[]>()
   const uncategorized: ApiTrainingModule[] = []
-  for (const m of published) {
-    const cats = m.categories ?? []
-    const catIds = cats.map((c) => categoryRefId(c)).filter((id): id is string => Boolean(id))
-    if (catIds.length === 0) {
-      uncategorized.push(m)
-      continue
-    }
-    for (const id of catIds) {
-      let bucket = byCategoryId.get(id)
-      if (!bucket) {
-        bucket = []
-        byCategoryId.set(id, bucket)
-      }
-      bucket.push(m)
-    }
+  const modulesForCategoryFolders: ApiTrainingModule[] = []
+  if (statusFilter === "published" || statusFilter === "all") {
+    modulesForCategoryFolders.push(...published)
   }
+  if (statusFilter === "all") {
+    modulesForCategoryFolders.push(...drafts)
+  }
+  bucketModulesByCategory(modulesForCategoryFolders, byCategoryId, uncategorized)
 
-  const showDraftsFolder =
-    statusFilter === "draft" || statusFilter === "all"
+  const showDraftsFolder = statusFilter === "draft"
   const showArchivedFolder =
     statusFilter === "archived" ||
     (statusFilter === "all" && includeArchivedOnAll)

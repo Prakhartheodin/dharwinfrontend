@@ -216,3 +216,68 @@ export async function gradeEssayAttempt(
   );
   return data;
 }
+
+export interface TrainerQuizAttemptPayload {
+  attemptId: string;
+  quiz: {
+    playlistItemId: string;
+    title: string;
+  };
+  attempt: {
+    attemptId?: string;
+    attemptNumber: number;
+    score?: {
+      percentage: number;
+      correctAnswers?: number;
+      totalQuestions?: number;
+    };
+    submittedAt: string;
+    feedback?: string;
+  };
+}
+
+export interface TrainerQuizItem {
+  playlistItemId: string;
+  title: string;
+  questionCount: number;
+  pending: boolean;
+  attempts: TrainerQuizAttemptPayload[];
+}
+
+export interface TrainerQuizAttemptsResponse {
+  moduleId: string;
+  moduleName?: string;
+  studentId: string;
+  items: TrainerQuizItem[];
+}
+
+export interface GradeQuizAttemptBody {
+  feedback?: string;
+}
+
+/**
+ * GET trainer quiz attempts for a student on a course.
+ */
+export async function getStudentQuizAttempts(
+  studentId: string,
+  moduleId: string
+): Promise<TrainerQuizAttemptsResponse> {
+  const { data } = await apiClient.get<TrainerQuizAttemptsResponse>(
+    `/training/evaluation/students/${studentId}/courses/${moduleId}/quiz-attempts`
+  );
+  return data;
+}
+
+/**
+ * PATCH trainer overall feedback on a quiz attempt.
+ */
+export async function gradeQuizAttempt(
+  attemptId: string,
+  body: GradeQuizAttemptBody
+): Promise<TrainerQuizAttemptPayload> {
+  const { data } = await apiClient.patch<TrainerQuizAttemptPayload>(
+    `/training/evaluation/quiz-attempts/${attemptId}`,
+    body
+  );
+  return data;
+}

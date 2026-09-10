@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { to12Hour, buildDaySlots } from '../interviewSlots';
+import { to12Hour, buildDaySlots } from '../daySlots';
 
 describe('to12Hour', () => {
   it('converts midnight to 12:00 AM', () => {

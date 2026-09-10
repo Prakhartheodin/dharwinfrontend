@@ -1,14 +1,14 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import InterviewDateTimeOverlay from '../InterviewDateTimeOverlay';
+import DateTimeOverlay from '../DateTimeOverlay';
 
 afterEach(cleanup);
 
-describe('InterviewDateTimeOverlay', () => {
+describe('DateTimeOverlay', () => {
   it('does not render when closed', () => {
     render(
-      <InterviewDateTimeOverlay open={false} value={null} timezone="UTC"
+      <DateTimeOverlay open={false} value={null} timezone="UTC"
         onConfirm={() => {}} onClose={() => {}} />
     );
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -16,7 +16,7 @@ describe('InterviewDateTimeOverlay', () => {
 
   it('disables Confirm until a date and time are chosen', () => {
     render(
-      <InterviewDateTimeOverlay open value={null} timezone="UTC"
+      <DateTimeOverlay open value={null} timezone="UTC"
         onConfirm={() => {}} onClose={() => {}} />
     );
     expect(screen.getByRole('button', { name: /confirm/i })).toBeDisabled();
@@ -26,7 +26,7 @@ describe('InterviewDateTimeOverlay', () => {
     const onClose = vi.fn();
     const user = userEvent.setup();
     render(
-      <InterviewDateTimeOverlay open value={null} timezone="UTC"
+      <DateTimeOverlay open value={null} timezone="UTC"
         onConfirm={() => {}} onClose={onClose} />
     );
     await user.keyboard('{Escape}');
@@ -36,10 +36,10 @@ describe('InterviewDateTimeOverlay', () => {
   it('seeds the draft from an existing value and enables Confirm', () => {
     const value = new Date('2026-12-31T09:00:00.000Z');
     render(
-      <InterviewDateTimeOverlay open value={value} timezone="UTC"
+      <DateTimeOverlay open value={value} timezone="UTC"
         onConfirm={() => {}} onClose={() => {}} />
     );
-    const dialog = screen.getByRole('dialog', { name: /select interview date and time/i });
+    const dialog = screen.getByRole('dialog', { name: /select date & time/i });
     expect(within(dialog).getByRole('button', { name: /confirm/i })).toBeEnabled();
   });
 
@@ -48,14 +48,23 @@ describe('InterviewDateTimeOverlay', () => {
     const user = userEvent.setup();
     const value = new Date('2026-12-31T09:00:00.000Z');
     render(
-      <InterviewDateTimeOverlay open value={value} timezone="UTC"
+      <DateTimeOverlay open value={value} timezone="UTC"
         onConfirm={onConfirm} onClose={() => {}} />
     );
-    const dialog = screen.getByRole('dialog', { name: /select interview date and time/i });
+    const dialog = screen.getByRole('dialog', { name: /select date & time/i });
     await user.click(within(dialog).getByRole('button', { name: /confirm/i }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
     const [instant, tz] = onConfirm.mock.calls[0];
     expect(instant).toBeInstanceOf(Date);
     expect(tz).toBe('UTC');
+  });
+
+  it('uses the caller-supplied title and accessible name', () => {
+    render(
+      <DateTimeOverlay open value={null} timezone="UTC" title="Select meeting date & time"
+        onConfirm={() => {}} onClose={() => {}} />
+    );
+    expect(screen.getByRole('heading', { name: 'Select meeting date & time' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Select meeting date & time' })).toBeInTheDocument();
   });
 });

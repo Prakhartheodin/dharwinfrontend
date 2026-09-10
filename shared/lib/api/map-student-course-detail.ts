@@ -131,7 +131,7 @@ export function mapStudentCourseDetailToCourse(detail: StudentCourseDetail): Cou
     requirements: [],
     courseSections: sectionOrder.map((key) => sectionMap.get(key)!),
     lastUpdated: formatLastUpdated(module.updatedAt),
-    learnerCount: undefined,
+    learnerCount: detail.module.learnerCount,
     relatedTopics: categoryNames,
     codingExercisesDescription: undefined,
     ratingDisplay: undefined,

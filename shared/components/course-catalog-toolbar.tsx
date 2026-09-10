@@ -33,7 +33,7 @@ const CHIP =
 const CHIP_ACTIVE =
   "!border-primary !bg-primary/15 !text-primary hover:!bg-primary/20 hover:!text-primary"
 const MENU =
-  "absolute left-0 top-full mt-1.5 z-[201] min-w-[12.5rem] max-h-[17.5rem] overflow-y-auto rounded-md border border-solid border-defaultborder/70 bg-white py-1 shadow-lg dark:border-defaultborder/20 dark:bg-[#1c1d1f]"
+  "absolute left-0 top-full mt-1.5 z-40 min-w-[12.5rem] max-h-[17.5rem] overflow-y-auto rounded-md border border-solid border-defaultborder/70 bg-white py-1 shadow-lg dark:border-defaultborder/20 dark:bg-[#1c1d1f]"
 const MENU_ITEM =
   "ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] flex w-full items-center justify-between gap-3 text-left"
 
@@ -87,7 +87,7 @@ function FilterMenu({
       </button>
       {isOpen && (
         <>
-          <div className="fixed inset-0 z-[200]" aria-hidden onClick={onClose} />
+          <div className="fixed inset-0 z-[39]" aria-hidden onClick={onClose} />
           <div role="listbox" aria-label={ariaLabel} className={MENU}>
             {children}
           </div>

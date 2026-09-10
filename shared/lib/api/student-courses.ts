@@ -43,6 +43,7 @@ export interface ModuleRef {
   coverImage?: CoverImage;
   categories?: CategoryRef[];
   playlist?: PlaylistItemRef[];
+  learnerCount?: number;
   status?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -255,6 +256,7 @@ export interface QuizResultsResponse {
     score: { totalQuestions: number; correctAnswers: number; percentage: number; totalPoints?: number; maxPoints?: number };
     submittedAt: string;
     timeSpent?: number;
+    feedback?: string;
   };
 }
 

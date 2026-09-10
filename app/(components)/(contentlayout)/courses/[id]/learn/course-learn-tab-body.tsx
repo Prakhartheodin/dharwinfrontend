@@ -58,13 +58,13 @@ export function CourseLearnTabBody({
     return (
       <div className="max-w-[720px] mx-auto py-6 px-6">
         <h2 className="text-[1.125rem] font-bold mb-1">Videos</h2>
-        <p className="text-[0.8125rem] text-[#6a6f73] mb-5">Watch in order, or jump from Course content on the right. Watch / Resume opens the player above.</p>
+        <p className="text-[0.8125rem] text-[#6a6f73] mb-5">Watch in order, or jump from Course content on the right. Watch / Rewatch opens the player above.</p>
         <CourseLearnItemList
           items={itemsByTab.video}
           onSelect={onPlayVideo}
           emptyLabel={emptyTabCopy("video")}
           emptyIcon="ti-video-off"
-          actionLabel={(item) => (item.isCompleted ? "Resume" : "Watch")}
+          actionLabel={(item) => (item.isCompleted ? "Rewatch" : "Watch")}
           actionIcon="ti-player-play"
           kind="video"
         />

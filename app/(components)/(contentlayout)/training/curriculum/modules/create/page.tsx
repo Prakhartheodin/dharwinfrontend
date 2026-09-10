@@ -17,6 +17,10 @@ import * as positionsApi from '@/shared/lib/api/positions'
 import * as blogApi from '@/shared/lib/api/blog'
 import type { BlogSuggestionEdit } from '@/shared/lib/api/blog'
 import { usePmReactSelectStyles } from '@/shared/hooks/usePmReactSelectStyles'
+import {
+  dedupeSearchResultsByNormalizedName,
+  normalizedSearchIncludes,
+} from '@/shared/lib/training/normalize-search-term'
 import PlaylistItemMetaFields from '../_components/PlaylistItemMetaFields'
 
 const Select = dynamic(() => import('react-select'), { ssr: false })
@@ -479,7 +483,9 @@ const CreateModule = () => {
 
   // API data
   const [categoryOptions, setCategoryOptions] = useState<{ value: string; label: string }[]>([])
-  const [positionOptions, setPositionOptions] = useState<{ value: string; label: string }[]>([])
+  const [categoryPositionIds, setCategoryPositionIds] = useState<Record<string, string[]>>({})
+  const [allPositionOptions, setAllPositionOptions] = useState<{ value: string; label: string }[]>([])
+  const [positionSearchInput, setPositionSearchInput] = useState('')
   const [positionFilterId, setPositionFilterId] = useState<string>('')
   const [studentOptions, setStudentOptions] = useState<PersonOption[]>([])
   const [mentorOptions, setMentorOptions] = useState<PersonOption[]>([])
@@ -629,7 +635,15 @@ const CreateModule = () => {
           mentorsApi.listMentors({ limit: 100 }),
         ])
         setCategoryOptions(categoriesRes.results.map((c) => ({ value: c.id, label: c.name })))
-        setPositionOptions(positionsRes.map((p) => ({ value: p.id || (p as any)._id, label: p.name })))
+        setCategoryPositionIds(
+          Object.fromEntries(
+            categoriesRes.results.map((c) => [
+              c.id,
+              (c.positions ?? []).map((p) => p.id).filter(Boolean),
+            ])
+          )
+        )
+        setAllPositionOptions(positionsRes.map((p) => ({ value: p.id || (p as any)._id, label: p.name })))
         setMentorOptions(mentorsRes.results.map((m) => ({
           value: m.id,
           label: m.user?.name || 'Unknown',
@@ -738,8 +752,33 @@ const CreateModule = () => {
     if (coverImageInputRef.current) coverImageInputRef.current.value = ''
   }
 
+  const positionOptions = useMemo(() => {
+    const selectedCategoryId = formData.categoryIds[0]
+    if (!selectedCategoryId) return allPositionOptions
+    const linkedIds = categoryPositionIds[selectedCategoryId]
+    if (!linkedIds?.length) return allPositionOptions
+    const allowed = new Set(linkedIds)
+    return allPositionOptions.filter((opt) => allowed.has(opt.value))
+  }, [allPositionOptions, categoryPositionIds, formData.categoryIds])
+
+  const positionSelectOptions = useMemo(() => {
+    const q = positionSearchInput.trim()
+    if (!q) return positionOptions
+    const matched = positionOptions.filter((opt) => normalizedSearchIncludes(opt.label, q))
+    return dedupeSearchResultsByNormalizedName(matched, q, (opt) => opt.label)
+  }, [positionOptions, positionSearchInput])
+
   const handleCategoryChange = (option: { value: string; label: string } | null) => {
-    handleInputChange('categoryIds', option ? [option.value] : [])
+    const nextCategoryIds = option ? [option.value] : []
+    const linkedIds = option ? categoryPositionIds[option.value] ?? [] : []
+    const allowed = linkedIds.length > 0 ? new Set(linkedIds) : null
+    setFormData((prev) => ({
+      ...prev,
+      categoryIds: nextCategoryIds,
+      positionIds: allowed
+        ? prev.positionIds.filter((id) => allowed.has(id))
+        : prev.positionIds,
+    }))
   }
 
   const [quizModalItemId, setQuizModalItemId] = useState<string | null>(null)
@@ -1906,7 +1945,12 @@ const CreateModule = () => {
                                 ((selected as { value: string }[] | null) ?? []).map((o) => o.value)
                               )
                             }
-                            options={positionOptions}
+                            options={positionSelectOptions}
+                            onInputChange={(value, meta) => {
+                              if (meta.action === 'input-change') setPositionSearchInput(value)
+                            }}
+                            onMenuClose={() => setPositionSearchInput('')}
+                            filterOption={() => true}
                             classNamePrefix="Select2"
                             placeholder="Select positions"
                             menuPlacement="auto"

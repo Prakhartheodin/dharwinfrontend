@@ -510,9 +510,9 @@ export default function ApplicationsPage() {
   return (
     <Fragment>
       <Seo title="Applications" />
-      <div className="container-fluid pt-4 sm:pt-6 space-y-4 sm:space-y-6">
+      <div className="applications-page-root container-fluid pt-4 sm:pt-6 space-y-4 sm:space-y-6">
         {/* Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+        <div className="shrink-0 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
           <div className="min-w-0">
             <h1 className="text-lg sm:text-xl font-semibold text-defaulttextcolor dark:text-white tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
               Applications
@@ -543,7 +543,7 @@ export default function ApplicationsPage() {
         </div>
 
         {/* Status pipeline strip */}
-        <div className="box">
+        <div className="box shrink-0">
           <div className="box-body !py-3 !px-3 sm:!px-4">
             <p className="text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50 mb-2 sm:sr-only">
               Pipeline stage
@@ -590,7 +590,7 @@ export default function ApplicationsPage() {
         </div>
 
         {/* Filters bar */}
-        <div className="box">
+        <div className="box shrink-0">
           <div className="box-body !p-3 sm:!p-4 space-y-3">
             <div>
               <label className="text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50 mb-1 block">
@@ -761,11 +761,11 @@ export default function ApplicationsPage() {
         </div>
 
         {/* Applications list */}
-        <div className="box">
-          <div className="box-body !p-0">
+        <div className="box mb-0 flex min-h-0 flex-1 flex-col">
+          <div className="box-body !p-0 flex min-h-0 flex-1 flex-col overflow-hidden">
             {loading ? (
               <>
-                <div className="xl:hidden divide-y divide-gray-200 dark:divide-white/10">
+                <div className="xl:hidden min-h-0 flex-1 overflow-y-auto divide-y divide-gray-200 dark:divide-white/10">
                   {[...Array(4)].map((_, i) => (
                     <div key={`m-sk-${i}`} className="p-4">
                       <div className="h-5 w-2/3 bg-gray-100 dark:bg-white/5 rounded animate-pulse mb-2" />
@@ -773,7 +773,7 @@ export default function ApplicationsPage() {
                     </div>
                   ))}
                 </div>
-                <div className="hidden xl:block table-responsive overflow-x-auto">
+                <div className="applications-table-scroll hidden xl:block table-responsive min-h-0 flex-1 overflow-x-auto overflow-y-auto">
                   <table className="table table-hover table-bordered min-w-[72rem] text-sm">
                     <tbody>
                       {[...Array(6)].map((_, i) => (
@@ -806,7 +806,7 @@ export default function ApplicationsPage() {
               </div>
             ) : (
               <>
-                <div className="xl:hidden divide-y divide-gray-200 dark:divide-white/10">
+                <div className="xl:hidden min-h-0 flex-1 overflow-y-auto divide-y divide-gray-200 dark:divide-white/10">
                   {rows.map((app) => {
                     const meta = getApplicationRowMeta(app);
                     const isUpdating = updatingId === meta.id;
@@ -886,7 +886,7 @@ export default function ApplicationsPage() {
                   })}
                 </div>
 
-                <div className="hidden xl:block table-responsive overflow-x-auto">
+                <div className="applications-table-scroll hidden xl:block table-responsive min-h-0 flex-1 overflow-x-auto overflow-y-auto">
                   <table className="table table-hover table-bordered min-w-[72rem] w-full text-sm">
                     <thead>
                       <tr>
@@ -988,7 +988,7 @@ export default function ApplicationsPage() {
             )}
           </div>
           {loading ? null : (
-            <div className="box-footer !px-3 sm:!px-4">
+            <div className="box-footer shrink-0 !px-3 sm:!px-4">
               <ListPagination
                 page={page}
                 totalPages={totalPages}

@@ -200,8 +200,8 @@ export function CourseLearnItemList({ items, onSelect, emptyLabel, emptyIcon, ac
                 </p>
               )}
             </div>
-            <div className="shrink-0 flex flex-col gap-2 items-stretch sm:items-end justify-center" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-end gap-2">
+            <div className="shrink-0 flex flex-col gap-2 items-center sm:items-end justify-center self-center" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-center sm:justify-end gap-2 w-full sm:w-auto">
                 {item.isCompleted && !lock.locked && (
                   <span className="shrink-0 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center" aria-label="Completed">
                     <i className="ti ti-check text-white text-[0.75rem]" aria-hidden />
@@ -338,7 +338,7 @@ export function SelectedBlogPanel({
             <span className="text-[#6a6f73] dark:text-white/55">Up next article · </span>
             <span className="font-semibold text-[#1c1d1f] dark:text-white">{nextItem.title}</span>
           </p>
-          <button type="button" className="ti-btn ti-btn-primary min-h-11 shrink-0" onClick={() => onNext(nextItem)}>
+          <button type="button" className="ti-btn ti-btn-primary min-h-11 shrink-0 w-full sm:w-auto" onClick={() => onNext(nextItem)}>
             Next article
           </button>
         </div>

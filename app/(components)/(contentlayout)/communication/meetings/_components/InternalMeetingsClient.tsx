@@ -194,6 +194,11 @@ export default function InternalMeetingsClient() {
   const [formLoading, setFormLoading] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [scheduledInternalMeetingAt, setScheduledInternalMeetingAt] = useState<Date | null>(null)
+  const [scheduledInternalMeetingTz, setScheduledInternalMeetingTz] = useState<string>(() => getViewerTimezone())
+  const handleScheduledInternalMeetingChange = useCallback((value: Date | null, timezone: string) => {
+    setScheduledInternalMeetingAt(value)
+    setScheduledInternalMeetingTz(timezone)
+  }, [])
 
   const [meetings, setMeetings] = useState<InternalMeeting[]>([])
   const [weekMeetings, setWeekMeetings] = useState<InternalMeeting[]>([])
@@ -453,6 +458,7 @@ export default function InternalMeetingsClient() {
     setCreatedMeeting(null)
     setFormError(null)
     setScheduledInternalMeetingAt(null)
+    setScheduledInternalMeetingTz(getViewerTimezone())
     setHosts(defaultScheduleHosts.map((h) => ({ ...h })))
     setEmailInvites([""])
   }, [defaultScheduleHosts])
@@ -478,9 +484,7 @@ export default function InternalMeetingsClient() {
         (form.querySelector(`#${id}`) as HTMLInputElement | HTMLTextAreaElement)?.value?.trim() ?? ""
       const title = getVal("internal-schedule-title") || "Meeting"
       const description = getVal("internal-schedule-description")
-      const date = getVal("internal-schedule-date")
-      const time = getVal("internal-schedule-time")
-      if (!date || !time) {
+      if (!scheduledInternalMeetingAt) {
         setFormError("Please select date and time.")
         return
       }
@@ -497,11 +501,11 @@ export default function InternalMeetingsClient() {
       const meetingType =
         typeRaw === "video" ? "Video" : typeRaw === "in-person" ? "In-Person" : "Phone"
       const notes = getVal("internal-schedule-notes")
-      // The date/time inputs are the viewer's local wall-clock; convert to a UTC
-      // instant using that SAME zone (was: appending "Z", which mis-stored local
-      // wall-clock as UTC and shifted the email time by the viewer's offset).
-      const tz = getViewerTimezone()
-      const scheduledAt = wallClockToUtc(date, time, tz).toISOString()
+      // The picker hands back a UTC instant plus the zone it was picked in; both
+      // go to the API as-is (was: re-deriving the zone from the viewer, which
+      // shifted the emailed time whenever the two differed).
+      const tz = scheduledInternalMeetingTz || getViewerTimezone()
+      const scheduledAt = scheduledInternalMeetingAt.toISOString()
       const payload: CreateInternalMeetingPayload = {
         title,
         description: description || undefined,
@@ -543,7 +547,7 @@ export default function InternalMeetingsClient() {
         setFormLoading(false)
       }
     },
-    [hosts, emailInvites, refreshMeetingsList]
+    [hosts, emailInvites, refreshMeetingsList, scheduledInternalMeetingAt, scheduledInternalMeetingTz]
   )
 
   const loadEditUsers = useCallback(async () => {
@@ -1326,7 +1330,8 @@ export default function InternalMeetingsClient() {
         emailInvites={emailInvites}
         setEmailInvites={setEmailInvites}
         scheduledInternalMeetingAt={scheduledInternalMeetingAt}
-        onScheduledInternalMeetingAtChange={setScheduledInternalMeetingAt}
+        scheduledInternalMeetingTz={scheduledInternalMeetingTz}
+        onScheduledInternalMeetingAtChange={handleScheduledInternalMeetingChange}
       />
 
       <RecordingsModal

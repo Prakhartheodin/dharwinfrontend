@@ -104,6 +104,7 @@ export function CourseDetailHero({ course, totalLectures, totalDuration, learnHr
               <div className="h-1.5 rounded-full bg-white/15 overflow-hidden" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label="Course progress">
                 <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${progress}%` }} />
               </div>
+              <p className="text-[0.75rem] text-white/60 mt-1.5 tabular-nums">{progress}% complete</p>
             </div>
           )}
 

@@ -2,8 +2,8 @@ import type { TrainingModule as ApiTrainingModule } from '@/shared/lib/api/train
 import type { ModuleLifecycleStatus } from '../_components/ModuleStatusBadge'
 
 /**
- * Curriculum folders only list published modules. Archived rows stay in Archive
- * even after categories are saved, so a move from Archive must publish.
+ * Archived rows stay in Archive even after categories are saved, so a move from
+ * Archive must publish before they appear in category folders on the All tab.
  *
  * @param currentStatus Module lifecycle before the folder assignment
  * @returns `published` when leaving archive, otherwise undefined (leave status)

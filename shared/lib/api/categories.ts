@@ -2,11 +2,19 @@
 
 import { apiClient } from "@/shared/lib/api/client";
 
+export interface CategoryPositionRef {
+  id: string;
+  name: string;
+  department?: string;
+}
+
 export interface Category {
   id: string;
   name: string;
   createdAt: string;
   updatedAt: string;
+  /** Positions linked to this category (employee dropdown scope). */
+  positions?: CategoryPositionRef[];
   /** Number of training modules that use this category (included in list response) */
   moduleCount?: number;
 }

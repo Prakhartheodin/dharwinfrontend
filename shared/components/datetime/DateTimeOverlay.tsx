@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic'
 import { format } from 'date-fns'
 import FocusLock from 'react-focus-lock'
 import TimezoneSelect from './TimezoneSelect'
-import { buildDaySlots } from './interviewSlots'
+import { buildDaySlots } from './daySlots'
 import {
   utcInstantToWallClock,
   wallClockToUtc,
@@ -14,7 +14,7 @@ import {
 
 const DatePicker = dynamic(() => import('react-datepicker').then((m) => m.default), { ssr: false })
 
-export interface InterviewDateTimeOverlayProps {
+export interface DateTimeOverlayProps {
   open: boolean
   /** Committed selection (UTC instant) or null. */
   value: Date | null
@@ -24,6 +24,10 @@ export interface InterviewDateTimeOverlayProps {
   onConfirm: (instant: Date, timezone: string) => void
   /** Cancel / dismiss without changing the committed selection. */
   onClose: () => void
+  /** Dialog heading. */
+  title?: string
+  /** Accessible name; falls back to `title`. */
+  ariaLabel?: string
 }
 
 const startOfToday = (): Date => {
@@ -32,9 +36,10 @@ const startOfToday = (): Date => {
   return d
 }
 
-export default function InterviewDateTimeOverlay({
+export default function DateTimeOverlay({
   open, value, timezone, onConfirm, onClose,
-}: InterviewDateTimeOverlayProps) {
+  title = 'Select date & time', ariaLabel,
+}: DateTimeOverlayProps) {
   const [draftTz, setDraftTz] = useState(() => normalizeTimezone(timezone))
   const [draftDate, setDraftDate] = useState('')
   const [draftTime, setDraftTime] = useState('')
@@ -140,14 +145,14 @@ export default function InterviewDateTimeOverlay({
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="Select interview date and time"
+          aria-label={ariaLabel ?? title}
           className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-defaultborder bg-white shadow-2xl dark:border-defaultborder/10 dark:bg-bodybg"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-start justify-between border-b border-defaultborder px-5 py-4 dark:border-defaultborder/10">
             <div>
               <h3 className="text-base font-semibold text-defaulttextcolor dark:text-white">
-                Select interview date &amp; time
+                {title}
               </h3>
               <p className="mt-0.5 text-xs text-textmuted">Times are shown in the selected time zone.</p>
             </div>

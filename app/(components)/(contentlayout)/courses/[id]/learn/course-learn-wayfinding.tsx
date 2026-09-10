@@ -123,7 +123,7 @@ export function ContinueLearningBanner({
           <p className="font-semibold text-[#1c1d1f] dark:text-white truncate">{item.title}</p>
           <p className="text-[0.8125rem] text-[#6a6f73]">{contentKindLabel(item.contentType)} · Use Course content on the right to jump around.</p>
         </div>
-        <button type="button" className="ti-btn ti-btn-primary min-h-[44px] shrink-0" onClick={onContinue}>
+        <button type="button" className="ti-btn ti-btn-primary min-h-[44px] shrink-0 w-full sm:w-auto" onClick={onContinue}>
           {isResume ? "Continue" : "Start this lesson"}
         </button>
       </div>
@@ -157,7 +157,7 @@ export function NextLessonBar({
         <span className="text-[#6a6f73]">Up next · {contentKindLabel(next.contentType)}: </span>
         <span className="font-semibold text-[#1c1d1f] dark:text-white">{next.title}</span>
       </p>
-      <button type="button" className="ti-btn ti-btn-primary min-h-[40px] shrink-0" onClick={() => onNext(next)}>
+      <button type="button" className="ti-btn ti-btn-primary min-h-[40px] shrink-0 w-full sm:w-auto" onClick={() => onNext(next)}>
         Go to next lesson
       </button>
     </div>

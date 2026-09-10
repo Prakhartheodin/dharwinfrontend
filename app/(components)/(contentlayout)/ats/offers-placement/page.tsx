@@ -31,7 +31,7 @@ const ROW_BTN =
 const FILTER_CHECK_LABEL =
   'flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-primary/5 dark:hover:bg-primary/10'
 const TH_CLASS =
-  'border-b border-slate-200/90 bg-slate-50 px-2 py-2.5 text-start align-bottom text-[0.6875rem] font-semibold uppercase tracking-wide text-slate-500 dark:border-white/10 dark:bg-slate-900/80 dark:text-slate-400'
+  'sticky top-0 z-10 border-b border-slate-200/90 bg-slate-50 px-2 py-2.5 text-start align-bottom text-[0.6875rem] font-semibold uppercase tracking-wide text-slate-500 dark:border-white/10 dark:bg-slate-900 dark:text-slate-400'
 const TD_CLASS = 'min-w-0 align-middle px-2 py-2.5 text-[13px] text-slate-800 dark:text-slate-100'
 const CHECKBOX_COL_CLASS = 'w-[1%] max-w-[2.25rem] whitespace-nowrap !px-1 !pl-2.5'
 
@@ -953,9 +953,9 @@ const OffersPlacement = () => {
           {listNotice}
         </div>
       ) : null}
-      <div className={`mt-2 grid grid-cols-12 gap-6 min-w-0 pb-14 sm:mt-6 ${offersStyles.listShell}`}>
-        <div className="col-span-12 min-w-0 flex flex-col">
-          <div className="box mb-0 min-w-0 flex flex-col">
+      <div className={`offers-page-shell mt-2 grid grid-cols-12 gap-6 min-w-0 sm:mt-6 ${offersStyles.listShell}`}>
+        <div className="col-span-12 h-full min-h-0 min-w-0 flex flex-col">
+          <div className="box mb-0 h-full min-h-0 min-w-0 flex flex-col">
             <div className="box-header shrink-0 flex flex-col gap-3 overflow-visible sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2">
               <span className="box-title min-w-0">
                 Offers &amp; Placement
@@ -1184,7 +1184,7 @@ const OffersPlacement = () => {
                 </div>
               </div>
             </div>
-            <div className="box-body !p-0 flex min-w-0 flex-col">
+            <div className="box-body !p-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               {offersLoading ? (
                 <div
                   className="flex flex-col items-center justify-center gap-4 px-6 py-10"
@@ -1214,7 +1214,7 @@ const OffersPlacement = () => {
                   </p>
                 </div>
               ) : (
-                <div className={`min-w-0 max-w-full ${pipelineStyles.tableCard}`}>
+                <div className={`min-h-0 w-full min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto ${pipelineStyles.tableCard}`}>
                   <div className="divide-y divide-slate-200/90 dark:divide-white/10 lg:hidden">
                     {page.map((row: any, index: number) => {
                       const offer = row.original

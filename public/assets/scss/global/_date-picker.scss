@@ -135,8 +135,7 @@
   @apply shadow-none;
 }
 
-/* Scheduler calendars — shared grid polish (meeting popup + interview inline + filter bar) */
-.react-datepicker.schedule-interview-dp-cal,
+/* Scheduler calendars — shared grid polish (interview inline + filter bar) */
 .react-datepicker.schedule-interview-dp-inline,
 .react-datepicker.filter-dp-cal {
   .react-datepicker__header {
@@ -156,48 +155,6 @@
   }
   .react-datepicker__day--today:not(.react-datepicker__day--selected):not(.react-datepicker__day--keyboard-selected) {
     @apply font-bold text-primary #{!important};
-  }
-}
-
-/* Meeting scheduler popup only — floating chrome + time column */
-.react-datepicker.schedule-interview-dp-cal {
-  @apply rounded-xl overflow-hidden shadow-2xl #{!important};
-
-  /* time column: align "Start" header height with the calendar header so rows line up */
-  .react-datepicker__time-container {
-    @apply border-l border-defaultborder dark:border-defaultborder/10 #{!important};
-    width: 104px !important;
-
-    .react-datepicker__header--time {
-      @apply flex items-center justify-center pb-0 #{!important};
-      /* ponytail: fixed to match calendar header height; retune if header content changes */
-      min-height: 118px;
-    }
-    .react-datepicker-time__header {
-      @apply text-[0.95rem] font-semibold #{!important};
-    }
-    .react-datepicker__time-box {
-      width: 104px !important;
-    }
-    .react-datepicker__time-list {
-      @apply pt-1 #{!important};
-    }
-    .react-datepicker__time-list-item {
-      @apply mx-1.5 my-0.5 rounded-md text-[0.8125rem] flex items-center justify-center transition-colors #{!important};
-      height: auto !important;
-      padding: 7px 6px !important;
-    }
-    .react-datepicker__time-list-item:hover {
-      @apply bg-primary/10 text-primary #{!important};
-    }
-    .react-datepicker__time-list-item--selected {
-      @apply text-white rounded-md #{!important};
-    }
-  }
-
-  /* Today: subtle full-width link, not a heavy gray strip */
-  .react-datepicker__today-button {
-    @apply bg-transparent border-t border-defaultborder dark:border-defaultborder/10 py-2.5 text-[0.8125rem] font-semibold text-primary hover:bg-primary/[0.06] transition-colors #{!important};
   }
 }
 

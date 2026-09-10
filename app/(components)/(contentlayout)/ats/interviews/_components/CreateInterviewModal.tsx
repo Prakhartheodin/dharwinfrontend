@@ -15,8 +15,8 @@ import {
   isInterviewSchedulingBlocked,
 } from '@/shared/lib/ats/applicationPipeline'
 import { getViewerTimezone, getZoneAbbreviation, utcInstantToWallClock } from '@/shared/lib/timezone'
-import InterviewDateTimeOverlay from './InterviewDateTimeOverlay'
-import { to12Hour } from './interviewSlots'
+import DateTimeOverlay from '@/shared/components/datetime/DateTimeOverlay'
+import { to12Hour } from '@/shared/components/datetime/daySlots'
 import AgentMultiSelect from './AgentMultiSelect'
 import { saveDraft, loadDraft, clearDraft, type InterviewDraftData } from './interviewDraft'
 import { listAllUsers, pickOfficialEmail } from '@/shared/lib/api/users'
@@ -910,7 +910,9 @@ export default function CreateInterviewModal({
                 </button>
                 </div>
               </div>
-              <InterviewDateTimeOverlay
+              <DateTimeOverlay
+                title="Select interview date & time"
+                ariaLabel="Select interview date and time"
                 open={dateTimeOverlayOpen}
                 value={scheduledInterviewAt}
                 timezone={scheduleTimezone}

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import {
   submitQuizAttempt,
   getQuizResults,
@@ -112,6 +112,24 @@ export function QuizRenderer({
     setSubmitError(null)
   }
 
+  const lockedCompleted = questions.length > 0 && !!isCompleted && !retakeMode && result === null
+
+  useEffect(() => {
+    if (!lockedCompleted) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const results = await getQuizResults(studentId, moduleId, playlistItemId)
+        if (!cancelled) setQuizResults(results)
+      } catch {
+        if (!cancelled) setQuizResults(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [lockedCompleted, studentId, moduleId, playlistItemId])
+
   if (questions.length === 0) {
     return (
       <div className="flex flex-col items-center text-center py-12 px-4 rounded-2xl border border-dashed border-[#d1d7dc] dark:border-white/15">
@@ -122,12 +140,17 @@ export function QuizRenderer({
   }
 
   const showDetailedResults = result !== null && quizResults !== null
-  const lockedCompleted = !!isCompleted && !retakeMode && result === null
 
   if (lockedCompleted) {
     return (
       <div className="space-y-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5">
         <p className="text-emerald-700 dark:text-emerald-300 font-semibold">You&apos;ve completed this quiz.</p>
+        {quizResults?.attempt.feedback?.trim() && (
+          <div className="rounded-lg border border-emerald-500/20 bg-white/60 dark:bg-black/20 p-4">
+            <p className="text-[0.6875rem] uppercase tracking-wide font-semibold text-emerald-800 dark:text-emerald-200">Mentor feedback</p>
+            <p className="text-[0.875rem] mt-1 whitespace-pre-wrap text-[#1c1d1f] dark:text-white">{quizResults.attempt.feedback}</p>
+          </div>
+        )}
         <button type="button" className={LEARN_RECT_PRIMARY} onClick={handleRetake}>
           Retake quiz
         </button>
@@ -146,6 +169,12 @@ export function QuizRenderer({
         <div className={`rounded-lg p-4 ${result.percentage >= 90 ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300" : "bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300"}`}>
           <p className="font-semibold">{result.percentage >= 90 ? "Passed!" : "Not yet — you need 90% to pass."}</p>
           <p className="text-[0.875rem] mt-1">Score: {result.correctAnswers}/{result.totalQuestions} ({result.percentage}%)</p>
+          {quizResults?.attempt.feedback?.trim() && (
+            <div className="mt-3 pt-3 border-t border-current/20">
+              <p className="text-[0.6875rem] uppercase tracking-wide font-semibold opacity-80">Mentor feedback</p>
+              <p className="text-[0.875rem] mt-1 whitespace-pre-wrap">{quizResults.attempt.feedback}</p>
+            </div>
+          )}
         </div>
       )}
       {showDetailedResults && quizResults && (
@@ -183,6 +212,12 @@ export function QuizRenderer({
               </div>
             )
           })}
+          {quizResults.attempt.feedback?.trim() && (
+            <div className="rounded-lg border border-[#d1d7dc] dark:border-white/10 bg-[#f7f9fa] dark:bg-white/[0.03] p-4">
+              <p className="text-[0.6875rem] uppercase tracking-wide font-semibold text-[#6a6f73] dark:text-white/55">Mentor feedback</p>
+              <p className="text-[0.875rem] mt-1 whitespace-pre-wrap text-[#1c1d1f] dark:text-white">{quizResults.attempt.feedback}</p>
+            </div>
+          )}
           <button type="button" className={LEARN_RECT_PRIMARY} onClick={handleRetake}>
             Retake quiz
           </button>

@@ -34,7 +34,7 @@ export default function CourseCatalogSortDropdown({
   onSortChange,
 }: CourseCatalogSortDropdownProps) {
   return (
-    <div className={`relative shrink-0 overflow-visible${open ? " z-20" : ""}`}>
+    <div className={`relative shrink-0 overflow-visible${open ? " z-40" : ""}`}>
       <button
         type="button"
         aria-haspopup="listbox"
@@ -49,11 +49,11 @@ export default function CourseCatalogSortDropdown({
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-[200]" aria-hidden onClick={() => onOpenChange(false)} />
+          <div className="fixed inset-0 z-[39]" aria-hidden onClick={() => onOpenChange(false)} />
           <ul
             role="listbox"
             aria-label="Sort courses"
-            className="absolute right-0 top-full z-[201] mt-1.5 min-w-[12.5rem] rounded-md border border-solid border-defaultborder/70 bg-white py-1 shadow-lg dark:border-defaultborder/20 dark:bg-[#1c1d1f]"
+            className="absolute right-0 top-full z-40 mt-1.5 min-w-[12.5rem] rounded-md border border-solid border-defaultborder/70 bg-white py-1 shadow-lg dark:border-defaultborder/20 dark:bg-[#1c1d1f]"
           >
             {COURSE_CATALOG_SORT_OPTIONS.map((option) => (
               <li key={option.value} role="presentation">

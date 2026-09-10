@@ -18,6 +18,7 @@ import {
 } from './evaluation-utils'
 import { openHsOverlay } from './evaluation-overlay'
 import GradeEssayPanel, { GRADE_ESSAY_OVERLAY_ID } from './GradeEssayPanel'
+import GradeQuizPanel, { GRADE_QUIZ_OVERLAY_ID } from './GradeQuizPanel'
 
 export interface StudentPreviewPanelProps {
   studentId: string | null
@@ -41,13 +42,20 @@ const StudentPreviewPanel: React.FC<StudentPreviewPanelProps> = ({
   profileOpening = false,
   onEssayGraded,
 }) => {
-  const [gradeTarget, setGradeTarget] = React.useState<{ moduleId: string; courseName: string } | null>(null)
+  const [essayGradeTarget, setEssayGradeTarget] = React.useState<{ moduleId: string; courseName: string } | null>(null)
+  const [quizGradeTarget, setQuizGradeTarget] = React.useState<{ moduleId: string; courseName: string } | null>(null)
 
   React.useEffect(() => {
-    if (!gradeTarget) return
+    if (!essayGradeTarget) return
     const timer = window.setTimeout(() => openHsOverlay(`#${GRADE_ESSAY_OVERLAY_ID}`), 0)
     return () => window.clearTimeout(timer)
-  }, [gradeTarget])
+  }, [essayGradeTarget])
+
+  React.useEffect(() => {
+    if (!quizGradeTarget) return
+    const timer = window.setTimeout(() => openHsOverlay(`#${GRADE_QUIZ_OVERLAY_ID}`), 0)
+    return () => window.clearTimeout(timer)
+  }, [quizGradeTarget])
   const studentCourses = useMemo(() => {
     if (!studentId) return []
     return evaluations.filter((e) => e.studentId === studentId)
@@ -223,15 +231,25 @@ const StudentPreviewPanel: React.FC<StudentPreviewPanelProps> = ({
                           <dt className="inline">Completed: </dt>
                           <dd className="inline text-defaulttextcolor">{formatShortDate(row.completedAt)}</dd>
                         </div>
-                        <div>
+                        <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
                           <dt className="inline">Quiz: </dt>
-                          <dd className="inline text-defaulttextcolor tabular-nums">
+                          <dd className="inline text-defaulttextcolor tabular-nums mb-0">
                             {row.quizScore != null ? `${row.quizScore}%` : '—'}
                             {row.quizScoreBest != null && row.quizScoreBest !== row.quizScore
                               ? ` (best ${row.quizScoreBest}%)`
                               : ''}
                             {' '}({row.quizTries ?? 0} tries)
                           </dd>
+                          {row.courseId && studentId && (row.quizTries ?? 0) > 0 && (
+                            <button
+                              type="button"
+                              className={EVAL_BTN_OUTLINE_SECONDARY}
+                              onClick={() => setQuizGradeTarget({ moduleId: row.courseId as string, courseName: row.courseName })}
+                              aria-label={`Grade quiz for ${row.courseName}`}
+                            >
+                              Grade quiz
+                            </button>
+                          )}
                         </div>
                         <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
                           <dt className="inline">Essay: </dt>
@@ -242,7 +260,7 @@ const StudentPreviewPanel: React.FC<StudentPreviewPanelProps> = ({
                             <button
                               type="button"
                               className={EVAL_BTN_OUTLINE_SECONDARY}
-                              onClick={() => setGradeTarget({ moduleId: row.courseId as string, courseName: row.courseName })}
+                              onClick={() => setEssayGradeTarget({ moduleId: row.courseId as string, courseName: row.courseName })}
                               aria-label={`Grade Q&A for ${row.courseName}`}
                             >
                               Grade Q&A
@@ -276,9 +294,17 @@ const StudentPreviewPanel: React.FC<StudentPreviewPanelProps> = ({
     <GradeEssayPanel
       studentId={studentId}
       studentName={studentName}
-      moduleId={gradeTarget?.moduleId ?? null}
-      courseName={gradeTarget?.courseName ?? ''}
-      onClose={() => setGradeTarget(null)}
+      moduleId={essayGradeTarget?.moduleId ?? null}
+      courseName={essayGradeTarget?.courseName ?? ''}
+      onClose={() => setEssayGradeTarget(null)}
+      onSaved={onEssayGraded}
+    />
+    <GradeQuizPanel
+      studentId={studentId}
+      studentName={studentName}
+      moduleId={quizGradeTarget?.moduleId ?? null}
+      courseName={quizGradeTarget?.courseName ?? ''}
+      onClose={() => setQuizGradeTarget(null)}
       onSaved={onEssayGraded}
     />
     </>

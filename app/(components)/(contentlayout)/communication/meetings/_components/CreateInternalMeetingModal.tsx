@@ -1,7 +1,6 @@
 "use client"
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import dynamic from "next/dynamic"
+import React, { useCallback, useEffect, useMemo, useState } from "react"
 import { format } from "date-fns"
 import { useAuth } from "@/shared/contexts/auth-context"
 import { appendJoinIdentityToUrl, resolveMeetingShareUrl, resolvePersonalJoinIdentity } from "@/shared/lib/join-room-url"
@@ -10,8 +9,9 @@ import MeetingCreatedSuccess from "@/shared/components/meeting/MeetingCreatedSuc
 import { listAllUsers, pickOfficialEmail } from "@/shared/lib/api/users"
 import ParticipantInvitesField, { type ParticipantUser } from "@/shared/components/meeting/ParticipantInvitesField"
 import RecurrenceFields from "@/shared/components/meeting/RecurrenceFields"
-
-const DatePicker = dynamic(() => import("react-datepicker").then((m) => m.default), { ssr: false })
+import DateTimeOverlay from "@/shared/components/datetime/DateTimeOverlay"
+import { to12Hour } from "@/shared/components/datetime/daySlots"
+import { utcInstantToWallClock } from "@/shared/lib/timezone"
 
 type WhenTriggerProps = { value?: string; onClick?: () => void; disabled?: boolean }
 
@@ -52,7 +52,9 @@ export interface CreateInternalMeetingModalProps {
   emailInvites: string[]
   setEmailInvites: React.Dispatch<React.SetStateAction<string[]>>
   scheduledInternalMeetingAt: Date | null
-  onScheduledInternalMeetingAtChange: (value: Date | null) => void
+  /** IANA zone the instant above was picked in; also what gets sent to the API. */
+  scheduledInternalMeetingTz: string
+  onScheduledInternalMeetingAtChange: (value: Date | null, timezone: string) => void
 }
 
 export default function CreateInternalMeetingModal({
@@ -66,11 +68,11 @@ export default function CreateInternalMeetingModal({
   emailInvites,
   setEmailInvites,
   scheduledInternalMeetingAt,
+  scheduledInternalMeetingTz,
   onScheduledInternalMeetingAtChange,
 }: CreateInternalMeetingModalProps) {
   const { user } = useAuth()
-  const scheduleDatePickerRef = useRef<{ setOpen: (open: boolean) => void } | null>(null)
-  const scheduleSnapshotRef = useRef<Date | null>(null)
+  const [whenOverlayOpen, setWhenOverlayOpen] = useState(false)
   const [participantUsers, setParticipantUsers] = useState<ParticipantUser[]>([])
   const [participantUsersLoading, setParticipantUsersLoading] = useState(false)
   const [participantUsersError, setParticipantUsersError] = useState<string | null>(null)
@@ -111,16 +113,13 @@ export default function CreateInternalMeetingModal({
     ;(window as any).HSOverlay?.close(document.querySelector("#create-internal-meeting-modal"))
   }, [resetCreateMeetingForm])
 
-  const startOfToday = useMemo(() => {
-    const d = new Date()
-    d.setHours(0, 0, 0, 0)
-    return d
-  }, [])
-
-  const filterTime = useCallback((time: Date) => time.getTime() > Date.now() - 60_000, [])
-
-  const scheduleDateStr = scheduledInternalMeetingAt ? format(scheduledInternalMeetingAt, "yyyy-MM-dd") : ""
-  const scheduleTimeStr = scheduledInternalMeetingAt ? format(scheduledInternalMeetingAt, "HH:mm") : ""
+  // Trigger label renders the instant in the PICKED zone, not the viewer's.
+  const whenLabel = useMemo(() => {
+    if (!scheduledInternalMeetingAt) return ""
+    const wc = utcInstantToWallClock(scheduledInternalMeetingAt, scheduledInternalMeetingTz)
+    const day = format(new Date(`${wc.date}T00:00:00`), "EEE, MMM d, yyyy")
+    return `${day} ${to12Hour(wc.time)} (${scheduledInternalMeetingTz})`
+  }, [scheduledInternalMeetingAt, scheduledInternalMeetingTz])
 
   const handleInstantMeetingFill = useCallback(() => {
     const rounded = new Date()
@@ -159,8 +158,8 @@ export default function CreateInternalMeetingModal({
       setEmailInvites([""])
     }
 
-    onScheduledInternalMeetingAtChange(rounded)
-  }, [emailInvites, hosts, onScheduledInternalMeetingAtChange, setEmailInvites, setHosts, user?.email, user?.name])
+    onScheduledInternalMeetingAtChange(rounded, scheduledInternalMeetingTz)
+  }, [emailInvites, hosts, onScheduledInternalMeetingAtChange, scheduledInternalMeetingTz, setEmailInvites, setHosts, user?.email, user?.name])
 
   return (
     <div
@@ -247,14 +246,14 @@ export default function CreateInternalMeetingModal({
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
                   When
                 </p>
-                <div className="relative overflow-visible rounded-xl border border-defaultborder/70 bg-gradient-to-br from-slate-50/90 via-white to-white p-4 shadow-sm ring-1 ring-black/[0.03] dark:from-white/[0.04] dark:via-bodybg dark:to-bodybg dark:border-defaultborder/20 dark:ring-white/[0.04]">
+                <div className="rounded-xl border border-defaultborder/70 bg-gradient-to-br from-slate-50/90 via-white to-white p-4 shadow-sm ring-1 ring-black/[0.03] dark:from-white/[0.04] dark:via-bodybg dark:to-bodybg dark:border-defaultborder/20 dark:ring-white/[0.04]">
                   <div className="space-y-3">
                     <div>
                       <span className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white">
                         Date and start time <span className="text-danger">*</span>
                       </span>
                       <span className="mt-0.5 block text-xs text-textmuted dark:text-white/50">
-                        One picker — 15-minute slots, Monday-first week, not clipped by the modal
+                        15-minute slots in the time zone you choose. Saved in UTC.
                       </span>
                     </div>
                     <div className="flex justify-start">
@@ -267,70 +266,23 @@ export default function CreateInternalMeetingModal({
                         Instant meeting
                       </button>
                     </div>
-                    {scheduledInternalMeetingAt ? (
-                      <div className="inline-flex w-full max-w-full" aria-live="polite">
-                        <span className="inline-flex items-center rounded-lg border border-primary/20 bg-primary/[0.06] px-2.5 py-1.5 text-[0.6875rem] font-medium text-primary shadow-sm dark:border-primary/30 dark:bg-primary/10">
-                          {format(scheduledInternalMeetingAt, "MMM d")} · {format(scheduledInternalMeetingAt, "h:mm a")}
-                        </span>
-                      </div>
-                    ) : null}
-                    <div className="isolate min-h-0 w-full">
-                      <input type="hidden" id="internal-schedule-date" value={scheduleDateStr} readOnly tabIndex={-1} aria-hidden />
-                      <input type="hidden" id="internal-schedule-time" value={scheduleTimeStr} readOnly tabIndex={-1} aria-hidden />
-                      <DatePicker
-                        ref={scheduleDatePickerRef}
-                        selected={scheduledInternalMeetingAt}
-                        onChange={(d: Date | null) => onScheduledInternalMeetingAtChange(d)}
-                        showTimeSelect
-                        timeIntervals={15}
-                        timeCaption="Start"
-                        dateFormat="EEE, MMM d, yyyy h:mm aa"
-                        minDate={startOfToday}
-                        filterTime={filterTime}
-                        withPortal
-                        portalId="internal-schedule-dp-portal"
-                        onCalendarOpen={() => { scheduleSnapshotRef.current = scheduledInternalMeetingAt }}
-                        shouldCloseOnSelect={false}
-                        showMonthDropdown
-                        showYearDropdown
-                        dropdownMode="select"
-                        calendarStartDay={1}
-                        todayButton="Today"
-                        isClearable
-                        disabled={formLoading}
-                        popperClassName="!z-[130]"
-                        popperProps={{ strategy: "fixed" }}
-                        calendarClassName="schedule-interview-dp-cal"
-                        wrapperClassName="schedule-interview-dp-wrap block w-full"
-                        customInput={<InternalMeetingWhenTrigger disabled={formLoading} />}
-                      >
-                        <div className="flex justify-end gap-2 border-t border-defaultborder/60 px-3 py-2 dark:border-white/10">
-                          <button
-                            type="button"
-                            onClick={() => scheduleDatePickerRef.current?.setOpen(false)}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bodybg"
-                          >
-                            <i className="ri-check-line text-base" aria-hidden />
-                            Confirm
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              onScheduledInternalMeetingAtChange(scheduleSnapshotRef.current)
-                              scheduleDatePickerRef.current?.setOpen(false)
-                            }}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-defaultborder bg-white px-4 py-2 text-sm font-semibold text-defaulttextcolor shadow-sm transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 dark:border-defaultborder/10 dark:bg-bodybg dark:text-white dark:hover:bg-white/5 dark:focus-visible:ring-offset-bodybg"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </DatePicker>
-                    </div>
+                    <InternalMeetingWhenTrigger
+                      value={whenLabel}
+                      disabled={formLoading}
+                      onClick={() => setWhenOverlayOpen(true)}
+                    />
                   </div>
-                  <p className="mt-3 text-[0.8125rem] leading-relaxed text-textmuted dark:text-white/55">
-                    Past times today are hidden. Use <span className="font-medium text-defaulttextcolor/85 dark:text-white/75">Clear</span> on the
-                    calendar to reset.
-                  </p>
+                  <DateTimeOverlay
+                    title="Select meeting date & time"
+                    open={whenOverlayOpen}
+                    value={scheduledInternalMeetingAt}
+                    timezone={scheduledInternalMeetingTz}
+                    onConfirm={(instant, tz) => {
+                      onScheduledInternalMeetingAtChange(instant, tz)
+                      setWhenOverlayOpen(false)
+                    }}
+                    onClose={() => setWhenOverlayOpen(false)}
+                  />
                 </div>
                 <RecurrenceFields
                   hiddenInputId="internal-schedule-recurrence"
