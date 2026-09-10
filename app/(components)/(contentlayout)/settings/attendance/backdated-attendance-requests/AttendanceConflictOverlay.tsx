@@ -33,6 +33,14 @@ const KIND_META: Record<BackdatedDayConflict["kind"], { icon: string; label: str
     label: "Week off",
     tone: "text-sky-700 bg-sky-500/10 ring-sky-500/20 dark:text-sky-300",
   },
+  // Emitted by the backdated-approve review path, not by this overlay's own (regularize)
+  // flow. Declared so the kind union stays exhaustive and an unknown kind can never render
+  // as an undefined tone.
+  attendance: {
+    icon: "ri-time-line",
+    label: "Already recorded",
+    tone: "text-teal-700 bg-teal-500/10 ring-teal-500/20 dark:text-teal-300",
+  },
 };
 
 function formatConflictDate(ymd: string): string {

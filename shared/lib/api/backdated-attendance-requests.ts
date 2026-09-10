@@ -21,8 +21,9 @@ export interface BackdatedAttendanceRequestStudent {
 export interface BackdatedDayConflict {
   /** YYYY-MM-DD */
   date: string;
-  kind: "holiday" | "leave" | "weekoff";
-  /** Holiday title, leave type, or week-off weekday name. */
+  /** `attendance` = the day already has punched sessions that approving will replace. */
+  kind: "holiday" | "leave" | "weekoff" | "attendance";
+  /** Holiday title, leave type, week-off weekday name, or recorded-session count. */
   label: string;
 }
 

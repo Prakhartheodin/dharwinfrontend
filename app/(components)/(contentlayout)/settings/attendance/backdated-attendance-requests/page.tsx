@@ -85,6 +85,7 @@ function getStudentName(request: BackdatedAttendanceRequest): string {
 function describeDayConflict(conflict: BackdatedDayConflict): string {
   if (conflict.kind === "holiday") return `holiday (${escapeHtml(conflict.label)})`;
   if (conflict.kind === "leave") return `already marked as ${escapeHtml(conflict.label)}`;
+  if (conflict.kind === "attendance") return `already has ${escapeHtml(conflict.label)}`;
   return `${escapeHtml(conflict.label)} is a week off`;
 }
 
@@ -493,7 +494,7 @@ export default function SettingsAttendanceBackdatedPage() {
               .map((c) => `<li>${escapeHtml(formatDate(c.date))} — ${describeDayConflict(c)}</li>`)
               .join("")}
           </ul>
-          <p style="margin-top:0.35rem">Approving marks ${conflicts.length > 1 ? "these days" : "this day"} Present instead.</p>
+          <p style="margin-top:0.35rem">Approving replaces ${conflicts.length > 1 ? "these days" : "this day"} with the times below. Anything already recorded is discarded.</p>
         </div>`
       : "";
     const entriesHtml = entries.map((entry, i) => `
