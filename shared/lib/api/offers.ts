@@ -234,7 +234,10 @@ export interface Offer {
 export interface OffersListParams {
   jobId?: string;
   candidateId?: string;
-  status?: OfferStatus;
+  createdBy?: string;
+  status?: string;
+  stage?: string;
+  search?: string;
   sortBy?: string;
   limit?: number;
   page?: number;

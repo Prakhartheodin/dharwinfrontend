@@ -5,8 +5,8 @@ import { createPortal } from 'react-dom'
 import offersStyles from './offers-placement.module.css'
 import pipelineStyles from '../ats-pipeline-list.module.css'
 import ListPagination, { DEFAULT_LIST_PAGE_SIZE } from '@/shared/components/ListPagination'
-import { useSearchParams, useRouter } from 'next/navigation'
-import { useTable, useSortBy, usePagination } from 'react-table'
+import { usePathname, useSearchParams, useRouter } from 'next/navigation'
+import { useTable } from 'react-table'
 import Link from 'next/link'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 import {
@@ -22,6 +22,13 @@ import { useConfirm } from '@/shared/components/ui/useConfirm'
 import { getPlacementStatusActorSummary } from '@/shared/lib/ats/placementActorText'
 import { JoiningDateTableCell } from '@/shared/components/ats/JoiningDateTableCell'
 import { formatJoiningDateDisplay, joiningDatePresent } from '@/shared/lib/ats/joining-date-display'
+import PersonAvatar from '@/shared/components/PersonAvatar'
+import {
+  apiSortByToSortOption,
+  apiSortByToUrlSort,
+  parseOfferSortFromUrl,
+  sortOptionToApiSortBy,
+} from '@/shared/lib/ats/offer-list-sort'
 
 const DIALOG_Z = 12050
 const TOOLBAR_BTN =
@@ -35,6 +42,19 @@ const TH_CLASS =
 const TD_CLASS = 'min-w-0 align-middle px-2 py-2.5 text-[13px] text-slate-800 dark:text-slate-100'
 const CHECKBOX_COL_CLASS = 'w-[1%] max-w-[2.25rem] whitespace-nowrap !px-1 !pl-2.5'
 
+function parseListPage(raw: string | null | undefined): number {
+  const n = Number.parseInt(String(raw ?? ''), 10)
+  return Number.isInteger(n) && n >= 1 ? n : 1
+}
+
+const OFFER_FILTER_STEPS = ['Pre-boarding', 'Onboarding'] as const
+
+function stepLabelsToStageParam(steps: string[]): string | undefined {
+  const mapped = steps
+    .map((step) => (step === 'Pre-boarding' ? 'preBoarding' : step === 'Onboarding' ? 'onboarding' : null))
+    .filter((step): step is 'preBoarding' | 'onboarding' => step != null)
+  return mapped.length ? mapped.join(',') : undefined
+}
 
 function getOfferRecordId(o: { _id?: string; id?: string } | null | undefined): string {
   const v = o?._id ?? o?.id
@@ -48,6 +68,15 @@ function getOfferRecordId(o: { _id?: string; id?: string } | null | undefined): 
 const OFFER_STATUS_EDIT_VALUES: Offer['status'][] = [
   'Draft',
   'Active',
+  'Sent',
+  'Under Negotiation',
+  'Accepted',
+  'Rejected',
+]
+
+/** Status values accepted by GET /offers ?status= (backend OFFER_STATUSES). */
+const OFFER_FILTER_STATUSES: Offer['status'][] = [
+  'Draft',
   'Sent',
   'Under Negotiation',
   'Accepted',
@@ -105,14 +134,14 @@ const mapOfferToRow = (o: Offer) => {
     candidate: {
       id: (o.candidate as any)?._id ?? (o.candidate as any)?.id ?? '',
       name: o.candidate?.fullName || '-',
-      displayPicture: (o.candidate as any)?.profilePicture?.url || '/assets/images/faces/1.jpg',
+      displayPicture: (o.candidate as any)?.profilePicture?.url ?? undefined,
       email: o.candidate?.email || '',
       phone: o.candidate?.phoneNumber || '',
     },
     recruiter: {
       id: (o.createdBy as any)?._id ?? (o.createdBy as any)?.id ?? '',
       name: o.createdBy?.name || '-',
-      displayPicture: '/assets/images/faces/1.jpg',
+      displayPicture: (o.createdBy as any)?.profilePicture?.url ?? undefined,
       email: o.createdBy?.email || '',
     },
     _raw: o as Offer,
@@ -149,12 +178,43 @@ interface FilterState {
 const OffersPlacement = () => {
   const { confirm, confirmDialog } = useConfirm()
   const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
   const { canView, canCreate, canEdit, canDelete } = useFeaturePermissions("ats.offers")
   const [offersData, setOffersData] = useState<Offer[]>([])
   const [offersLoading, setOffersLoading] = useState(true)
+  const [listError, setListError] = useState<string | null>(null)
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
-  const [selectedSort, setSelectedSort] = useState<string>('')
+  const [apiSortBy, setApiSortBy] = useState<string | undefined>(() =>
+    parseOfferSortFromUrl(searchParams.get('sortBy'))
+  )
+  const [selectedSort, setSelectedSort] = useState<string>(() =>
+    apiSortByToSortOption(parseOfferSortFromUrl(searchParams.get('sortBy')))
+  )
+  const [listSearch, setListSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [apiPage, setApiPage] = useState(() => parseListPage(searchParams.get('page')))
+  const [pageSize, setPageSize] = useState(DEFAULT_LIST_PAGE_SIZE)
+  const [totalResults, setTotalResults] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
+  const fetchGenerationRef = useRef(0)
+  const prevDebouncedSearchRef = useRef(debouncedSearch)
+  const prevFiltersRef = useRef<string>('')
+
+  const [filters, setFilters] = useState<FilterState>({
+    candidate: [],
+    recruiter: [],
+    offerStatus: [],
+    step: [],
+  })
+
+  // Search states for filter dropdowns
+  const [searchCandidate, setSearchCandidate] = useState('')
+  const [searchRecruiter, setSearchRecruiter] = useState('')
+  const [searchOfferStatus, setSearchOfferStatus] = useState('')
+  const [searchStep, setSearchStep] = useState('')
+  const [candidateLabels, setCandidateLabels] = useState<Record<string, string>>({})
+  const [recruiterLabels, setRecruiterLabels] = useState<Record<string, string>>({})
   /** React-controlled — Preline hs-dropdown often misses init after SPA navigation / on mobile tap. */
   const [offersSortMenuOpen, setOffersSortMenuOpen] = useState(false)
   const offersSortDropdownRef = useRef<HTMLDivElement>(null)
@@ -239,17 +299,108 @@ const OffersPlacement = () => {
     return () => window.removeEventListener('keydown', onKey)
   }, [offersFilterPanelOpen])
 
-  const fetchOffers = () => {
+  const fetchOffers = useCallback(() => {
+    if (!canView) return
+    const generation = ++fetchGenerationRef.current
     setOffersLoading(true)
-    listOffers({ limit: 500 })
-      .then((res) => setOffersData(res.results ?? []))
-      .catch(() => setOffersData([]))
-      .finally(() => setOffersLoading(false))
-  }
+    setListError(null)
+    listOffers({
+      page: apiPage,
+      limit: pageSize,
+      ...(apiSortBy ? { sortBy: apiSortBy } : {}),
+      ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
+      ...(filters.offerStatus.length ? { status: filters.offerStatus.join(',') } : {}),
+      ...(filters.candidate.length ? { candidateId: filters.candidate.join(',') } : {}),
+      ...(filters.recruiter.length ? { createdBy: filters.recruiter.join(',') } : {}),
+      ...(stepLabelsToStageParam(filters.step) ? { stage: stepLabelsToStageParam(filters.step) } : {}),
+    })
+      .then((res) => {
+        if (generation !== fetchGenerationRef.current) return
+        setOffersData(res.results ?? [])
+        setTotalResults(res.totalResults ?? 0)
+        setTotalPages(res.totalPages ?? 0)
+      })
+      .catch((err) => {
+        if (generation !== fetchGenerationRef.current) return
+        setListError(err?.response?.data?.message || err?.message || 'Failed to load offers')
+        setOffersData([])
+        setTotalResults(0)
+        setTotalPages(0)
+      })
+      .finally(() => {
+        if (generation === fetchGenerationRef.current) setOffersLoading(false)
+      })
+  }, [canView, apiPage, pageSize, apiSortBy, debouncedSearch, filters])
+
+  useEffect(() => {
+    const fromUrl = parseListPage(searchParams.get('page'))
+    setApiPage((prev) => (prev === fromUrl ? prev : fromUrl))
+
+    const fromSort = parseOfferSortFromUrl(searchParams.get('sortBy'))
+    setApiSortBy((prev) => (prev === fromSort ? prev : fromSort))
+    setSelectedSort(apiSortByToSortOption(fromSort))
+  }, [searchParams])
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    let changed = false
+
+    const urlPage = parseListPage(params.get('page'))
+    if (urlPage !== apiPage) {
+      if (apiPage <= 1) params.delete('page')
+      else params.set('page', String(apiPage))
+      changed = true
+    }
+
+    const desiredUrlSort = apiSortBy ? apiSortByToUrlSort(apiSortBy) : undefined
+    const currentUrlSort = params.get('sortBy')?.trim() || undefined
+    if (desiredUrlSort !== currentUrlSort) {
+      if (desiredUrlSort) params.set('sortBy', desiredUrlSort)
+      else params.delete('sortBy')
+      changed = true
+    }
+
+    if (!changed) return
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [apiPage, apiSortBy, pathname, router, searchParams])
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedSearch(listSearch), 300)
+    return () => window.clearTimeout(t)
+  }, [listSearch])
+
+  useEffect(() => {
+    if (prevDebouncedSearchRef.current === debouncedSearch) return
+    prevDebouncedSearchRef.current = debouncedSearch
+    setApiPage(1)
+  }, [debouncedSearch])
+
+  useEffect(() => {
+    const signature = JSON.stringify(filters)
+    if (prevFiltersRef.current === signature) return
+    prevFiltersRef.current = signature
+    setApiPage(1)
+  }, [filters])
+
+  useEffect(() => {
+    if (totalPages > 0 && apiPage > totalPages) {
+      setApiPage(totalPages)
+    }
+  }, [apiPage, totalPages])
+
+  const handlePageSizeChange = useCallback((nextSize: number) => {
+    setPageSize(nextSize)
+    setApiPage(1)
+  }, [])
 
   useEffect(() => {
     fetchOffers()
-  }, [])
+  }, [fetchOffers])
+
+  const refreshOffers = useCallback(() => {
+    fetchOffers()
+  }, [fetchOffers])
 
   // Re-init Preline so Sort dropdown and search overlay work (content mounts after layout autoInit)
   useEffect(() => {
@@ -264,29 +415,36 @@ const OffersPlacement = () => {
     }
   }, [])
 
-  const refreshOffers = () => fetchOffers()
-
   const tableDataFromApi = useMemo(
     () => offersData.filter(offerHasUsableJobAndCandidate).map(mapOfferToRow),
     [offersData]
   )
   const OFFERS_PLACEMENT_DATA = tableDataFromApi
 
-  const [filters, setFilters] = useState<FilterState>({
-    candidate: [],
-    recruiter: [],
-    offerStatus: [],
-    step: []
-  })
-
-  // Search states for filter dropdowns
-  const [searchCandidate, setSearchCandidate] = useState('')
-  const [searchRecruiter, setSearchRecruiter] = useState('')
-  const [searchOfferStatus, setSearchOfferStatus] = useState('')
-  const [searchStep, setSearchStep] = useState('')
-
-  /** Quick filter across columns (reference: inline toolbar search) */
-  const [listSearch, setListSearch] = useState('')
+  useEffect(() => {
+    setCandidateLabels((prev) => {
+      const next = { ...prev }
+      let changed = false
+      tableDataFromApi.forEach((row) => {
+        if (row.candidate.id && next[row.candidate.id] !== row.candidate.name) {
+          next[row.candidate.id] = row.candidate.name
+          changed = true
+        }
+      })
+      return changed ? next : prev
+    })
+    setRecruiterLabels((prev) => {
+      const next = { ...prev }
+      let changed = false
+      tableDataFromApi.forEach((row) => {
+        if (row.recruiter.id && next[row.recruiter.id] !== row.recruiter.name) {
+          next[row.recruiter.id] = row.recruiter.name
+          changed = true
+        }
+      })
+      return changed ? next : prev
+    })
+  }, [tableDataFromApi])
 
   const [editOfferModal, setEditOfferModal] = useState<Offer | null>(null)
   const [editStatus, setEditStatus] = useState<Offer['status']>('Draft')
@@ -320,21 +478,19 @@ const OffersPlacement = () => {
     const letterId = searchParams?.get('openLetter')
 
     if (refresh) {
-      setOffersLoading(true)
-      listOffers({ limit: 500 })
-        .then((res) => setOffersData(res.results ?? []))
-        .catch(() => {})
-        .finally(() => {
-          setOffersLoading(false)
-          if (letterId && /^[0-9a-fA-F]{24}$/.test(letterId)) {
-            router.replace(
-              `/ats/offers-placement/offer-letter/new/?offerId=${encodeURIComponent(letterId)}`,
-              { scroll: false }
-            )
-          } else {
-            router.replace('/ats/offers-placement', { scroll: false })
-          }
-        })
+      refreshOffers()
+      if (letterId && /^[0-9a-fA-F]{24}$/.test(letterId)) {
+        router.replace(
+          `/ats/offers-placement/offer-letter/new/?offerId=${encodeURIComponent(letterId)}`,
+          { scroll: false }
+        )
+      } else {
+        const params = new URLSearchParams(searchParams.toString())
+        params.delete('refresh')
+        if (letterId) params.delete('openLetter')
+        const qs = params.toString()
+        router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+      }
       return
     }
 
@@ -348,7 +504,7 @@ const OffersPlacement = () => {
     } else {
       openLetterParamHandledRef.current = null
     }
-  }, [searchParams, router])
+  }, [searchParams, router, pathname, refreshOffers])
 
 
   const editModalDirty =
@@ -553,16 +709,12 @@ const OffersPlacement = () => {
           const candidate = row.original.candidate
           return (
             <div className="flex min-w-0 items-center gap-2.5">
-              <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full ring-1 ring-slate-200/80 dark:ring-white/10">
-                <img
-                  src={candidate.displayPicture || '/assets/images/faces/1.jpg'}
-                  alt={candidate.name}
-                  className="h-full w-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = '/assets/images/faces/1.jpg'
-                  }}
-                />
-              </div>
+              <PersonAvatar
+                name={candidate.name}
+                email={candidate.email}
+                imageUrl={candidate.displayPicture}
+                className="h-8 w-8 shrink-0 rounded-full ring-1 ring-slate-200/80 dark:ring-white/10"
+              />
               <div className="min-w-0 flex-1">
                 <div
                   className="truncate text-[13px] font-medium text-gray-900 dark:text-white"
@@ -588,16 +740,12 @@ const OffersPlacement = () => {
           const recruiter = row.original.recruiter
           return (
             <div className="flex min-w-0 items-center gap-2.5">
-              <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full ring-1 ring-slate-200/80 dark:ring-white/10">
-                <img
-                  src={recruiter.displayPicture || '/assets/images/faces/1.jpg'}
-                  alt={recruiter.name}
-                  className="h-full w-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = '/assets/images/faces/1.jpg'
-                  }}
-                />
-              </div>
+              <PersonAvatar
+                name={recruiter.name}
+                email={recruiter.email}
+                imageUrl={recruiter.displayPicture}
+                className="h-8 w-8 shrink-0 rounded-full ring-1 ring-slate-200/80 dark:ring-white/10"
+              />
               <div className="min-w-0 flex-1">
                 <div
                   className="truncate text-[13px] font-medium text-gray-900 dark:text-white"
@@ -686,119 +834,50 @@ const OffersPlacement = () => {
     [selectedRows, renderRowActions]
   )
 
-  // Filter data based on filter state
-  const filteredData = useMemo(() => {
-    return OFFERS_PLACEMENT_DATA.filter((offer) => {
-      if (listSearch.trim()) {
-        const q = listSearch.trim().toLowerCase()
-        const blob = [
-          offer.position,
-          offer.offerId,
-          offer.candidate?.name,
-          offer.candidate?.email,
-          offer.recruiter?.name,
-          offer.offerStatus,
-          String(offer.placementStatus ?? ''),
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase()
-        if (!blob.includes(q)) return false
-      }
-      // Candidate filter (array)
-      if (filters.candidate.length > 0 && !filters.candidate.some(candidateName => 
-        offer.candidate.name.toLowerCase().includes(candidateName.toLowerCase())
-      )) {
-        return false
-      }
-      
-      // Recruiter filter (array)
-      if (filters.recruiter.length > 0 && !filters.recruiter.some(recruiterName => 
-        offer.recruiter.name.toLowerCase().includes(recruiterName.toLowerCase())
-      )) {
-        return false
-      }
-      
-      // Offer Status filter (array)
-      if (filters.offerStatus.length > 0 && offer.offerStatus && !filters.offerStatus.includes(offer.offerStatus)) {
-        return false
-      }
-      
-      // Step filter (Pre-boarding, Onboarding)
-      if (filters.step.length > 0) {
-        const step = offer.offerStatus === 'Accepted'
-          ? (offer.placementStatus === 'Pending' ||
-              offer.placementStatus === 'Deferred' ||
-              offer.placementStatus === 'Cancelled'
-              ? 'Pre-boarding'
-              : offer.placementStatus === 'Joined'
-                ? 'Onboarding'
-                : null)
-          : null
-        if (!step || !filters.step.includes(step)) return false
-      }
-      
-      return true
-    })
-  }, [filters, listSearch, OFFERS_PLACEMENT_DATA])
+  const pageRows = OFFERS_PLACEMENT_DATA
+  const data = useMemo(() => pageRows, [pageRows])
 
-  const data = useMemo(() => filteredData, [filteredData])
+  const allCandidateIds = useMemo(() => {
+    const ids = new Set<string>([...Object.keys(candidateLabels), ...filters.candidate])
+    return [...ids].sort((a, b) =>
+      (candidateLabels[a] || a).localeCompare(candidateLabels[b] || b, undefined, { sensitivity: 'base' })
+    )
+  }, [candidateLabels, filters.candidate])
 
-  // Get unique values for dropdown filters
-  const allCandidates = useMemo(() => {
-    return [...new Set(OFFERS_PLACEMENT_DATA.map(offer => offer.candidate.name))].sort()
-  }, [OFFERS_PLACEMENT_DATA])
+  const allRecruiterIds = useMemo(() => {
+    const ids = new Set<string>([...Object.keys(recruiterLabels), ...filters.recruiter])
+    return [...ids].sort((a, b) =>
+      (recruiterLabels[a] || a).localeCompare(recruiterLabels[b] || b, undefined, { sensitivity: 'base' })
+    )
+  }, [recruiterLabels, filters.recruiter])
 
-  const allRecruiters = useMemo(() => {
-    return [...new Set(OFFERS_PLACEMENT_DATA.map(offer => offer.recruiter.name))].sort()
-  }, [OFFERS_PLACEMENT_DATA])
-
-  const allOfferStatuses = useMemo((): string[] => {
-    return [...new Set(OFFERS_PLACEMENT_DATA.map(offer => offer.offerStatus).filter((s): s is string => s !== undefined))].sort()
-  }, [OFFERS_PLACEMENT_DATA])
-
-  const allSteps = useMemo((): string[] => {
-    const steps = new Set<string>()
-    OFFERS_PLACEMENT_DATA.forEach((offer) => {
-      if (offer.offerStatus === 'Accepted') {
-        if (
-          offer.placementStatus === 'Pending' ||
-          offer.placementStatus === 'Deferred' ||
-          offer.placementStatus === 'Cancelled'
-        )
-          steps.add('Pre-boarding')
-        else if (offer.placementStatus === 'Joined') steps.add('Onboarding')
-      }
-    })
-    return [...steps].sort()
-  }, [OFFERS_PLACEMENT_DATA])
+  const allOfferStatuses = OFFER_FILTER_STATUSES
+  const allSteps = OFFER_FILTER_STEPS
 
   // Filter options based on search terms
   const filteredCandidates = useMemo(() => {
-    if (!searchCandidate) return allCandidates
-    return allCandidates.filter(candidate => 
-      candidate.toLowerCase().includes(searchCandidate.toLowerCase())
-    )
-  }, [allCandidates, searchCandidate])
+    if (!searchCandidate) return allCandidateIds
+    const q = searchCandidate.toLowerCase()
+    return allCandidateIds.filter((id) => (candidateLabels[id] || id).toLowerCase().includes(q))
+  }, [allCandidateIds, searchCandidate, candidateLabels])
 
   const filteredRecruiters = useMemo(() => {
-    if (!searchRecruiter) return allRecruiters
-    return allRecruiters.filter(recruiter => 
-      recruiter.toLowerCase().includes(searchRecruiter.toLowerCase())
-    )
-  }, [allRecruiters, searchRecruiter])
+    if (!searchRecruiter) return allRecruiterIds
+    const q = searchRecruiter.toLowerCase()
+    return allRecruiterIds.filter((id) => (recruiterLabels[id] || id).toLowerCase().includes(q))
+  }, [allRecruiterIds, searchRecruiter, recruiterLabels])
 
   const filteredOfferStatuses = useMemo((): string[] => {
-    if (!searchOfferStatus) return allOfferStatuses
-    return allOfferStatuses.filter(status => 
+    if (!searchOfferStatus) return [...allOfferStatuses]
+    return allOfferStatuses.filter((status) =>
       status.toLowerCase().includes(searchOfferStatus.toLowerCase())
     )
-  }, [allOfferStatuses, searchOfferStatus])
+  }, [searchOfferStatus])
 
   const filteredSteps = useMemo((): string[] => {
-    if (!searchStep) return allSteps
+    if (!searchStep) return [...allSteps]
     return allSteps.filter((s) => s.toLowerCase().includes(searchStep.toLowerCase()))
-  }, [allSteps, searchStep])
+  }, [searchStep])
 
   const handleMultiSelectChange = (key: 'candidate' | 'recruiter' | 'offerStatus' | 'step', value: string) => {
     setFilters(prev => {
@@ -844,89 +923,49 @@ const OffersPlacement = () => {
     isDirty: hasPanelFilters,
   })
 
-  const tableInstance: any = useTable(
-    {
-      columns,
-      data,
-      initialState: { pageIndex: 0, pageSize: DEFAULT_LIST_PAGE_SIZE },
-    },
-    useSortBy,
-    usePagination
-  )
+  const tableInstance: any = useTable({
+    columns,
+    data,
+  })
 
-  const {
-    getTableProps,
-    getTableBodyProps,
-    headerGroups,
-    prepareRow,
-    state,
-    page,
-    gotoPage,
-    pageCount,
-    setPageSize,
-    setSortBy,
-  } = tableInstance
-
-  const { pageIndex, pageSize } = state
+  const { getTableProps, getTableBodyProps, headerGroups, prepareRow, rows } = tableInstance
 
   // Handle sort selection
   const handleSortChange = (sortOption: string) => {
     setOffersSortMenuOpen(false)
     setSelectedSort(sortOption)
-    
-    switch(sortOption) {
-      case 'date-asc':
-        setSortBy([{ id: 'offerInfo', desc: false }])
-        break
-      case 'date-desc':
-        setSortBy([{ id: 'offerInfo', desc: true }])
-        break
-      case 'joining-asc':
-        setSortBy([{ id: 'joiningDate', desc: false }])
-        break
-      case 'joining-desc':
-        setSortBy([{ id: 'joiningDate', desc: true }])
-        break
-      case 'candidate-asc':
-        setSortBy([{ id: 'candidate', desc: false }])
-        break
-      case 'candidate-desc':
-        setSortBy([{ id: 'candidate', desc: true }])
-        break
-      case 'recruiter-asc':
-        setSortBy([{ id: 'recruiter', desc: false }])
-        break
-      case 'recruiter-desc':
-        setSortBy([{ id: 'recruiter', desc: true }])
-        break
-      case 'status-asc':
-        setSortBy([{ id: 'offerStatus', desc: false }])
-        break
-      case 'status-desc':
-        setSortBy([{ id: 'offerStatus', desc: true }])
-        break
-      case 'clear-sort':
-        setSortBy([])
-        setSelectedSort('')
-        break
-      default:
-        setSortBy([])
+
+    if (sortOption === 'clear-sort') {
+      setApiSortBy(undefined)
+      setSelectedSort('')
+      setApiPage(1)
+      return
+    }
+
+    const nextSort = sortOptionToApiSortBy(sortOption)
+    if (nextSort) {
+      setApiSortBy(nextSort)
+      setApiPage(1)
     }
   }
 
-  // Handle select all checkbox - select ALL rows in filtered dataset
+  // Select all rows on the current page only (matches pre-boarding bulk-select scope).
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      const allIds = new Set(filteredData.map((offer) => offer.id))
-      setSelectedRows(allIds)
+      const pageIds = new Set(pageRows.map((offer) => offer.id))
+      setSelectedRows(pageIds)
     } else {
       setSelectedRows(new Set())
     }
   }
 
-  // Check if all rows in filtered dataset are selected
-  const isAllSelected = selectedRows.size === filteredData.length && filteredData.length > 0
-  const isIndeterminate = selectedRows.size > 0 && selectedRows.size < filteredData.length
+  const isAllSelected = pageRows.length > 0 && pageRows.every((offer) => selectedRows.has(offer.id))
+  const isIndeterminate =
+    pageRows.some((offer) => selectedRows.has(offer.id)) && !isAllSelected
+
+  const hasActiveFilters =
+    panelFilterCount > 0 || Boolean(debouncedSearch.trim()) || Boolean(apiSortBy)
+  const showEmptyState = !offersLoading && !listError && totalResults === 0
 
   /** Prevent sticky header label collision on narrow viewports */
   const offerColMinW: Record<string, string> = {
@@ -961,19 +1000,19 @@ const OffersPlacement = () => {
                 Offers &amp; Placement
                 <span
                   className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle tabular-nums"
-                  title="Count after search and filters"
+                  title="Total matching search and filters"
                 >
-                  {filteredData.length}
+                  {totalResults}
                 </span>
               </span>
-              {filteredData.length > 0 ? (
+              {!offersLoading && !listError && totalResults > 0 ? (
                 <ListPagination
-                  page={pageIndex + 1}
-                  totalPages={pageCount}
-                  totalResults={filteredData.length}
+                  page={apiPage}
+                  totalPages={totalPages}
+                  totalResults={totalResults}
                   pageSize={pageSize}
-                  onPageChange={(p) => gotoPage(p - 1)}
-                  onPageSizeChange={setPageSize}
+                  onPageChange={setApiPage}
+                  onPageSizeChange={handlePageSizeChange}
                   showSummary={false}
                   showPager={false}
                   ariaLabel="Offers list rows per page"
@@ -1054,19 +1093,19 @@ const OffersPlacement = () => {
                     <li>
                       <button
                         type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'date-asc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('date-asc')}
+                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'employee-asc' ? 'active' : ''}`}
+                        onClick={() => handleSortChange('employee-asc')}
                       >
-                        <i className="ri-calendar-line me-2 align-middle inline-block"></i>Offer Date (Oldest First)
+                        <i className="ri-user-line me-2 align-middle inline-block"></i>Employee (A-Z)
                       </button>
                     </li>
                     <li>
                       <button
                         type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'date-desc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('date-desc')}
+                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'employee-desc' ? 'active' : ''}`}
+                        onClick={() => handleSortChange('employee-desc')}
                       >
-                        <i className="ri-calendar-line me-2 align-middle inline-block"></i>Offer Date (Newest First)
+                        <i className="ri-user-line me-2 align-middle inline-block"></i>Employee (Z-A)
                       </button>
                     </li>
                     <li>
@@ -1085,60 +1124,6 @@ const OffersPlacement = () => {
                         onClick={() => handleSortChange('joining-desc')}
                       >
                         <i className="ri-calendar-check-line me-2 align-middle inline-block"></i>Joining Date (Newest First)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'candidate-asc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('candidate-asc')}
-                      >
-                        <i className="ri-user-line me-2 align-middle inline-block"></i>Candidate (A-Z)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'candidate-desc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('candidate-desc')}
-                      >
-                        <i className="ri-user-line me-2 align-middle inline-block"></i>Candidate (Z-A)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'recruiter-asc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('recruiter-asc')}
-                      >
-                        <i className="ri-team-line me-2 align-middle inline-block"></i>Recruiter (A-Z)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'recruiter-desc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('recruiter-desc')}
-                      >
-                        <i className="ri-team-line me-2 align-middle inline-block"></i>Recruiter (Z-A)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'status-asc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('status-asc')}
-                      >
-                        <i className="ri-file-check-line me-2 align-middle inline-block"></i>Offer Status (A-Z)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'status-desc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('status-desc')}
-                      >
-                        <i className="ri-file-check-line me-2 align-middle inline-block"></i>Offer Status (Z-A)
                       </button>
                     </li>
                     <li className="ti-dropdown-divider"></li>
@@ -1217,20 +1202,24 @@ const OffersPlacement = () => {
                     <span>Loading offers&hellip;</span>
                   </div>
                 </div>
-              ) : filteredData.length === 0 ? (
+              ) : showEmptyState ? (
                 <div className="flex flex-col items-center justify-center px-6 py-16 text-center text-gray-500 dark:text-gray-400">
                   <i className="ri-file-paper-2-line mb-3 block text-4xl opacity-50" aria-hidden />
                   <p className="mb-1 text-base font-medium text-gray-700 dark:text-gray-200">No offers to show</p>
                   <p className="mb-0 max-w-md text-sm">
-                    {offersData.length > 0
-                      ? 'Try relaxing filters, or add offers from a job application.'
+                    {hasActiveFilters
+                      ? 'Try relaxing filters or search, or add offers from a job application.'
                       : 'Create an offer from an application in pipeline, or use Create Offer to start a letter.'}
                   </p>
+                </div>
+              ) : listError ? (
+                <div className="flex flex-col items-center justify-center px-6 py-16 text-center text-danger">
+                  <p className="mb-0 text-sm">{listError}</p>
                 </div>
               ) : (
                 <div className={`min-h-0 w-full min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto ${pipelineStyles.tableCard}`}>
                   <div className="divide-y divide-slate-200/90 dark:divide-white/10 lg:hidden">
-                    {page.map((row: any, index: number) => {
+                    {rows.map((row: any, index: number) => {
                       const offer = row.original
                       const statusColors: Record<string, string> = {
                         Accepted: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200',
@@ -1297,7 +1286,7 @@ const OffersPlacement = () => {
                       aria-label="Offers and placement"
                     >
                       <caption className="sr-only">
-                        Offers and placement list. {filteredData.length} total after filters.
+                        Offers and placement list. {totalResults} total after filters.
                       </caption>
                       <thead>
                         {headerGroups.map((headerGroup: any, i: number) => (
@@ -1308,7 +1297,7 @@ const OffersPlacement = () => {
                           >
                             {headerGroup.headers.map((column: any, colI: number) => (
                               <th
-                                {...column.getHeaderProps(column.getSortByToggleProps())}
+                                {...column.getHeaderProps()}
                                 scope="col"
                                 className={`${TH_CLASS} ${column.id === 'checkbox' ? CHECKBOX_COL_CLASS : ''}`}
                                 key={column.id || `col-${colI}`}
@@ -1330,15 +1319,6 @@ const OffersPlacement = () => {
                                 ) : (
                                   <div className="tabletitle flex min-w-0 items-start gap-1">
                                     <span className="min-w-0 break-words hyphens-auto">{column.render('Header')}</span>
-                                    <span className="shrink-0 pt-0.5">
-                                      {column.isSorted ? (
-                                        column.isSortedDesc ? (
-                                          <i className="ri-arrow-down-s-line text-sm opacity-80" aria-hidden />
-                                        ) : (
-                                          <i className="ri-arrow-up-s-line text-sm opacity-80" aria-hidden />
-                                        )
-                                      ) : null}
-                                    </span>
                                   </div>
                                 )}
                               </th>
@@ -1347,7 +1327,7 @@ const OffersPlacement = () => {
                         ))}
                       </thead>
                       <tbody {...getTableBodyProps()}>
-                        {page.map((row: any, i: number) => {
+                        {rows.map((row: any, i: number) => {
                           prepareRow(row)
                           const rowProps = row.getRowProps({
                             className: `border-b border-slate-200/80 transition-colors duration-150 ease-out last:border-b-0 hover:bg-slate-50/90 dark:border-white/10 dark:hover:bg-white/[0.04] ${offersStyles.rowIn}`,
@@ -1380,13 +1360,13 @@ const OffersPlacement = () => {
               )}
             </div>
             <div className="box-footer relative z-[1] shrink-0 border-t border-defaultborder/60 bg-white !px-3 !py-2 dark:border-white/5 dark:bg-bodybg sm:!px-4">
-              {filteredData.length > 0 ? (
+              {!offersLoading && !listError && totalResults > 0 ? (
                 <ListPagination
-                  page={pageIndex + 1}
-                  totalPages={pageCount}
-                  totalResults={filteredData.length}
+                  page={apiPage}
+                  totalPages={totalPages}
+                  totalResults={totalResults}
                   pageSize={pageSize}
-                  onPageChange={(p) => gotoPage(p - 1)}
+                  onPageChange={setApiPage}
                   showPageSize={false}
                   ariaLabel="Offers page navigation"
                   gotoInputId="offers-goto-page"
@@ -1449,7 +1429,7 @@ const OffersPlacement = () => {
               <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
                 <i className="ri-user-line text-primary text-base"></i>
                 Candidate
-                <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allCandidates.length})</span>
+                <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allCandidateIds.length})</span>
               </label>
               <div className="space-y-2">
                 <input
@@ -1462,18 +1442,18 @@ const OffersPlacement = () => {
                 <div className="max-h-40 overflow-y-auto rounded-lg bg-white dark:bg-black/20 p-2 shadow-sm">
                   <div className="space-y-1">
                     {filteredCandidates.length > 0 ? (
-                      filteredCandidates.map((candidate) => (
+                      filteredCandidates.map((candidateId) => (
                         <label
-                          key={candidate}
+                          key={candidateId}
                            className={FILTER_CHECK_LABEL}
                          >
                            <input
                              type="checkbox"
                              className="form-check-input !h-5 !w-5 shrink-0"
-                            checked={filters.candidate.includes(candidate)}
-                            onChange={() => handleMultiSelectChange('candidate', candidate)}
+                            checked={filters.candidate.includes(candidateId)}
+                            onChange={() => handleMultiSelectChange('candidate', candidateId)}
                           />
-                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">{candidate}</span>
+                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">{candidateLabels[candidateId] || candidateId}</span>
                         </label>
                       ))
                     ) : (
@@ -1485,15 +1465,15 @@ const OffersPlacement = () => {
                 </div>
                 {filters.candidate.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 pt-1.5">
-                    {filters.candidate.map((candidate) => (
+                    {filters.candidate.map((candidateId) => (
                       <span
-                        key={candidate}
+                        key={candidateId}
                         className="badge bg-primary/10 text-primary border border-primary/30 px-2 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium shadow-sm"
                       >
-                        {candidate}
+                        {candidateLabels[candidateId] || candidateId}
                         <button
                           type="button"
-                          onClick={() => handleRemoveFilter('candidate', candidate)}
+                          onClick={() => handleRemoveFilter('candidate', candidateId)}
                           className="hover:text-primary-hover hover:bg-primary/20 rounded-full p-0.5 transition-colors"
                         >
                           <i className="ri-close-line text-xs"></i>
@@ -1510,7 +1490,7 @@ const OffersPlacement = () => {
               <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
                 <i className="ri-team-line text-success text-base"></i>
                 Recruiter
-                <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allRecruiters.length})</span>
+                <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allRecruiterIds.length})</span>
               </label>
               <div className="space-y-2">
                 <input
@@ -1523,18 +1503,18 @@ const OffersPlacement = () => {
                 <div className="max-h-40 overflow-y-auto rounded-lg bg-white dark:bg-black/20 p-2 shadow-sm">
                   <div className="space-y-1">
                     {filteredRecruiters.length > 0 ? (
-                      filteredRecruiters.map((recruiter) => (
+                      filteredRecruiters.map((recruiterId) => (
                         <label
-                          key={recruiter}
+                          key={recruiterId}
                            className={FILTER_CHECK_LABEL}
                          >
                            <input
                              type="checkbox"
                              className="form-check-input !h-5 !w-5 shrink-0"
-                            checked={filters.recruiter.includes(recruiter)}
-                            onChange={() => handleMultiSelectChange('recruiter', recruiter)}
+                            checked={filters.recruiter.includes(recruiterId)}
+                            onChange={() => handleMultiSelectChange('recruiter', recruiterId)}
                           />
-                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">{recruiter}</span>
+                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">{recruiterLabels[recruiterId] || recruiterId}</span>
                         </label>
                       ))
                     ) : (
@@ -1546,15 +1526,15 @@ const OffersPlacement = () => {
                 </div>
                 {filters.recruiter.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 pt-1.5">
-                    {filters.recruiter.map((recruiter) => (
+                    {filters.recruiter.map((recruiterId) => (
                       <span
-                        key={recruiter}
+                        key={recruiterId}
                         className="badge bg-success/10 text-success border border-success/30 px-2 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium shadow-sm"
                       >
-                        {recruiter}
+                        {recruiterLabels[recruiterId] || recruiterId}
                         <button
                           type="button"
-                          onClick={() => handleRemoveFilter('recruiter', recruiter)}
+                          onClick={() => handleRemoveFilter('recruiter', recruiterId)}
                           className="hover:text-success-hover hover:bg-success/20 rounded-full p-0.5 transition-colors"
                         >
                           <i className="ri-close-line text-xs"></i>

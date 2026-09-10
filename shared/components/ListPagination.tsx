@@ -76,27 +76,19 @@ export default function ListPagination({
   return (
     <div className={`flex flex-wrap items-center gap-4 ${touchClass} ${className ?? ""}`}>
       {showPageSizeControl ? (
-        <div className="flex items-center gap-2">
-          <label
-            htmlFor={rowsSelectId}
-            className="text-[0.6875rem] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
-          >
-            Rows
-          </label>
-          <select
-            id={rowsSelectId}
-            className="form-control select-show-page-size !w-auto !min-w-[4.5rem] !h-8 !py-1 !px-2 !text-[0.75rem] !rounded-lg"
-            value={pageSize}
-            onChange={(e) => onPageSizeChange(Number(e.target.value))}
-            aria-label="Rows per page"
-          >
-            {pageSizeOptions.map((size) => (
-              <option key={size} value={size}>
-                {size}
-              </option>
-            ))}
-          </select>
-        </div>
+        <select
+          id={rowsSelectId}
+          className="form-control select-show-page-size !w-auto !h-8 !py-1 !text-[0.75rem] !rounded-lg"
+          value={pageSize}
+          onChange={(e) => onPageSizeChange(Number(e.target.value))}
+          aria-label={ariaLabel}
+        >
+          {pageSizeOptions.map((size) => (
+            <option key={size} value={size}>
+              Show {size}
+            </option>
+          ))}
+        </select>
       ) : null}
       {showSummary ? (
         <div>

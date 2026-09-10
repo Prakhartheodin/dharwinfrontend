@@ -10,17 +10,20 @@ import type { Mode, Role } from "@/shared/workforce-profile/types/wizard.types";
  * A user holding both roles resolves to Employee, matching the legacy behaviour
  * of the Personal Information page.
  */
-export function resolveSelfServiceWizardTarget(
+export function isCandidateOnlyRoleNames(
   roleNames: readonly string[] | null | undefined,
-): { mode: Mode; role: Role } {
+): boolean {
   const names = (roleNames ?? [])
     .map((n) => (typeof n === "string" ? n.trim().toLowerCase() : ""))
     .filter(Boolean);
 
-  const isCandidateOnly =
-    names.includes("candidate") && !names.includes("employee");
+  return names.includes("candidate") && !names.includes("employee");
+}
 
-  return isCandidateOnly
+export function resolveSelfServiceWizardTarget(
+  roleNames: readonly string[] | null | undefined,
+): { mode: Mode; role: Role } {
+  return isCandidateOnlyRoleNames(roleNames)
     ? { mode: "self-service-candidate", role: "candidate" }
     : { mode: "self-service-employee", role: "employee" };
 }

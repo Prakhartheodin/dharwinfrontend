@@ -2297,30 +2297,22 @@ const Candidates = () => {
                 </div>
               </div>
               <div className="relative z-20 flex w-full min-w-0 flex-wrap items-center gap-x-2 gap-y-2 overflow-visible md:justify-end">
-                <div className="inline-flex items-center gap-2">
-                  <label
-                    htmlFor="candidates-page-size"
-                    className="mb-0 hidden whitespace-nowrap text-[0.7rem] font-semibold uppercase tracking-wide text-textmuted dark:text-white/45 sm:inline"
-                  >
-                    Rows
-                  </label>
-                  <select
-                    id="candidates-page-size"
-                    className="form-select !m-0 !h-auto !w-auto !min-w-[4.5rem] !rounded-lg !border-defaultborder/80 !py-1.5 !ps-3 !pe-10 !text-[0.75rem] !leading-normal shadow-sm dark:!border-white/15"
-                    value={pageSize}
-                    onChange={(e) => {
-                      setPageSize(Number(e.target.value))
-                      setApiPage(1)
-                    }}
-                    aria-label="Rows per page"
-                  >
-                    {[10, 25, 50, 100].map((size) => (
-                      <option key={size} value={size}>
-                        {size}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <select
+                  id="candidates-page-size"
+                  className="form-control select-show-page-size !w-auto !h-8 !py-1 !text-[0.75rem] !rounded-lg"
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value))
+                    setApiPage(1)
+                  }}
+                  aria-label="Employees per page"
+                >
+                  {[10, 25, 50, 100].map((size) => (
+                    <option key={size} value={size}>
+                      Show {size}
+                    </option>
+                  ))}
+                </select>
                 <div ref={employeesSortDropdownRef} className="relative z-30">
                   <button
                     type="button"

@@ -47,7 +47,8 @@ function groupByDate<T extends { createdAt?: string }>(items: T[]): Record<strin
 
 const Header = ({ local_varaiable, ThemeChanger }: any) => {
   const { user, impersonation, logout, stopImpersonation, isLoading: authIsLoading } = useAuth();
-  const { roleDisplayName, employeeId, showEmployeeId } = useHeaderProfileSummary();
+  const { roleDisplayName, employeeId, showEmployeeId, hasEmployeeRole, isCandidateOnlyPersona } =
+    useHeaderProfileSummary();
   const pathname = usePathname();
   const router = useRouter();
   const guestPublicLayout = !user && isPublicLayoutPath(pathname ?? "");
@@ -776,21 +777,27 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                         <i className="ti ti-user-circle text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>My Profile
                       </Link>
                     </li>
-                    <li>
-                      <Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0  !p-[0.65rem]" href="/communication/email" onClick={() => setIsProfileMenuOpen(false)}>
-                        <i className="ti ti-inbox text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Inbox
-                      </Link>
-                    </li>
-                    <li>
-                      <Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0 !p-[0.65rem]" href={hasPermission(user as any, "view_tasks") && (user?.isAdministrator || user?.isPlatformSuperUser) ? "/task/kanban-board" : "/task/my-tasks"} onClick={() => setIsProfileMenuOpen(false)}>
-                        <i className="ti ti-clipboard-check text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Task Manager
-                      </Link>
-                    </li>
-                    <li>
-                      <Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0 !p-[0.65rem]" href="/settings/" onClick={() => setIsProfileMenuOpen(false)}>
-                        <i className="ti ti-adjustments-horizontal text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Settings
-                      </Link>
-                    </li>
+                    {!isCandidateOnlyPersona ? (
+                      <li>
+                        <Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0  !p-[0.65rem]" href="/communication/email" onClick={() => setIsProfileMenuOpen(false)}>
+                          <i className="ti ti-inbox text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Inbox
+                        </Link>
+                      </li>
+                    ) : null}
+                    {!isCandidateOnlyPersona ? (
+                      <li>
+                        <Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0 !p-[0.65rem]" href={hasPermission(user as any, "view_tasks") && (user?.isAdministrator || user?.isPlatformSuperUser) ? "/task/kanban-board" : "/task/my-tasks"} onClick={() => setIsProfileMenuOpen(false)}>
+                          <i className="ti ti-clipboard-check text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Task Manager
+                        </Link>
+                      </li>
+                    ) : null}
+                    {!hasEmployeeRole ? (
+                      <li>
+                        <Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0 !p-[0.65rem]" href="/settings/" onClick={() => setIsProfileMenuOpen(false)}>
+                          <i className="ti ti-adjustments-horizontal text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Settings
+                        </Link>
+                      </li>
+                    ) : null}
                     <li className="border-t border-defaultborder dark:border-defaultborder/50 my-1 !py-0 !px-0 list-none pointer-events-none" aria-hidden />
                     <li>
                       <Link className="w-full ti-dropdown-item !text-[0.8125rem] !p-[0.65rem] !gap-x-0 !inline-flex" href="/support-tickets" onClick={() => setIsProfileMenuOpen(false)}>
