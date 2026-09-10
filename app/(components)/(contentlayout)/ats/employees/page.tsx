@@ -393,6 +393,8 @@ const Candidates = () => {
   const [previewCandidate, setPreviewCandidate] = useState<any>(null)
   const [previewPanelDocuments, setPreviewPanelDocuments] = useState<CandidateDocument[] | null>(null)
   const [previewPanelDocumentsLoading, setPreviewPanelDocumentsLoading] = useState(false)
+  const [previewPanelSalarySlips, setPreviewPanelSalarySlips] = useState<Array<{ month?: string; year?: number; key?: string; documentUrl?: string }> | null>(null)
+  const [previewPanelSalarySlipsLoading, setPreviewPanelSalarySlipsLoading] = useState(false)
   const [viewDetailTab, setViewDetailTab] = useState<string>('personal')
   const [previewMatchCount, setPreviewMatchCount] = useState<number | null>(null)
   const [skillRecommendModalOpen, setSkillRecommendModalOpen] = useState(false)
@@ -778,12 +780,16 @@ const Candidates = () => {
       setPreviewCandidate(c)
       setPreviewPanelDocuments(null)
       setPreviewPanelDocumentsLoading(false)
+      setPreviewPanelSalarySlips(null)
+      setPreviewPanelSalarySlipsLoading(false)
       setViewDetailTab('personal')
       setPreviewMatchCount(null)
       setActionError(null)
       queueMicrotask(() => openHsOverlay('#candidate-preview-panel'))
       getCandidate(c.id)
         .then((full) => {
+          setPreviewPanelDocuments(Array.isArray((full as any)?.documents) ? (full as any).documents : [])
+          setPreviewPanelSalarySlips(Array.isArray((full as any)?.salarySlips) ? (full as any).salarySlips : [])
           setPreviewCandidate((prev: any) =>
             prev && prev.id === c.id
               ? {
@@ -798,6 +804,23 @@ const Candidates = () => {
     },
     [openHsOverlay]
   )
+
+  const loadCandidateDocumentAndSalary = useCallback(async (candidateId: string) => {
+    const [docs, statusRes, candidateDetail] = await Promise.all([
+      getCandidateDocuments(candidateId),
+      getDocumentStatus(candidateId).catch(() => ({ documents: [] })),
+      getCandidate(candidateId).catch(() => null),
+    ])
+    const docsList = Array.isArray(docs) ? docs : (docs as any)?.documents ?? []
+    const statusByIndex: Record<number, { status: number; adminNotes?: string }> = {}
+    ;(statusRes?.documents ?? []).forEach((d: any) => {
+      statusByIndex[d.index] = { status: d.status, adminNotes: d.adminNotes }
+    })
+    const salarySlips = Array.isArray((candidateDetail as any)?.salarySlips)
+      ? ((candidateDetail as any).salarySlips as Array<{ month?: string; year?: number; key?: string; documentUrl?: string }>)
+      : []
+    return { docsList, statusByIndex, salarySlips, candidateDetail }
+  }, [])
 
   // Generate the public shared-profile URL. Keep query string tiny so WhatsApp detects the whole link.
   const getCandidatePublicUrl = (candidateId: string) => {
@@ -874,17 +897,24 @@ const Candidates = () => {
     setDocumentsLoading(true)
     setActionError(null)
     try {
-      const [list, statusRes, candidateDetail] = await Promise.all([
-        getCandidateDocuments(candidate.id),
-        getDocumentStatus(candidate.id).catch(() => ({ documents: [] })),
-        getCandidate(candidate.id).catch(() => null),
-      ])
-      const docsList = Array.isArray(list) ? list : (list as any)?.documents ?? []
+      const { docsList, statusByIndex, salarySlips, candidateDetail } = await loadCandidateDocumentAndSalary(candidate.id)
       setDocumentsList(docsList)
-      const statusByIndex: Record<number, { status: number; adminNotes?: string }> = {}
-      ;(statusRes?.documents ?? []).forEach((d: any) => { statusByIndex[d.index] = { status: d.status, adminNotes: d.adminNotes } })
       setDocumentStatusMap(statusByIndex)
-      setSalarySlipsFromCandidate((candidateDetail as any)?.salarySlips ?? [])
+      setSalarySlipsFromCandidate(salarySlips)
+      setPreviewPanelDocuments(docsList)
+      setPreviewPanelSalarySlips(salarySlips)
+      if (candidateDetail) {
+        const mapped = mapCandidateToDisplay(candidateDetail as any)
+        setCandidates((prev) => prev.map((row) => (row.id === mapped.id ? mapped : row)))
+        setPreviewCandidate((prev: any) => {
+          if (!prev || prev.id !== mapped.id) return prev
+          return {
+            ...mapped,
+            _raw: candidateDetail,
+            skillsStructured: normalizeCandidateSkillsStructured((candidateDetail as any)?.skills ?? mapped.skills),
+          }
+        })
+      }
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to load documents')
       setDocumentsList([])
@@ -897,6 +927,32 @@ const Candidates = () => {
       })
     }
   }
+
+  const refreshCandidateDocumentAndSalaryViews = useCallback(
+    async (candidateId: string) => {
+      const { docsList, statusByIndex, salarySlips, candidateDetail } = await loadCandidateDocumentAndSalary(candidateId)
+      setPreviewPanelDocuments(docsList)
+      setPreviewPanelSalarySlips(salarySlips)
+      if (documentsCandidate?.id === candidateId) {
+        setDocumentsList(docsList)
+        setDocumentStatusMap(statusByIndex)
+        setSalarySlipsFromCandidate(salarySlips)
+      }
+      if (candidateDetail) {
+        const mapped = mapCandidateToDisplay(candidateDetail as any)
+        setCandidates((prev) => prev.map((row) => (row.id === mapped.id ? mapped : row)))
+        setPreviewCandidate((prev: any) => {
+          if (!prev || prev.id !== mapped.id) return prev
+          return {
+            ...mapped,
+            _raw: candidateDetail,
+            skillsStructured: normalizeCandidateSkillsStructured((candidateDetail as any)?.skills ?? mapped.skills),
+          }
+        })
+      }
+    },
+    [documentsCandidate?.id, loadCandidateDocumentAndSalary]
+  )
   const handleDocumentVerify = async (candidateId: string, documentIndex: number, status: number, adminNotes?: string) => {
     setActionError(null)
     try {
@@ -914,7 +970,7 @@ const Candidates = () => {
     setActionError(null)
     try {
       await deleteSalarySlip(candidateId, index)
-      setSalarySlipsFromCandidate((prev) => prev.filter((_, i) => i !== index))
+      await refreshCandidateDocumentAndSalaryViews(candidateId)
       setActionSuccess('Salary slip removed')
       refreshCandidates(false)
       setTimeout(() => setActionSuccess(null), 2000)
@@ -935,28 +991,49 @@ const Candidates = () => {
     if (!previewCandidate) {
       setPreviewPanelDocuments(null)
       setPreviewPanelDocumentsLoading(false)
+      setPreviewPanelSalarySlips(null)
+      setPreviewPanelSalarySlipsLoading(false)
     }
   }, [previewCandidate])
 
   useEffect(() => {
     const id = previewCandidate?.id
-    if (!id || viewDetailTab !== 'documents') return
+    const shouldRefreshPreviewArtifacts = viewDetailTab === 'documents' || viewDetailTab === 'salary'
+    if (!id || !shouldRefreshPreviewArtifacts) return
     let cancelled = false
-    setPreviewPanelDocumentsLoading(true)
-    getCandidateDocuments(id)
-      .then((docs) => {
-        if (!cancelled) setPreviewPanelDocuments(docs)
+    if (viewDetailTab === 'documents') setPreviewPanelDocumentsLoading(true)
+    if (viewDetailTab === 'salary') setPreviewPanelSalarySlipsLoading(true)
+    loadCandidateDocumentAndSalary(id)
+      .then(({ docsList, salarySlips, candidateDetail }) => {
+        if (cancelled) return
+        setPreviewPanelDocuments(docsList)
+        setPreviewPanelSalarySlips(salarySlips)
+        if (candidateDetail) {
+          setPreviewCandidate((prev: any) =>
+            prev && prev.id === id
+              ? {
+                  ...prev,
+                  _raw: candidateDetail,
+                  skillsStructured: normalizeCandidateSkillsStructured((candidateDetail as any)?.skills ?? prev.skills),
+                }
+              : prev
+          )
+        }
       })
       .catch(() => {
-        if (!cancelled) setPreviewPanelDocuments(null)
+        if (cancelled) return
+        if (viewDetailTab === 'documents') setPreviewPanelDocuments(null)
+        if (viewDetailTab === 'salary') setPreviewPanelSalarySlips(null)
       })
       .finally(() => {
-        if (!cancelled) setPreviewPanelDocumentsLoading(false)
+        if (cancelled) return
+        if (viewDetailTab === 'documents') setPreviewPanelDocumentsLoading(false)
+        if (viewDetailTab === 'salary') setPreviewPanelSalarySlipsLoading(false)
       })
     return () => {
       cancelled = true
     }
-  }, [previewCandidate?.id, viewDetailTab])
+  }, [previewCandidate?.id, viewDetailTab, loadCandidateDocumentAndSalary])
 
   const handlePreviewPanelDocumentView = useCallback(
     async (index: number) => {
@@ -1015,6 +1092,7 @@ const Candidates = () => {
         mimeType: uploaded.mimeType,
       })
       setActionSuccess('Salary slip added')
+      await refreshCandidateDocumentAndSalaryViews(salarySlipCandidate.id)
       setSalarySlipCandidate(null)
       setSalarySlipForm({ month: '', year: '', file: null })
       setTimeout(() => document.querySelector('[data-hs-overlay="#salary-slip-modal"]')?.dispatchEvent(new Event('click')), 0)
@@ -2875,6 +2953,8 @@ const Candidates = () => {
         setActionError={setActionError}
         previewPanelDocumentsLoading={previewPanelDocumentsLoading}
         previewPanelDocuments={previewPanelDocuments}
+        previewPanelSalarySlips={previewPanelSalarySlips}
+        previewPanelSalarySlipsLoading={previewPanelSalarySlipsLoading}
         handlePreviewPanelDocumentView={handlePreviewPanelDocumentView}
         handleSalarySlipView={handleSalarySlipView}
         openFeedbackModal={openFeedbackModal}

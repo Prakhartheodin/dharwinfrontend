@@ -85,6 +85,9 @@ export const ACTIVITY_LOG_ACTIONS: string[] = [
   "employee.document.verify",
   "employee.document.delete",
   "employee.document.download",
+  "employee.document.version.add",
+  "employee.document.version.download",
+  "employee.document.version.delete",
   "employee.salarySlip.add",
   "employee.salarySlip.update",
   "employee.salarySlip.delete",
@@ -375,6 +378,18 @@ export const ACTION_LABELS: Record<string, ActivityLogLabel> = {
   "employee.document.verify": { title: "Document verified", description: "An employee document was approved or rejected." },
   "employee.document.delete": { title: "Document deleted", description: "An employee document was removed." },
   "employee.document.download": { title: "Document downloaded", description: "An employee document was downloaded." },
+  "employee.document.version.add": {
+    title: "Document version added",
+    description: "A new resume or cover-letter version was saved for an employee.",
+  },
+  "employee.document.version.download": {
+    title: "Document version downloaded",
+    description: "A historical resume or cover-letter version was downloaded.",
+  },
+  "employee.document.version.delete": {
+    title: "Document version deleted",
+    description: "A resume or cover-letter version was removed from an employee profile.",
+  },
   "employee.salarySlip.update": { title: "Pay slip updated", description: "A salary slip record was changed." },
   "employee.salarySlip.delete": { title: "Pay slip deleted", description: "A salary slip was removed." },
   "employee.salarySlip.download": { title: "Pay slip downloaded", description: "A salary slip file was downloaded." },

@@ -1,9 +1,21 @@
-"use client"
-import React, { useState, useRef, useEffect } from "react";
+﻿"use client"
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Select, { Props as SelectProps } from 'react-select';
 import { Selectoption4 } from '@/shared/data/pages/candidates/skillsdata';
-import { createCandidate, updateCandidate, updateMyCandidate, uploadDocuments, importCandidatesFromExcel } from "@/shared/lib/api/candidates";
+import {
+  createCandidate,
+  updateCandidate,
+  updateMyCandidate,
+  uploadDocuments,
+  importCandidatesFromExcel,
+  getCandidateDocuments,
+} from "@/shared/lib/api/candidates";
+import {
+  VersionedDocumentSlot,
+  findLatestVersionedDocument,
+  inferDocumentVersionSlot,
+} from "@/shared/components/candidates/VersionedDocumentSlot";
 import { listDepartments, type Department } from "@/shared/lib/api/departments";
 import { resolveDownloadUrlForBrowser } from "@/shared/lib/api/client";
 import { resolveEmployeeJobTitle } from "@/shared/lib/employee-job-title";
@@ -744,6 +756,49 @@ export const EmployeeForm = ({
   const [documentsList, setDocumentsList] = useState<{id: number, name: string, customName: string, file: File | null}[]>([]);
 
   const [existingDocs, setExistingDocs] = useState<ExistingDocRow[]>([]);
+  const candidateId = initialData?.id || initialData?._id ? String(initialData.id || initialData._id) : null;
+
+  const refreshExistingDocuments = useCallback(async () => {
+    if (!candidateId) return;
+    try {
+      const docs = await getCandidateDocuments(candidateId);
+      setExistingDocs(
+        docs.map((d) => ({
+          type: d.type,
+          label: d.label ?? "",
+          url: d.url ?? "",
+          key: d.key,
+          originalName: d.originalName,
+          size: d.size,
+          mimeType: d.mimeType,
+          status: d.status,
+        }))
+      );
+    } catch {
+      /* keep prior list */
+    }
+  }, [candidateId]);
+
+  const newDocumentsRef = useRef<HTMLDivElement>(null);
+  const pendingNewDocScrollRef = useRef(false);
+
+  const handleAddDocument = () => {
+    pendingNewDocScrollRef.current = true;
+    setDocumentsList((list) => [
+      ...list,
+      { id: Date.now(), name: "", customName: "", file: null },
+    ]);
+  };
+
+  useEffect(() => {
+    if (!pendingNewDocScrollRef.current) return;
+    pendingNewDocScrollRef.current = false;
+    newDocumentsRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    const select = newDocumentsRef.current?.querySelector("select");
+    if (select instanceof HTMLSelectElement) {
+      select.focus();
+    }
+  }, [documentsList.length]);
 
   const [documents, setDocuments] = useState<{
     cv?: File;
@@ -2154,7 +2209,7 @@ export const EmployeeForm = ({
               compensationType: formData.compensationType,
               // This form PATCHes its whole body on every save, so carrying compensationType
               // says nothing about intent. Flag an override only when the admin actually moved
-              // this field — otherwise a form loaded before an offer was accepted reverts the
+              // this field â€” otherwise a form loaded before an offer was accepted reverts the
               // offer-derived snapshot on an unrelated save. Edit-only: the create and
               // self-profile endpoints do not accept this key.
               ...(isEdit &&
@@ -2298,12 +2353,12 @@ export const EmployeeForm = ({
           <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
             <h4 className="font-semibold text-blue-800 dark:text-blue-200 mb-2">File Format Requirements:</h4>
             <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
-              <li>• <strong>Excel Files (.xlsx/.xls):</strong> 5 Required Sheets - Personal Info, Social Links, Skills, Qualification, Work Experience</li>
-              <li>• <strong>CSV Files (.csv):</strong> Single sheet with all data in columns</li>
-              <li>• <strong>Required Columns:</strong> FullName, Email, PhoneNumber, Password</li>
-              <li>• <strong>Optional Columns:</strong> ProfilePicture, ShortBio, SevisId, Ead, Degree, SupervisorName, SupervisorContact, SalaryRange</li>
-              <li>• <strong>Array Fields (CSV):</strong> Qualifications, Experiences, Skills, SocialLinks (use semicolon to separate entries, pipe to separate fields)</li>
-              <li>• <em>Note: Excel files require xlsx library: npm install xlsx</em></li>
+              <li>â€¢ <strong>Excel Files (.xlsx/.xls):</strong> 5 Required Sheets - Personal Info, Social Links, Skills, Qualification, Work Experience</li>
+              <li>â€¢ <strong>CSV Files (.csv):</strong> Single sheet with all data in columns</li>
+              <li>â€¢ <strong>Required Columns:</strong> FullName, Email, PhoneNumber, Password</li>
+              <li>â€¢ <strong>Optional Columns:</strong> ProfilePicture, ShortBio, SevisId, Ead, Degree, SupervisorName, SupervisorContact, SalaryRange</li>
+              <li>â€¢ <strong>Array Fields (CSV):</strong> Qualifications, Experiences, Skills, SocialLinks (use semicolon to separate entries, pipe to separate fields)</li>
+              <li>â€¢ <em>Note: Excel files require xlsx library: npm install xlsx</em></li>
             </ul>
           </div>
         </div>
@@ -2524,7 +2579,7 @@ export const EmployeeForm = ({
                     <div className="text-red-500 text-sm mt-1">{fieldErrors.companyAssignedEmail}</div>
                   ) : (
                     <small className="text-gray-500 text-xs mt-1 block">
-                      Google Workspace or Microsoft 365 mailbox — separate from login email above.
+                      Google Workspace or Microsoft 365 mailbox â€” separate from login email above.
                     </small>
                   )}
                 </div>
@@ -2626,18 +2681,18 @@ export const EmployeeForm = ({
                   disabled={Boolean(initialData?.compensationLocked) && !isCompensationAdmin}
                   className="form-control w-full !rounded-md disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <option value="">Select…</option>
+                  <option value="">Selectâ€¦</option>
                   <option value="paid">Paid</option>
                   <option value="unpaid">Unpaid</option>
                 </select>
                 {initialData?.compensationLocked ? (
                   isCompensationAdmin ? (
                     <small className="text-gray-500 text-xs mt-1 block">
-                      Admin override — set from the employee&apos;s accepted offer; changes are logged.
+                      Admin override â€” set from the employee&apos;s accepted offer; changes are logged.
                     </small>
                   ) : (
                     <small className="text-gray-500 text-xs mt-1 block">
-                      Locked — set from the employee&apos;s accepted offer.
+                      Locked â€” set from the employee&apos;s accepted offer.
                     </small>
                   )
                 ) : (
@@ -2655,7 +2710,7 @@ export const EmployeeForm = ({
                   onChange={handleFormChange}
                   className="form-control w-full !rounded-md"
                 >
-                  <option value="">Select…</option>
+                  <option value="">Selectâ€¦</option>
                   {EMPLOYMENT_TYPE_OPTIONS.map((value) => (
                     <option key={value} value={value}>
                       {value === "Internship" ? "Training / Unpaid Internship" : value}
@@ -2963,7 +3018,7 @@ export const EmployeeForm = ({
                     className={REMOVE_ROW_BTN_CLASS}
                     aria-label={`Remove social link ${index + 1}`}
                   >
-                    ✕
+                    âœ•
                   </button>
 
                   <div className="xl:col-span-6 col-span-12">
@@ -3088,7 +3143,7 @@ export const EmployeeForm = ({
                 className={REMOVE_ROW_BTN_CLASS}
                 aria-label={`Remove education entry ${index + 1}`}
               >
-                ✕
+                âœ•
               </button>
               <div className="xl:col-span-6 col-span-12">
                 <label className="form-label">Degree <span className="text-red-500">*</span></label>
@@ -3214,7 +3269,7 @@ export const EmployeeForm = ({
                   className={REMOVE_ROW_BTN_CLASS}
                   aria-label={`Remove skill ${index + 1}`}
                 >
-                  ✕
+                  âœ•
                 </button>
 
                 <div className="xl:col-span-4 col-span-12">
@@ -3302,7 +3357,7 @@ export const EmployeeForm = ({
                 className={REMOVE_ROW_BTN_CLASS}
                 aria-label={`Remove work experience ${index + 1}`}
               >
-                ✕
+                âœ•
               </button>
 
               {/* Fields */}
@@ -3406,18 +3461,145 @@ export const EmployeeForm = ({
           <p className="mb-1 font-semibold wizard-step-number text-[1.25rem]">04</p>
           <div className="text-[0.9375rem] font-semibold sm:flex block items-center justify-between mb-4">
             <div>Documents (Optional) :</div>
-            <button
-              type="button"
-              onClick={() => setDocumentsList([...documentsList, { id: Date.now(), name: "", customName: "", file: null }])}
-              className={ADD_ROW_BTN_CLASS}
-            >
-              + Add Document
-            </button>
-          </div>
-          <FieldError message={fieldErrors['documents']} className="text-red-500 text-sm mb-3" />
+                <button
+                  type="button"
+                  onClick={handleAddDocument}
+                  className={ADD_ROW_BTN_CLASS}
+                >
+                  + Add Document
+                </button>
+              </div>
+              <FieldError message={fieldErrors['documents']} className="text-red-500 text-sm mb-3" />
+
+              {/* New Documents â€” directly under the add button so rows are visible immediately */}
+              {documentsList.length > 0 && (
+                <div ref={newDocumentsRef} className="mb-6">
+                  <h6 className="text-sm font-semibold mb-3 text-gray-700 dark:text-gray-300">New Documents</h6>
+                  {documentsList.map((doc, index) => (
+                    <div key={doc.id} className="relative grid grid-cols-12 gap-4 items-start border rounded-sm p-3 mb-3">
+                      <button
+                        type="button"
+                        onClick={() => setDocumentsList(documentsList.filter(d => d.id !== doc.id))}
+                        className={REMOVE_ROW_BTN_CLASS}
+                        aria-label={`Remove new document ${index + 1}`}
+                      >
+                        âœ•
+                      </button>
+
+                      <div className="xl:col-span-4 col-span-12 flex flex-col">
+                        <label className="form-label block">Document Type <span className="text-red-500">*</span></label>
+                        <select
+                          className={`form-control w-full !rounded-md h-11 ${fieldErrors['documents'] ? 'border-red-500' : ''}`}
+                          value={doc.name}
+                          onChange={(e) => {
+                            const updated = [...documentsList];
+                            updated[index].name = e.target.value;
+                            // Clear custom name when changing from "Other" to a predefined type
+                            if (e.target.value !== "Other") {
+                              updated[index].customName = "";
+                            }
+                            setDocumentsList(updated);
+                          }}
+                          required
+                        >
+                          <option value="">Select Document Type</option>
+                          <optgroup label="Identity / KYC (Pre-boarding)">
+                            <option value="Aadhar">Aadhar</option>
+                            <option value="PAN">PAN</option>
+                            <option value="Bank">Bank</option>
+                            <option value="Passport">Passport</option>
+                          </optgroup>
+                          <optgroup label="Application">
+                            {!candidateId ? <option value="CV/Resume">CV/Resume</option> : null}
+                            <option value="Marksheet">Marksheet</option>
+                            <option value="Degree Certificate">Degree Certificate</option>
+                            <option value="Experience Letter">Experience Letter</option>
+                            <option value="Offer Letter">Offer Letter</option>
+                            <option value="Visa">Visa</option>
+                            <option value="EAD Card">EAD Card</option>
+                            <option value="I-765 Receipt">I-765 Receipt</option>
+                            <option value="I-983 Form-only">I-983 Form-only</option>
+                          </optgroup>
+                          <option value="Other">Other</option>
+                        </select>
+                        <div className="mt-1 min-h-4 text-xs opacity-0 select-none" aria-hidden="true">
+                          helper
+                        </div>
+                      </div>
+
+                      {/* Custom Document Name Input - Show only when "Other" is selected */}
+                      {doc.name === "Other" && (
+                        <div className="xl:col-span-4 col-span-12 flex flex-col">
+                          <label className="form-label">Custom Document Name <span className="text-red-500">*</span></label>
+                          <input
+                            type="text"
+                            className={`form-control w-full !rounded-md ${fieldErrors['documents'] ? 'border-red-500' : ''}`}
+                            placeholder="Enter custom document name"
+                            value={doc.customName}
+                            onChange={(e) => {
+                              const updated = [...documentsList];
+                              updated[index].customName = e.target.value;
+                              setDocumentsList(updated);
+                            }}
+                            required
+                          />
+                          <div className="mt-1 min-h-4 text-xs opacity-0 select-none" aria-hidden="true">
+                            helper
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="xl:col-span-4 col-span-12 flex flex-col">
+                        <label className="form-label">Upload File <span className="text-red-500">*</span></label>
+                        <DraftFileButton
+                          disabled={!doc.name || (doc.name === "Other" && !doc.customName.trim())}
+                          onFile={(file) => {
+                            const updated = [...documentsList];
+                            updated[index].file = file;
+                            setDocumentsList(updated);
+                          }}
+                        />
+                      </div>
+
+                      {doc.file && (
+                        <div className="xl:col-span-4 col-span-12 mt-6">
+                          <label className="form-label">File Preview</label>
+                          <div className="flex items-center">
+                            {getFileThumbnail(doc.file)}
+                            <div className="ml-2 text-sm text-gray-600 dark:text-gray-400">
+                              <div className="text-xs">{doc.file.name}</div>
+                              <div className="text-xs font-medium text-blue-600 dark:text-blue-400">
+                                {doc.name === "Other" ? doc.customName : doc.name}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {candidateId ? (
+            <div className="mb-6 space-y-4">
+              <h6 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Application documents</h6>
+              <VersionedDocumentSlot
+                candidateId={candidateId}
+                slot="resume"
+                fallbackDocument={findLatestVersionedDocument(existingDocs, "resume")}
+                onUpdated={refreshExistingDocuments}
+              />
+              <VersionedDocumentSlot
+                candidateId={candidateId}
+                slot="cover-letter"
+                fallbackDocument={findLatestVersionedDocument(existingDocs, "cover-letter")}
+                onUpdated={refreshExistingDocuments}
+              />
+            </div>
+          ) : null}
 
           {/* Existing Documents */}
-          {existingDocs.length > 0 && (
+          {existingDocs.some((doc) => !inferDocumentVersionSlot(doc)) && (
             <div className="mb-6">
               <button
                 type="button"
@@ -3436,7 +3618,9 @@ export const EmployeeForm = ({
               </button>
               {existingDocsOpen && (
                 <div id="existing-docs-section">
-              {existingDocs.map((doc, index) => (
+              {existingDocs.map((doc, index) => ({ doc, index }))
+                .filter(({ doc }) => !inferDocumentVersionSlot(doc))
+                .map(({ doc, index }) => (
                 <div key={index} className="relative grid grid-cols-12 gap-4 border rounded-sm p-3 mb-3 bg-gray-50 dark:bg-gray-800">
                   <button
                     type="button"
@@ -3444,7 +3628,7 @@ export const EmployeeForm = ({
                     className={REMOVE_ROW_BTN_CLASS}
                     aria-label={`Remove existing document ${doc.label || index + 1}`}
                   >
-                    ✕
+                    âœ•
                   </button>
 
                   <div className="xl:col-span-4 col-span-12">
@@ -3497,114 +3681,6 @@ export const EmployeeForm = ({
             </div>
           )}
 
-          {/* New Documents */}
-          {documentsList.length > 0 && (
-            <div>
-              <h6 className="text-sm font-semibold mb-3 text-gray-700 dark:text-gray-300">New Documents</h6>
-              {documentsList.map((doc, index) => (
-                <div key={doc.id} className="relative grid grid-cols-12 gap-4 items-start border rounded-sm p-3 mb-3">
-                  <button
-                    type="button"
-                    onClick={() => setDocumentsList(documentsList.filter(d => d.id !== doc.id))}
-                    className={REMOVE_ROW_BTN_CLASS}
-                    aria-label={`Remove new document ${index + 1}`}
-                  >
-                    ✕
-                  </button>
-
-              <div className="xl:col-span-4 col-span-12 flex flex-col">
-                <label className="form-label block">Document Type <span className="text-red-500">*</span></label>
-                <select
-                  className={`form-control w-full !rounded-md h-11 ${fieldErrors['documents'] ? 'border-red-500' : ''}`}
-                  value={doc.name}
-                  onChange={(e) => {
-                    const updated = [...documentsList];
-                    updated[index].name = e.target.value;
-                    // Clear custom name when changing from "Other" to a predefined type
-                    if (e.target.value !== "Other") {
-                      updated[index].customName = "";
-                    }
-                    setDocumentsList(updated);
-                  }}
-                  required
-                >
-                  <option value="">Select Document Type</option>
-                  <optgroup label="Identity / KYC (Pre-boarding)">
-                    <option value="Aadhar">Aadhar</option>
-                    <option value="PAN">PAN</option>
-                    <option value="Bank">Bank</option>
-                    <option value="Passport">Passport</option>
-                  </optgroup>
-                  <optgroup label="Application">
-                    <option value="CV/Resume">CV/Resume</option>
-                    <option value="Marksheet">Marksheet</option>
-                    <option value="Degree Certificate">Degree Certificate</option>
-                    <option value="Experience Letter">Experience Letter</option>
-                    <option value="Offer Letter">Offer Letter</option>
-                    <option value="Visa">Visa</option>
-                    <option value="EAD Card">EAD Card</option>
-                    <option value="I-765 Receipt">I-765 Receipt</option>
-                    <option value="I-983 Form-only">I-983 Form-only</option>
-                  </optgroup>
-                  <option value="Other">Other</option>
-                </select>
-                <div className="mt-1 min-h-4 text-xs opacity-0 select-none" aria-hidden="true">
-                  helper
-                </div>
-              </div>
-
-              {/* Custom Document Name Input - Show only when "Other" is selected */}
-              {doc.name === "Other" && (
-                <div className="xl:col-span-4 col-span-12 flex flex-col">
-                  <label className="form-label">Custom Document Name <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
-                    className={`form-control w-full !rounded-md ${fieldErrors['documents'] ? 'border-red-500' : ''}`}
-                    placeholder="Enter custom document name"
-                    value={doc.customName}
-                    onChange={(e) => {
-                      const updated = [...documentsList];
-                      updated[index].customName = e.target.value;
-                      setDocumentsList(updated);
-                    }}
-                    required
-                  />
-                  <div className="mt-1 min-h-4 text-xs opacity-0 select-none" aria-hidden="true">
-                    helper
-                  </div>
-                </div>
-              )}
-
-              <div className="xl:col-span-4 col-span-12 flex flex-col">
-                <label className="form-label">Upload File <span className="text-red-500">*</span></label>
-                <DraftFileButton
-                  disabled={!doc.name || (doc.name === "Other" && !doc.customName.trim())}
-                  onFile={(file) => {
-                    const updated = [...documentsList];
-                    updated[index].file = file;
-                    setDocumentsList(updated);
-                  }}
-                />
-              </div>
-
-                  {doc.file && (
-                    <div className="xl:col-span-4 col-span-12 mt-6">
-                      <label className="form-label">File Preview</label>
-                      <div className="flex items-center">
-                        {getFileThumbnail(doc.file)}
-                        <div className="ml-2 text-sm text-gray-600 dark:text-gray-400">
-                          <div className="text-xs">{doc.file.name}</div>
-                          <div className="text-xs font-medium text-blue-600 dark:text-blue-400">
-                            {doc.name === "Other" ? doc.customName : doc.name}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </Step>
 
@@ -3656,7 +3732,7 @@ export const EmployeeForm = ({
                   className={REMOVE_ROW_BTN_CLASS}
                   aria-label={`Remove salary slip ${slip.month} ${slip.year}`}
                 >
-                  ✕
+                  âœ•
                 </button>
 
                 <div className="xl:col-span-4 col-span-12">
@@ -3712,7 +3788,7 @@ export const EmployeeForm = ({
               className={REMOVE_ROW_BTN_CLASS}
               aria-label={`Remove salary slip entry ${index + 1}`}
             >
-              ✕
+              âœ•
             </button>
 
             <div className="xl:col-span-2 col-span-6">

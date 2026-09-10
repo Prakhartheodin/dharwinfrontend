@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { getCandidate, getMyCandidate } from "@/shared/lib/api/candidates";
+import { getCandidate } from "@/shared/lib/api/candidates";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { useIsEmployeeForProfile } from "@/shared/hooks/use-is-employee-for-profile";
 import AssignAgentSopModal from "../_components/AssignAgentSopModal";
@@ -16,8 +16,6 @@ import {
   FormLoadingSpinner,
   LazyEmployeeForm,
 } from "../_components/employee-form-page-ui";
-import EmployeeAuditPanel from "../_components/EmployeeAuditPanel";
-
 type LoadError = "network" | "not_found";
 
 function employeesListReturnUrl(returnPageRaw: string | null): string {
@@ -64,6 +62,12 @@ const EditEmployee = () => {
   );
 
   useEffect(() => {
+    if (!permissionsLoaded || rolesLoading || !user) return;
+    if (!isEmployee) return;
+    router.replace("/settings/personal-information");
+  }, [permissionsLoaded, rolesLoading, user, isEmployee, router]);
+
+  useEffect(() => {
     if (!id) {
       setLoading(false);
       setInitialData(null);
@@ -71,24 +75,19 @@ const EditEmployee = () => {
       return;
     }
     if (!user || rolesLoading) return;
+    if (isEmployee) {
+      setLoading(false);
+      setInitialData(null);
+      setLoadError(null);
+      return;
+    }
 
     const load = async () => {
       setLoading(true);
       setLoadError(null);
       try {
-        if (isEmployee) {
-          const data = await getMyCandidate();
-          const dataId = (data as any).id ?? (data as any)._id;
-          if (dataId === id) {
-            setInitialData(data);
-          } else {
-            setInitialData(null);
-            setLoadError("not_found");
-          }
-        } else {
-          const data = await getCandidate(id);
-          setInitialData(data);
-        }
+        const data = await getCandidate(id);
+        setInitialData(data);
       } catch (err: unknown) {
         setInitialData(null);
         const status = (err as { response?: { status?: number } })?.response?.status;
@@ -156,6 +155,9 @@ const EditEmployee = () => {
     if (!permissionsLoaded || rolesLoading) {
       return <FormLoadingSpinner label="Checking permissions" />;
     }
+    if (isEmployee) {
+      return <FormLoadingSpinner label="Redirecting to personal information" />;
+    }
     if (!canEditThisProfile) {
       return editAlert(
         "Access denied",
@@ -188,11 +190,6 @@ const EditEmployee = () => {
           selfServiceEdit={isEmployee}
           employeesListReturnUrl={listReturnUrl}
         />
-        {!isEmployee && id ? (
-          <div className="border-t border-defaultborder/40 px-4 py-5 sm:px-6">
-            <EmployeeAuditPanel entityId={id} />
-          </div>
-        ) : null}
       </>
     );
   };

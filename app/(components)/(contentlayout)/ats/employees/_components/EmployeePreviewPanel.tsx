@@ -210,6 +210,8 @@ export type EmployeePreviewPanelProps = {
   setActionError: (v: string | null) => void
   previewPanelDocumentsLoading: boolean
   previewPanelDocuments: any[] | null
+  previewPanelSalarySlips: Array<{ month?: string; year?: number; key?: string; documentUrl?: string }> | null
+  previewPanelSalarySlipsLoading: boolean
   handlePreviewPanelDocumentView: (index: number) => void
   handleSalarySlipView: (candidateId: string, index: number) => void
   openFeedbackModal: (candidate: any) => void
@@ -238,6 +240,8 @@ export default function EmployeePreviewPanel({
   setActionError,
   previewPanelDocumentsLoading,
   previewPanelDocuments,
+  previewPanelSalarySlips,
+  previewPanelSalarySlipsLoading,
   handlePreviewPanelDocumentView,
   handleSalarySlipView,
   openFeedbackModal,
@@ -731,9 +735,18 @@ export default function EmployeePreviewPanel({
                   {viewDetailTab === 'salary' && (
                     <div role="tabpanel" id="employee-preview-panel-salary" aria-labelledby="employee-preview-tab-salary" className="space-y-4">
                       <h4 className="text-base font-semibold text-gray-900 dark:text-white mb-3">Salary Slips</h4>
-                      {Array.isArray(previewCandidate._raw?.salarySlips) && previewCandidate._raw.salarySlips.length > 0 ? (
+                      {previewPanelSalarySlipsLoading ? (
+                        <div className="flex items-center gap-2 py-6 text-sm text-gray-500 dark:text-gray-400">
+                          <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                          Loading salary slips…
+                        </div>
+                      ) : (() => {
+                        const salarySlips =
+                          previewPanelSalarySlips ??
+                          (Array.isArray(previewCandidate._raw?.salarySlips) ? previewCandidate._raw.salarySlips : [])
+                        return Array.isArray(salarySlips) && salarySlips.length > 0 ? (
                         <div className="space-y-3">
-                          {previewCandidate._raw.salarySlips.map((slip: any, index: number) => (
+                          {salarySlips.map((slip: any, index: number) => (
                             <div key={index} className="flex items-center justify-between gap-3 p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
                               <span className="text-sm text-gray-900 dark:text-white truncate min-w-0 flex-1">{slip?.month ?? ''} {slip?.year ?? ''}</span>
                               {(slip?.key || slip?.documentUrl || slip?.url) ? (
@@ -756,7 +769,8 @@ export default function EmployeePreviewPanel({
                           <i className="ri-money-dollar-box-line text-4xl text-gray-400 dark:text-gray-500 mb-4"></i>
                           <p className="text-gray-500 dark:text-gray-400">No salary slips uploaded.</p>
                         </div>
-                      )}
+                      )
+                      })()}
                     </div>
                   )}
 

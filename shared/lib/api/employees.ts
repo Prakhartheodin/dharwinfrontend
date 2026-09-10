@@ -348,6 +348,107 @@ export async function getDocumentDownloadUrl(
   return { ...data.data, url: resolveDownloadUrlForBrowser(data.data.url) };
 }
 
+export type DocumentVersionSlot = "resume" | "cover-letter";
+
+export interface CandidateDocumentVersion {
+  slot: DocumentVersionSlot;
+  version: number;
+  type?: string;
+  label?: string;
+  documentUrl?: string;
+  key?: string;
+  originalName?: string;
+  size?: number;
+  mimeType?: string;
+  createdAt?: string;
+  createdBy?: string;
+}
+
+export async function listCandidateDocumentVersions(
+  candidateId: string,
+  slot: DocumentVersionSlot
+): Promise<{ slot: DocumentVersionSlot; currentVersion: number | null; versions: CandidateDocumentVersion[] }> {
+  const { data } = await apiClient.get<{
+    success: boolean;
+    data: { slot: DocumentVersionSlot; currentVersion: number | null; versions: CandidateDocumentVersion[] };
+  }>(`/employees/documents/${candidateId}/versions/${slot}`);
+  if (!data?.success || !data?.data) throw new Error("Failed to list document versions");
+  return data.data;
+}
+
+export async function addCandidateDocumentVersion(
+  candidateId: string,
+  slot: DocumentVersionSlot,
+  payload: {
+    type?: string;
+    label?: string;
+    documentUrl?: string;
+    key?: string;
+    originalName?: string;
+    size?: number;
+    mimeType?: string;
+  }
+): Promise<{
+  slot: DocumentVersionSlot;
+  created: boolean;
+  currentVersion: number;
+  version: CandidateDocumentVersion;
+}> {
+  const { data } = await apiClient.post<{
+    success: boolean;
+    data: {
+      slot: DocumentVersionSlot;
+      created: boolean;
+      currentVersion: number;
+      version: CandidateDocumentVersion;
+    };
+  }>(`/employees/documents/${candidateId}/versions/${slot}`, payload);
+  if (!data?.success || !data?.data) throw new Error("Failed to add document version");
+  return data.data;
+}
+
+export async function getDocumentVersionDownloadUrl(
+  candidateId: string,
+  slot: DocumentVersionSlot,
+  version: number
+): Promise<{ slot: DocumentVersionSlot; version: number; url: string; fileName: string; mimeType: string; size: number }> {
+  const { data } = await apiClient.get<{
+    success: boolean;
+    data: { slot: DocumentVersionSlot; version: number; url: string; fileName: string; mimeType: string; size: number };
+  }>(`/employees/documents/${candidateId}/versions/${slot}/${version}/download`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!data?.success || !data?.data) throw new Error("Failed to get document version URL");
+  return { ...data.data, url: resolveDownloadUrlForBrowser(data.data.url) };
+}
+
+export async function deleteCandidateDocumentVersion(
+  candidateId: string,
+  slot: DocumentVersionSlot,
+  version: number
+): Promise<{
+  slot: DocumentVersionSlot;
+  deletedVersion: number;
+  currentVersion: number | null;
+  promotedVersion: number | null;
+  fileName: string | null;
+  wasCurrent: boolean;
+}> {
+  const { data } = await apiClient.delete<{
+    success: boolean;
+    data: {
+      slot: DocumentVersionSlot;
+      deletedVersion: number;
+      currentVersion: number | null;
+      promotedVersion: number | null;
+      fileName: string | null;
+      wasCurrent: boolean;
+    };
+  }>(`/employees/documents/${candidateId}/versions/${slot}/${version}`);
+  if (!data?.success || !data?.data) throw new Error("Failed to delete document version");
+  return data.data;
+}
+
 /** Get fresh download URL for a salary slip (presigned URLs expire after 7 days). */
 export async function getSalarySlipDownloadUrl(
   candidateId: string,

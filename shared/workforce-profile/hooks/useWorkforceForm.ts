@@ -55,14 +55,23 @@ export function useWorkforceForm(
   const hydrate = useWorkforceStore((s) => s.hydrate);
   const resetStore = useWorkforceStore((s) => s.reset);
 
+  const [candidateId, setCandidateId] = useState<string | null>(id ? String(id) : null);
+
+  const resolveCandidateId = useCallback((data: WorkforceSource): string | null => {
+    if (!data) return id ? String(id) : null;
+    const raw = (data as { id?: string; _id?: string }).id ?? (data as { _id?: string })._id;
+    return raw ? String(raw) : id ? String(id) : null;
+  }, [id]);
+
   const noopLoad: LoadFn<WorkforceSource> = useCallback(async () => null, []);
   const noopSave = useCallback(async () => null as never, []);
 
   const handleLoaded = useCallback(
     (data: WorkforceSource) => {
+      setCandidateId(resolveCandidateId(data));
       hydrate(mapToFormState(data));
     },
-    [hydrate],
+    [hydrate, resolveCandidateId],
   );
 
   const asyncState = useWorkforceAsyncState<WorkforceSource, never, never>({
@@ -109,12 +118,14 @@ export function useWorkforceForm(
       // Re-hydrate from the server response so flags like profilePictureRemoved
       // reset and the store matches what PATCH returned (avatar, name, etc.).
       if (result.candidate) {
-        hydrate(mapToFormState(result.candidate as WorkforceSource));
+        const next = result.candidate as WorkforceSource;
+        setCandidateId(resolveCandidateId(next));
+        hydrate(mapToFormState(next));
         useWorkforceStore.getState().commitSnapshot();
       }
       onSubmitSuccess?.(result);
     },
-    [hydrate, onSubmitSuccess],
+    [hydrate, onSubmitSuccess, resolveCandidateId],
   );
 
   const submitter = useWorkforceSubmit({
@@ -162,6 +173,7 @@ export function useWorkforceForm(
     () => ({
       mode,
       role,
+      candidateId,
       steps: nav.steps,
       currentStep: nav.currentStep,
       currentIndex: nav.currentIndex,
@@ -189,10 +201,12 @@ export function useWorkforceForm(
       dismissValidationOverlay: dismiss,
       submit,
       goNext,
+      refreshProfile: refresh,
     }),
     [
       mode,
       role,
+      candidateId,
       nav.steps,
       nav.currentStep,
       nav.currentIndex,
@@ -214,6 +228,7 @@ export function useWorkforceForm(
       dismiss,
       submit,
       goNext,
+      refresh,
     ],
   );
 

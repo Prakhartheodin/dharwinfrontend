@@ -57,14 +57,17 @@ export function EmployeeProfileWizard(props: EmployeeProfileWizardProps) {
     onSubmitSuccess,
   });
 
-  const stepRender = {
-    "personal-info": <PersonalInfoStep />,
-    qualification: <QualificationStep />,
-    "work-experience": <ExperienceStep />,
-    documents: <DocumentsStep />,
-    salary: <SalaryStep />,
-    "account-settings": <AccountSettingsStep />,
-  } as const;
+  const stepRender = useMemo(
+    () => ({
+      "personal-info": <PersonalInfoStep />,
+      qualification: <QualificationStep />,
+      "work-experience": <ExperienceStep />,
+      documents: <DocumentsStep />,
+      salary: <SalaryStep />,
+      "account-settings": <AccountSettingsStep />,
+    }),
+    [],
+  );
 
   const resolvedSubmitLabel =
     submitLabel ??

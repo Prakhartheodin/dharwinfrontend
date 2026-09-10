@@ -5,7 +5,15 @@ type ChangeRow = {
   from?: unknown;
   to?: unknown;
   changed?: boolean;
+  added?: string[];
+  removed?: string[];
 };
+
+function formatArrayDelta(kind: "added" | "removed", items: string[] | undefined): string {
+  if (!items?.length) return "—";
+  const noun = items.length === 1 ? "file" : "files";
+  return `${kind === "added" ? "Added" : "Removed"} ${items.length} ${noun}: ${items.join(", ")}`;
+}
 
 function normalizeChanges(metadata: Record<string, unknown> | null | undefined): ChangeRow[] {
   if (!metadata) return [];
@@ -16,6 +24,10 @@ function normalizeChanges(metadata: Record<string, unknown> | null | undefined):
   if (raw && typeof raw === "object") {
     return Object.entries(raw).map(([field, val]) => {
       if (val === "[changed]") return { field, changed: true };
+      if (val && typeof val === "object" && ("added" in val || "removed" in val)) {
+        const v = val as { added?: string[]; removed?: string[] };
+        return { field, added: v.added, removed: v.removed };
+      }
       if (val && typeof val === "object" && ("from" in val || "to" in val)) {
         const v = val as { from?: unknown; to?: unknown };
         return { field, from: v.from, to: v.to };
@@ -28,7 +40,7 @@ function normalizeChanges(metadata: Record<string, unknown> | null | undefined):
 
 function formatVal(v: unknown): string {
   if (v === null || v === undefined) return "—";
-  if (typeof v === "string") return v;
+  if (typeof v === "string") return v === "" ? "(empty)" : v;
   try {
     return JSON.stringify(v);
   } catch {
@@ -66,8 +78,20 @@ export function ActivityLogChangesBlock({
             {changes.map((c) => (
               <tr key={c.field} className="border-t border-defaultborder/40">
                 <td className="pr-2 py-1 font-mono">{c.field}</td>
-                <td className="pr-2 py-1 break-all">{c.changed ? "[changed]" : formatVal(c.from)}</td>
-                <td className="py-1 break-all">{c.changed ? "[changed]" : formatVal(c.to)}</td>
+                <td className="pr-2 py-1 break-all">
+                  {c.added || c.removed
+                    ? formatArrayDelta("removed", c.removed)
+                    : c.changed
+                      ? "[changed]"
+                      : formatVal(c.from)}
+                </td>
+                <td className="py-1 break-all">
+                  {c.added || c.removed
+                    ? formatArrayDelta("added", c.added)
+                    : c.changed
+                      ? "[changed]"
+                      : formatVal(c.to)}
+                </td>
               </tr>
             ))}
           </tbody>

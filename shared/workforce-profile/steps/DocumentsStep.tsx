@@ -1,6 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import {
+  VersionedDocumentSlot,
+  findLatestVersionedDocument,
+  inferDocumentVersionSlot,
+} from "@/shared/components/candidates/VersionedDocumentSlot";
 import { useWorkforceStore } from "../state/workforce.store";
 import { useWizardContext } from "../engine/WizardContext";
 import wizardUi from "../engine/workforce-wizard.module.css";
@@ -92,18 +97,45 @@ export function DocumentsStep() {
   const upload = useDocumentUpload();
   const { maybeExtractFromResume, overlayStatus, addedCount, errorMessage } =
     useResumeSkillsExtract();
-  const { issuesByField } = useWizardContext();
+  const { issuesByField, candidateId, refreshProfile } = useWizardContext();
 
   const docErr = issuesByField["documents"]?.[0]?.message ?? null;
 
-  const existingDocs = documents.filter(isExistingDoc);
+  const existingUploaded = documents.filter(isExistingDoc);
+  const existingDocs = existingUploaded.filter((doc) => !inferDocumentVersionSlot(doc));
+  const versionedDocRows = existingUploaded.map((doc) => ({
+    type: doc.type,
+    label: doc.label,
+    url: doc.metadata?.url,
+    originalName: doc.metadata?.originalName,
+  }));
   const newDocs = documents.filter(isNewDoc);
 
   const [drafts, setDrafts] = useState<DraftRow[]>([]);
   const [existingOpen, setExistingOpen] = useState(false);
+  const newDocsRef = useRef<HTMLDivElement>(null);
+  const pendingDraftScrollRef = useRef(false);
+  const lastDraftIdRef = useRef<string | null>(null);
 
-  const addDraft = () =>
-    setDrafts((d) => [...d, { draftId: newDraftId(), type: "", customName: "" }]);
+  const addDraft = () => {
+    const draftId = newDraftId();
+    lastDraftIdRef.current = draftId;
+    pendingDraftScrollRef.current = true;
+    setDrafts((d) => [...d, { draftId, type: "", customName: "" }]);
+  };
+
+  useEffect(() => {
+    if (!pendingDraftScrollRef.current || drafts.length === 0) return;
+    pendingDraftScrollRef.current = false;
+    newDocsRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    const draftId = lastDraftIdRef.current;
+    const select = draftId
+      ? newDocsRef.current?.querySelector<HTMLSelectElement>(
+          `[data-draft-id="${draftId}"] select`,
+        )
+      : newDocsRef.current?.querySelector("select");
+    select?.focus();
+  }, [drafts.length]);
 
   const updateDraft = (draftId: string, patch: Partial<DraftRow>) =>
     setDrafts((d) => d.map((row) => (row.draftId === draftId ? { ...row, ...patch } : row)));
@@ -172,85 +204,8 @@ export function DocumentsStep() {
       </div>
       {docErr && <div className="text-red-500 text-sm mb-3">{docErr}</div>}
 
-      {existingDocs.length > 0 && (
-        <div className="mb-6">
-          <button
-            type="button"
-            onClick={() => setExistingOpen((v) => !v)}
-            className="inline-flex items-center gap-1 border-0 bg-transparent cursor-pointer text-inherit p-0 mb-3"
-            aria-expanded={existingOpen}
-          >
-            <i
-              className={`ri-arrow-right-s-line text-lg leading-none text-[#8c9097] transition-transform duration-150 ${
-                existingOpen ? "rotate-90" : ""
-              }`}
-              aria-hidden="true"
-            />
-            <h6 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-              Existing Documents
-            </h6>
-          </button>
-          {existingOpen &&
-          existingDocs.map((doc) => (
-            <div
-              key={doc.tempId}
-              className="relative grid grid-cols-12 gap-3 border rounded-sm p-3 mb-3 bg-gray-50 dark:bg-gray-800"
-            >
-              <button
-                type="button"
-                onClick={() => removeDocument(doc.tempId)}
-                className="absolute top-2 right-2 border rounded-full px-1 text-red-500 hover:text-white hover:bg-red-600"
-              >
-                ✕
-              </button>
-
-              <div className="xl:col-span-4 col-span-12">
-                <label className="form-label">Document Type</label>
-                <input
-                  type="text"
-                  className="form-control w-full !rounded-md bg-white dark:bg-gray-700"
-                  value={doc.label}
-                  readOnly
-                />
-              </div>
-
-              <div className="xl:col-span-4 col-span-12">
-                <label className="form-label">Current File</label>
-                <div className="flex items-center">
-                  <a
-                    href={doc.metadata?.url ?? "#"}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-blue-600 underline text-xs"
-                  >
-                    {doc.metadata?.originalName ?? doc.label}
-                  </a>
-                </div>
-              </div>
-
-              <div className="xl:col-span-4 col-span-12">
-                <label className="form-label">Replace File</label>
-                <input
-                  type="file"
-                  accept=".jpg,.jpeg,.png,.pdf"
-                  className="form-control w-full !rounded-md"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    e.target.value = "";
-                    if (file) void replaceExisting(doc, file);
-                  }}
-                />
-                <small className="text-gray-500 text-xs mt-1">
-                  Supported formats: JPG, JPEG, PNG, PDF
-                </small>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
       {(drafts.length > 0 || newDocs.length > 0) && (
-        <div>
+        <div ref={newDocsRef} className="mb-6">
           <h6 className="text-sm font-semibold mb-3 text-gray-700 dark:text-gray-300">
             New Documents
           </h6>
@@ -258,6 +213,7 @@ export function DocumentsStep() {
           {drafts.map((draft) => (
             <div
               key={draft.draftId}
+              data-draft-id={draft.draftId}
               className="relative grid grid-cols-12 gap-2 items-start border rounded-sm p-3 mb-3"
             >
               <button
@@ -407,6 +363,101 @@ export function DocumentsStep() {
                   </div>
                 </div>
               )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {candidateId ? (
+        <div className="mb-6 space-y-4">
+          <h6 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Application documents</h6>
+          <VersionedDocumentSlot
+            candidateId={candidateId}
+            slot="resume"
+            fallbackDocument={findLatestVersionedDocument(versionedDocRows, "resume")}
+            onUpdated={refreshProfile}
+          />
+          <VersionedDocumentSlot
+            candidateId={candidateId}
+            slot="cover-letter"
+            fallbackDocument={findLatestVersionedDocument(versionedDocRows, "cover-letter")}
+            onUpdated={refreshProfile}
+          />
+        </div>
+      ) : null}
+
+      {existingDocs.length > 0 && (
+        <div className="mb-6">
+          <button
+            type="button"
+            onClick={() => setExistingOpen((v) => !v)}
+            className="inline-flex items-center gap-1 border-0 bg-transparent cursor-pointer text-inherit p-0 mb-3"
+            aria-expanded={existingOpen}
+          >
+            <i
+              className={`ri-arrow-right-s-line text-lg leading-none text-[#8c9097] transition-transform duration-150 ${
+                existingOpen ? "rotate-90" : ""
+              }`}
+              aria-hidden="true"
+            />
+            <h6 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+              Existing Documents
+            </h6>
+          </button>
+          {existingOpen &&
+          existingDocs.map((doc) => (
+            <div
+              key={doc.tempId}
+              className="relative grid grid-cols-12 gap-3 border rounded-sm p-3 mb-3 bg-gray-50 dark:bg-gray-800"
+            >
+              <button
+                type="button"
+                onClick={() => removeDocument(doc.tempId)}
+                className="absolute top-2 right-2 border rounded-full px-1 text-red-500 hover:text-white hover:bg-red-600"
+              >
+                ✕
+              </button>
+
+              <div className="xl:col-span-4 col-span-12">
+                <label className="form-label">Document Type</label>
+                <input
+                  type="text"
+                  className="form-control w-full !rounded-md bg-white dark:bg-gray-700"
+                  value={doc.label}
+                  readOnly
+                />
+              </div>
+
+              <div className="xl:col-span-4 col-span-12">
+                <label className="form-label">Current File</label>
+                <div className="flex items-center">
+                  <a
+                    href={doc.metadata?.url ?? "#"}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-600 underline text-xs"
+                  >
+                    {doc.metadata?.originalName ?? doc.label}
+                  </a>
+                </div>
+              </div>
+
+              <div className="xl:col-span-4 col-span-12">
+                <label className="form-label">Replace File</label>
+                <input
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.pdf"
+                  className="form-control w-full !rounded-md"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (file) void replaceExisting(doc, file);
+                  }}
+                />
+                <small className="text-gray-500 text-xs mt-1">
+                  Supported formats: JPG, JPEG, PNG, PDF
+                </small>
+              </div>
             </div>
           ))}
         </div>

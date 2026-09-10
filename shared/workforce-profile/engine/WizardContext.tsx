@@ -8,6 +8,8 @@ import type { WizardFeedbackOverlayState } from "../hooks/useWizardFeedbackOverl
 export type WizardContextValue = {
   mode: Mode;
   role: Role;
+  /** Linked candidate/employee record id for document version APIs. */
+  candidateId: string | null;
   steps: StepConfig[];
   currentStep: StepId;
   currentIndex: number;
@@ -37,6 +39,8 @@ export type WizardContextValue = {
 
   submit: () => Promise<void>;
   goNext: () => void;
+  /** Reload profile from server (e.g. after versioned document upload/delete). */
+  refreshProfile: () => Promise<void>;
 };
 
 const WizardContext = createContext<WizardContextValue | null>(null);
