@@ -158,7 +158,7 @@ function fillMonthlyTimeBuckets<T extends { period: string; count: number }>(buc
 const CALLOUT_SLICE_THRESHOLD = 5
 const CHART_MUTED_FALLBACK = 'rgb(140, 144, 151)'
 const CALLOUT_LEADER_R = 28
-const CALLOUT_LABEL_OFFSET = 20
+const CALLOUT_LABEL_OFFSET = 6
 const CALLOUT_MIN_GAP = 20
 
 function formatSlicePercent(val: number): string {
@@ -298,60 +298,29 @@ function defaultCalloutIsRight(midAngle: number): boolean {
   return Math.cos(((midAngle - 90) * Math.PI) / 180) >= 0
 }
 
-function areAdjacentDonutSlices(a: DonutSlice, b: DonutSlice): boolean {
-  const gap = b.startAngle - a.endAngle
-  return Math.abs(gap) < 0.5 || Math.abs(gap + 360) < 0.5 || Math.abs(gap - 360) < 0.5
-}
-
-/** When donut-adjacent small slices share a side, flip the thinner one to the opposite side. */
-function resolveAdjacentCalloutSides(slices: DonutSlice[]): Map<DonutSlice, boolean> {
-  const sorted = [...slices].sort((a, b) => a.startAngle - b.startAngle)
-  const sides = sorted.map((slice) => defaultCalloutIsRight(slice.midAngle))
-
-  const resolvePair = (i: number, j: number) => {
-    if (sides[i] !== sides[j]) return
-    if (sorted[j].pct < sorted[i].pct) {
-      sides[j] = !sides[j]
-    } else if (sorted[i].pct < sorted[j].pct) {
-      sides[i] = !sides[i]
-    } else {
-      sides[j] = !sides[j]
-    }
-  }
-
-  for (let i = 1; i < sorted.length; i++) {
-    if (areAdjacentDonutSlices(sorted[i - 1], sorted[i])) {
-      resolvePair(i - 1, i)
-    }
-  }
-
-  const first = sorted[0]
-  const last = sorted[sorted.length - 1]
-  if (sorted.length > 1 && areAdjacentDonutSlices(last, first)) {
-    resolvePair(sorted.length - 1, 0)
-  }
-
-  return new Map(sorted.map((slice, index) => [slice, sides[index]]))
-}
-
+/**
+ * Labels sit in two fixed columns, not at `elbow.x + offset`. An angle-relative x
+ * puts near-vertical slices on both sides at almost the same x, so a left-anchored
+ * label runs right into a right-anchored one. Fixed columns make the two sides
+ * un-collidable; CALLOUT_MIN_GAP then spaces each column vertically.
+ */
 function buildCalloutLayouts(
   smallSlices: DonutSlice[],
   cx: number,
   cy: number,
   outerR: number
 ): CalloutLayout[] {
-  const sideBySlice = resolveAdjacentCalloutSides(smallSlices)
+  const columnOffset = outerR + CALLOUT_LEADER_R + CALLOUT_LABEL_OFFSET
 
   const layouts: CalloutLayout[] = smallSlices.map((slice) => {
     const anchor = polarToCartesian(cx, cy, outerR + 2, slice.midAngle)
     const elbow = polarToCartesian(cx, cy, outerR + CALLOUT_LEADER_R, slice.midAngle)
-    const isRight = sideBySlice.get(slice) ?? defaultCalloutIsRight(slice.midAngle)
-    const labelX = isRight ? elbow.x + CALLOUT_LABEL_OFFSET : elbow.x - CALLOUT_LABEL_OFFSET
+    const isRight = defaultCalloutIsRight(slice.midAngle)
     return {
       slice,
       anchor,
       elbow,
-      labelX,
+      labelX: isRight ? cx + columnOffset : cx - columnOffset,
       labelY: elbow.y,
       labelAnchor: isRight ? 'start' : 'end',
     }
@@ -540,7 +509,9 @@ function AtsDonutStatusChart({
         {calloutLayouts.map(({ slice, anchor, elbow, labelX, labelY, labelAnchor }) => (
           <g key={`${slice.label}-leader`} pointerEvents="none">
             <polyline
-              points={`${anchor.x},${anchor.y} ${elbow.x},${elbow.y} ${labelX},${labelY}`}
+              points={`${anchor.x},${anchor.y} ${elbow.x},${elbow.y} ${
+                labelAnchor === 'start' ? labelX - 4 : labelX + 4
+              },${labelY}`}
               fill="none"
               stroke={isDark ? 'rgb(148, 163, 184)' : 'rgb(100, 116, 139)'}
               strokeWidth={1.25}

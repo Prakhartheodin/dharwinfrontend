@@ -17,7 +17,9 @@ import {
   getOfferLetterDefaults,
   listOffers,
   type Offer,
+  type OfferLetterJobType,
 } from "@/shared/lib/api/offers";
+import { getDefaultWeeklyHours } from "../../offer-letter-generator-data";
 import { buildCreateOfferPayloadFromLetterForm } from "../../build-create-offer-payload";
 import { buildOfferLetterUpdatePayload } from "../../build-offer-letter-update-payload";
 import { confirmCompensationChange } from "../../confirm-compensation-change";
@@ -241,6 +243,7 @@ export default function OfferLetterPageClient({
             return cid != null && String(cid) === candidateId;
           })
         : undefined;
+      const empty = createEmptyOfferLetterForm();
       setLetterForm((prev) => ({
         ...prev,
         letterFullName: ja?.candidate?.fullName || "",
@@ -248,6 +251,10 @@ export default function OfferLetterPageClient({
         positionTitle: "",
         rolesText: "",
         trainingText: "",
+        // Job-derived like the three above: without this a previous candidate's
+        // type lingers when the next job posting has no type to map from.
+        jobType: empty.jobType,
+        weeklyHours: empty.weeklyHours,
       }));
     },
     [jobApplications]
@@ -267,8 +274,10 @@ export default function OfferLetterPageClient({
       const letterFullName = ja.candidate?.fullName || "";
       let rolesText = "";
       let trainingText = "";
+      let suggestedJobType: OfferLetterJobType | undefined;
       try {
         const d = await getOfferLetterDefaults(positionTitle, jobId);
+        suggestedJobType = d.suggestedJobType;
         rolesText =
           String(d.positionOverviewHtml ?? "").trim() ||
           roleResponsibilitiesLinesToHtml(d.roleResponsibilities);
@@ -285,6 +294,13 @@ export default function OfferLetterPageClient({
         positionTitle: positionTitle || prev.positionTitle,
         rolesText: prev.rolesText.trim() ? prev.rolesText : rolesText,
         trainingText: prev.trainingText.trim() ? prev.trainingText : trainingText,
+        // The posting's employment type seeds the offer, as it already does in
+        // CreateOfferForm. Without this the letter opened on the empty-form default
+        // (FT_40) no matter what the candidate applied to. A default, not a rule —
+        // the user can still change it, and nothing validates the pair on save.
+        ...(suggestedJobType
+          ? { jobType: suggestedJobType, weeklyHours: getDefaultWeeklyHours(suggestedJobType) }
+          : {}),
       }));
     },
     [jobApplications]

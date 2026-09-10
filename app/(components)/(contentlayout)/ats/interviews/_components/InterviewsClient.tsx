@@ -2835,7 +2835,7 @@ export default function InterviewsClient() {
                         value={resultModalComment}
                         onChange={(e) => setResultModalComment(e.target.value)}
                         placeholder="What stood out, concerns, follow-up questions..."
-                        className="form-control w-full !rounded-md text-sm"
+                        className="form-control w-full !rounded-md text-sm h-24 resize-none"
                       />
                     </div>
 
