@@ -824,8 +824,8 @@ const Jobs = () => {
       setPreviewJobApplications((prev) =>
         prev.map((a) => ((a._id ?? a.id) === applicationId ? { ...a, status: newStatus } : a))
       )
-    } catch (err: any) {
-      alert(err?.response?.data?.message || 'Failed to update status')
+    } catch (err: unknown) {
+      alert(getApiErrorMessage(err, 'Failed to update application status'))
     } finally {
       setStatusUpdatingId(null)
     }

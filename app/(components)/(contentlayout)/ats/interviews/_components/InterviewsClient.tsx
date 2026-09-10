@@ -13,16 +13,15 @@ import ListPagination from '@/shared/components/ListPagination'
 import Swal from 'sweetalert2'
 import { listJobs, type Job } from '@/shared/lib/api/jobs'
 import { type CandidateListItem } from '@/shared/lib/api/candidates'
-import { listReferralLeads, type ReferralLeadRow } from '@/shared/lib/api/referralLeads'
 import { listAllUsers } from '@/shared/lib/api/users'
 import ParticipantInvitesField, { type ParticipantUser } from '@/shared/components/meeting/ParticipantInvitesField'
 import MeetingReadOnlyView from '@/shared/components/meeting/MeetingReadOnlyView'
 import { useConfirm } from '@/shared/components/ui/useConfirm'
 import { getCandidateFilterAgents, type AgentOption } from '@/shared/lib/api/employees'
-import { getJobApplicationById, type JobApplication } from '@/shared/lib/api/jobApplications'
+import { getJobApplicationById, listJobApplications, type JobApplication } from '@/shared/lib/api/jobApplications'
 import { isPublicEmail, pickPublicEmail } from '@/shared/lib/ats/applicant-email'
 import {
-  INTERVIEW_SCHEDULE_REJECTED_MESSAGE,
+  getInterviewSchedulingBlockReason,
   isInterviewSchedulingBlocked,
 } from '@/shared/lib/ats/applicationPipeline'
 import { wallClockToUtc, formatDualZone, getViewerTimezone, utcInstantToWallClock, listTimezones, normalizeTimezone, localDateKey, wallClockDateKey, formatDateInZone } from '@/shared/lib/timezone'
@@ -185,26 +184,41 @@ function useMinWidth(minWidth: number): boolean {
   return matches
 }
 
-/** Referral lead rows use the same candidate id as employees — map for schedule/edit dropdowns. */
-function mapReferralLeadsToScheduleCandidates(rows: ReferralLeadRow[]): CandidateListItem[] {
-  return rows.map((lead) => ({
-    id: lead.id,
-    fullName: lead.fullName,
-    email: lead.email,
-    phoneNumber: '',
-    profilePicture: lead.profilePicture,
-  }))
+/** Map schedule-eligible applications to candidate dropdown rows (one row per candidate). */
+function mapApplicationsToScheduleCandidates(apps: JobApplication[]): CandidateListItem[] {
+  const seen = new Set<string>()
+  const rows: CandidateListItem[] = []
+  for (const app of apps) {
+    const cand = app.candidate
+    if (!cand || typeof cand === 'string') continue
+    const id = String((cand as { _id?: string; id?: string })._id ?? (cand as { id?: string }).id ?? '')
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    rows.push({
+      id,
+      fullName: (cand as { fullName?: string }).fullName ?? '',
+      email: (cand as { email?: string }).email ?? '',
+      phoneNumber: (cand as { phoneNumber?: string }).phoneNumber ?? '',
+      profilePicture: (cand as { profilePicture?: string }).profilePicture,
+    })
+  }
+  return rows.sort((a, b) => (a.fullName || a.email || '').localeCompare(b.fullName || b.email || ''))
 }
 
-async function fetchReferralLeadsForSchedule(): Promise<CandidateListItem[]> {
-  const aggregated: ReferralLeadRow[] = []
-  // Backend caps limit at 100 (Joi + service). Walk pages until the last one (cap 15 → 1500 leads).
+async function fetchScheduleEligibleCandidates(): Promise<CandidateListItem[]> {
+  const aggregated: JobApplication[] = []
+  // Backend caps limit at 100. Walk pages until the last one (cap 15 → 1500 candidates).
   for (let page = 1; page <= 15; page++) {
-    const res = await listReferralLeads({ limit: 100, page, candidateRoleOwnersOnly: true })
+    const res = await listJobApplications({
+      scheduleEligible: true,
+      distinctCandidates: true,
+      limit: 100,
+      page,
+    })
     aggregated.push(...(res.results ?? []))
     if (page >= (res.totalPages ?? 1)) break
   }
-  return mapReferralLeadsToScheduleCandidates(aggregated)
+  return mapApplicationsToScheduleCandidates(aggregated)
 }
 
 /** Wall-clock defaults for the edit modal, derived from the meeting's stored timezone. */
@@ -602,7 +616,7 @@ export default function InterviewsClient() {
     setDropdownsLoading(true)
     const p = Promise.allSettled([
       listJobs({ limit: 100, status: 'Active' }).then((r) => r.results),
-      fetchReferralLeadsForSchedule(),
+      fetchScheduleEligibleCandidates(),
       getCandidateFilterAgents().then((r) => r.agents),
     ])
       .then((results) => {
@@ -615,7 +629,7 @@ export default function InterviewsClient() {
         setAgents(agentList)
         setAgentsError(results[2].status === 'rejected' ? 'Failed to load agents' : null)
         const failed = results
-          .map((r, i) => (r.status === 'rejected' ? ['Jobs', 'Referral leads', 'Agents'][i] : null))
+          .map((r, i) => (r.status === 'rejected' ? ['Jobs', 'Candidates', 'Agents'][i] : null))
           .filter(Boolean) as string[]
         if (failed.length > 0) {
           console.warn('[Interviews] Schedule form dropdowns failed to load:', failed, results)
@@ -686,7 +700,9 @@ export default function InterviewsClient() {
           if (candId) {
             setEditJobsLoading(true)
             import('@/shared/lib/api/jobApplications')
-              .then(({ listJobApplications }) => listJobApplications({ candidateId: candId, limit: 100 }))
+              .then(({ listJobApplications }) =>
+                listJobApplications({ candidateId: candId, scheduleEligible: true, limit: 100 })
+              )
               .then((res) => {
                 if (cancelled) return
                 // Build job list from applications (same as CreateInterviewModal.jobOptionsFromApplications)
@@ -1190,7 +1206,10 @@ export default function InterviewsClient() {
         addPrefillDebug(`application loaded: candidate=${app?.candidate?.fullName ?? '—'} job=${app?.job?.title ?? '—'} status=${app?.status ?? '—'}`)
         if (cancelled) return
         if (isInterviewSchedulingBlocked(app?.status)) {
-          setFormError(INTERVIEW_SCHEDULE_REJECTED_MESSAGE)
+          setFormError(
+            getInterviewSchedulingBlockReason(app?.status) ??
+              'Cannot schedule an interview for this application.'
+          )
           stripParams()
           return
         }
@@ -1206,8 +1225,8 @@ export default function InterviewsClient() {
           return
         }
         // Inject candidate as a synthetic option so the controlled select can target it,
-        // even when the candidate is an ATS employee (not a referral lead). Stored separately so
-        // concurrent referral-lead fetches don't overwrite it.
+        // even when they are not in the schedule-eligible candidate list. Stored separately so
+        // concurrent candidate fetches don't overwrite it.
         const publicCandEmail = pickPublicEmail([cand.email]) ?? ''
         const synthetic: CandidateListItem = {
           id: candId,
@@ -1340,7 +1359,7 @@ export default function InterviewsClient() {
     setInterviewFormResetKey((k) => k + 1)
   }, [defaultScheduleHosts])
 
-  /** Merge ATS-injected candidates with the referral-leads list for the schedule modal. */
+  /** Merge ATS-injected candidates with the schedule-eligible list for the schedule modal. */
   const scheduleCandidatesMerged = useMemo<CandidateListItem[]>(() => {
     if (extraScheduleCandidates.length === 0) return candidates
     const seen = new Set<string>()
@@ -1418,7 +1437,10 @@ export default function InterviewsClient() {
     e.preventDefault()
     setFormError(null)
     if (isInterviewSchedulingBlocked(schedulePrefill?.applicationStatus)) {
-      setFormError(INTERVIEW_SCHEDULE_REJECTED_MESSAGE)
+      setFormError(
+        getInterviewSchedulingBlockReason(schedulePrefill?.applicationStatus) ??
+          'Cannot schedule an interview for this application.'
+      )
       return
     }
     const validHosts = hosts.filter((h) => h.email.trim())

@@ -16,9 +16,11 @@ import {
   dedupeApplicants,
 } from '@/shared/lib/ats/applicant-email'
 import {
-  INTERVIEW_SCHEDULE_REJECTED_MESSAGE,
+  getInterviewSchedulingBlockReason,
   isInterviewSchedulingBlocked,
 } from '@/shared/lib/ats/applicationPipeline'
+import { ApplicationStatusSelect } from '@/shared/components/ats/ApplicationStatusSelect'
+import type { JobApplicationStatus } from '@/shared/lib/api/jobApplications'
 import { CompanyWebsiteLink } from '@/shared/components/ats/CompanyWebsiteLink'
 
 const FUNNEL_TONES: Record<string, string> = {
@@ -653,25 +655,22 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                                       : resolveApplicantEmail({ candidate: cand, application: app as any, applicantUser: (app as any)?.applicantUser })}
                                   </td>
                                   <td className="!py-2 !px-3">
-                                    <select
-                                      className="form-select form-select-sm !py-1 !text-[0.75rem] w-full min-w-0 max-w-[7rem]"
-                                      value={app.status}
+                                    <ApplicationStatusSelect
+                                      value={app.status as JobApplicationStatus}
+                                      applicantName={
+                                        isSynthetic
+                                          ? (cand?.fullName ? `${cand.fullName} (Internal Applicant)` : 'Internal Applicant')
+                                          : (cand?.fullName || (app as any)?.applicantUser?.name || 'Unknown Applicant')
+                                      }
                                       disabled={statusUpdatingId === appId}
-                                      onChange={(e) => handleApplicationStatusChange(appId, e.target.value)}
-                                    >
-                                      <option value="Applied">Applied</option>
-                                      <option value="Screening">Screening</option>
-                                      <option value="Interview">Interview</option>
-                                      <option value="Offered">Offered</option>
-                                      <option value="Hired">Hired</option>
-                                      <option value="Rejected">Rejected</option>
-                                    </select>
+                                      onChange={(next) => handleApplicationStatusChange(String(appId), next)}
+                                    />
                                   </td>
                                   <td className="!py-2 !px-3 text-center overflow-visible">
                                     <div className="flex flex-wrap items-center justify-center gap-1.5">
                                       {isInterviewSchedulingBlocked(app.status) ? (
                                         <span
-                                          title={INTERVIEW_SCHEDULE_REJECTED_MESSAGE}
+                                          title={getInterviewSchedulingBlockReason(app.status) ?? undefined}
                                           className="ti-btn ti-btn-sm ti-btn-primary inline-flex items-center justify-center !py-1 !px-2.5 !text-[0.75rem] whitespace-nowrap min-w-[8.5rem] overflow-visible opacity-50 cursor-not-allowed"
                                         >
                                           Schedule Interview

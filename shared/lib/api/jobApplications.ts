@@ -90,6 +90,14 @@ export interface JobApplicationsListParams {
   includeDuplicates?: boolean;
   /** When 1/true, backend emits one structured log line per row for applicant-email diagnostics. */
   debug?: boolean | 1;
+  /**
+   * When true, return only applications eligible for interview scheduling (Applied, Screening,
+   * Shortlisted, Interview) on active jobs. Requires `jobId` or `candidateId` unless
+   * `distinctCandidates` is also true.
+   */
+  scheduleEligible?: boolean;
+  /** When true with scheduleEligible, return one application per distinct eligible candidate. */
+  distinctCandidates?: boolean;
   sortBy?: string;
   limit?: number;
   page?: number;

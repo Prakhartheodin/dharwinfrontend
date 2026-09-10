@@ -12,7 +12,7 @@ import MeetingCreatedSuccess from '@/shared/components/meeting/MeetingCreatedSuc
 import { isPublicEmail } from '@/shared/lib/ats/applicant-email'
 import {
   INTERVIEW_SCHEDULE_REJECTED_MESSAGE,
-  isInterviewSchedulingBlocked,
+  getInterviewSchedulingBlockReason,
 } from '@/shared/lib/ats/applicationPipeline'
 import { getViewerTimezone, getZoneAbbreviation, utcInstantToWallClock } from '@/shared/lib/timezone'
 import DateTimeOverlay from '@/shared/components/datetime/DateTimeOverlay'
@@ -171,7 +171,9 @@ export default function CreateInterviewModal({
   const [selectedJobId, setSelectedJobId] = useState('')
   const [jobsForCandidate, setJobsForCandidate] = useState<Job[]>([])
   const [applicationJobsLoading, setApplicationJobsLoading] = useState(false)
-  const scheduleBlocked = isInterviewSchedulingBlocked(prefill?.applicationStatus)
+  const scheduleBlocked = Boolean(getInterviewSchedulingBlockReason(prefill?.applicationStatus))
+  const scheduleBlockMessage =
+    getInterviewSchedulingBlockReason(prefill?.applicationStatus) ?? INTERVIEW_SCHEDULE_REJECTED_MESSAGE
   const [applicationJobsError, setApplicationJobsError] = useState<string | null>(null)
   const [participantUsers, setParticipantUsers] = useState<ParticipantUser[]>([])
   const [participantUsersLoading, setParticipantUsersLoading] = useState(false)
@@ -202,7 +204,7 @@ export default function CreateInterviewModal({
     setApplicationJobsLoading(true)
     setApplicationJobsError(null)
     try {
-      const res = await listJobApplications({ candidateId, limit: 100 })
+      const res = await listJobApplications({ candidateId, scheduleEligible: true, limit: 100 })
       const list = jobOptionsFromApplications(res.results)
       setJobsForCandidate(list)
       if (preselectJobId && list.some((j) => String(j.id ?? j._id) === preselectJobId)) {
@@ -547,7 +549,7 @@ export default function CreateInterviewModal({
                     role="alert"
                     className="rounded-lg border border-rose-500/25 border-l-4 border-l-rose-500 bg-rose-500/10 p-3 text-sm text-rose-700 dark:text-rose-300"
                   >
-                    {INTERVIEW_SCHEDULE_REJECTED_MESSAGE}
+                    {scheduleBlockMessage}
                   </div>
                 )}
                 {formError && (

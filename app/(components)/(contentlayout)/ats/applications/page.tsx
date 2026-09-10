@@ -20,10 +20,13 @@ import {
   resolveApplicantEmail,
 } from "@/shared/lib/ats/applicant-email";
 import {
-  INTERVIEW_SCHEDULE_REJECTED_MESSAGE,
+  getInterviewSchedulingBlockReason,
   isInterviewSchedulingBlocked,
-  REJECTED_REOPEN_STATUSES,
+  PIPELINE_STATUSES,
+  STATUS_STYLE,
 } from "@/shared/lib/ats/applicationPipeline";
+import { ApplicationStatusSelect } from "@/shared/components/ats/ApplicationStatusSelect";
+import { getApiErrorMessage } from "@/shared/lib/api/client";
 import { YmdFilterDateInput } from "@/shared/components/filters/YmdFilterDateInput";
 import { getReferralLeadsDateRangeError, getYmdDateRangeIncompleteError } from "@/shared/lib/ymd-filter-date-input.util";
 import { alertYmdDateRangeIncomplete } from "@/shared/lib/ymd-filter-date-range-alert";
@@ -51,40 +54,6 @@ const FILTER_INPUT = `ti-form-control form-control-sm w-full min-w-0 ${FILTER_CO
 const FILTER_DATE_INPUT = `ti-form-control form-control-sm w-full min-w-0 ${FILTER_CONTROL_HEIGHT} ${FILTER_CONTROL_TYPO} !rounded-xl`;
 const FILTER_DATE_WRAPPER =
   "min-w-0 w-full [&_.react-datepicker-wrapper]:w-full [&_.react-datepicker__input-container]:w-full [&_.react-datepicker__input-container_input]:!h-[2.75rem] sm:[&_.react-datepicker__input-container_input]:!h-9 [&_.react-datepicker__input-container_input]:!py-0 [&_.react-datepicker__input-container_input]:!leading-[2.75rem] sm:[&_.react-datepicker__input-container_input]:!leading-9";
-
-const PIPELINE_STATUSES: JobApplicationStatus[] = [
-  "Applied",
-  "Screening",
-  "Interview",
-  "Shortlisted",
-  "Offered",
-  "Hired",
-  "Rejected",
-];
-
-// Manual transition graph — mirrors backend atsPipeline ALLOWED_TRANSITIONS.application, EXCEPT
-// "Interview" is omitted as a target everywhere: it is set ONLY by scheduling an interview
-// (Schedule Interview action). Terminal states (Hired/Rejected) and Interview-as-current still
-// render as the locked current value. Backend re-validates; this only shapes the dropdown.
-const MANUAL_NEXT_STATUSES: Record<JobApplicationStatus, JobApplicationStatus[]> = {
-  Applied: ["Screening", "Rejected"],
-  Screening: ["Shortlisted", "Rejected"],
-  Interview: ["Shortlisted", "Offered", "Rejected"],
-  Shortlisted: ["Offered", "Rejected"],
-  Offered: ["Hired", "Rejected"],
-  Hired: [],
-  Rejected: REJECTED_REOPEN_STATUSES,
-};
-
-const STATUS_STYLE: Record<JobApplicationStatus, string> = {
-  Applied: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20",
-  Screening: "bg-sky-500/10 text-sky-700 dark:text-sky-400 border border-sky-500/20",
-  Interview: "bg-violet-500/10 text-violet-700 dark:text-violet-400 border border-violet-500/20",
-  Shortlisted: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-500/20",
-  Offered: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20",
-  Hired: "bg-emerald-600/15 text-emerald-800 dark:text-emerald-300 font-semibold border border-emerald-500/30",
-  Rejected: "bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20",
-};
 
 function formatDate(s?: string | null): string {
   if (!s) return "—";
@@ -197,43 +166,6 @@ function ApplicantTypeBadge({ isEmployee }: { isEmployee: boolean }) {
   );
 }
 
-function ApplicationStatusSelect({
-  value,
-  applicantName,
-  disabled,
-  onChange,
-  fullWidth = false,
-}: {
-  value: JobApplicationStatus;
-  applicantName: string;
-  disabled?: boolean;
-  onChange: (next: JobApplicationStatus) => void;
-  fullWidth?: boolean;
-}) {
-  // Only the current status + its legal manual next stages. Terminal states have no next →
-  // the select shows just the current value and is locked.
-  const options: JobApplicationStatus[] = [value, ...MANUAL_NEXT_STATUSES[value]];
-  const locked = MANUAL_NEXT_STATUSES[value].length === 0;
-  return (
-    <div className="flex items-center gap-2 min-w-0 w-full">
-      <select
-        aria-label={`Change stage for ${applicantName}`}
-        value={value}
-        disabled={disabled || locked}
-        onChange={(e) => onChange(e.target.value as JobApplicationStatus)}
-        className={`ti-form-select form-select-sm w-full min-w-[9rem] ${fullWidth ? "max-w-none" : "max-w-[12rem]"} text-sm sm:text-xs font-semibold rounded-full py-2.5 sm:py-1.5 min-h-[2.75rem] sm:min-h-0 ps-3 pe-8 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${STATUS_STYLE[value]}`}
-      >
-        {options.map((s) => (
-          <option key={s} value={s}>
-            {s}
-          </option>
-        ))}
-      </select>
-      {disabled && <i className="ri-loader-2-line animate-spin text-[#8c9097] shrink-0" aria-hidden />}
-    </div>
-  );
-}
-
 function ApplicationRowActions({
   meta,
   appStatus,
@@ -248,6 +180,7 @@ function ApplicationRowActions({
   onSchedule: () => void;
 }) {
   const scheduleBlocked = isInterviewSchedulingBlocked(appStatus);
+  const scheduleBlockMessage = getInterviewSchedulingBlockReason(appStatus);
   return (
     <div className="inline-flex flex-wrap items-center gap-1 justify-start">
       <Link
@@ -271,7 +204,7 @@ function ApplicationRowActions({
       </a>
       <button
         type="button"
-        title={scheduleBlocked ? INTERVIEW_SCHEDULE_REJECTED_MESSAGE : "Schedule interview"}
+        title={scheduleBlocked ? scheduleBlockMessage ?? "Schedule interview unavailable" : "Schedule interview"}
         aria-label="Schedule interview"
         disabled={isUpdating || scheduleBlocked}
         onClick={onSchedule}
@@ -437,8 +370,8 @@ export default function ApplicationsPage() {
           String(r._id ?? r.id) === id ? ({ ...r, status: updated.status } as ApplicationWithDocs) : r,
         ),
       );
-    } catch {
-      // silent — keep prior status
+    } catch (err) {
+      alert(getApiErrorMessage(err, "Failed to update application status"));
     } finally {
       setUpdatingId(null);
     }
@@ -1023,7 +956,7 @@ export default function ApplicationsPage() {
             <div className="p-4">
               <p className="text-sm text-[#8c9097] dark:text-white/70">
                 {confirmReject.candidate?.fullName ?? (isPublicEmail(confirmReject.candidate?.email) ? confirmReject.candidate?.email : "This candidate")} will be moved to{" "}
-                <strong>Rejected</strong>. They can be moved back to any stage later.
+                <strong>Rejected</strong>. They can be reopened to Applied, Screening, or Shortlisted later.
               </p>
             </div>
             <div className="p-4 border-t border-gray-200 dark:border-white/10 flex justify-end gap-2">
