@@ -173,3 +173,64 @@
   border-color: rgba(255, 255, 255, 0.08);
   background: rgba(15, 23, 42, 0.55);
 }
+
+/* Mobile / tablet card list — shown below xl (1280px) */
+.mobileCard {
+  padding: 0.875rem 1rem;
+}
+
+.mobileCardHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.mobileCardMeta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.625rem 0.75rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+:global(.dark) .mobileCardMeta {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+.mobileCardMetaLabel {
+  display: block;
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgb(100, 116, 139);
+  margin-bottom: 0.25rem;
+}
+
+:global(.dark) .mobileCardMetaLabel {
+  color: rgb(148, 163, 184);
+}
+
+.mobileCardPerson {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-width: 0;
+  margin-top: 0.625rem;
+}
+
+.mobileCardActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+:global(.dark) .mobileCardActions {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}

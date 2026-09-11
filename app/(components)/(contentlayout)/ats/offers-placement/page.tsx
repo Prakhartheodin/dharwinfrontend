@@ -89,6 +89,25 @@ function offerStatusForEditModal(raw: Offer | null | undefined): Offer['status']
   return 'Draft'
 }
 
+const OFFER_STATUS_COLORS: Record<string, string> = {
+  Accepted: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200',
+  Pending: 'bg-amber-50 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200',
+  'Under Negotiation': 'bg-sky-50 text-sky-800 dark:bg-sky-500/20 dark:text-sky-200',
+  Rejected: 'bg-rose-50 text-rose-800 dark:bg-rose-500/20 dark:text-rose-200',
+  Withdrawn: 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300',
+  Draft: 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300',
+  Active: 'bg-indigo-50 text-indigo-800 dark:bg-indigo-500/20 dark:text-indigo-200',
+  Sent: 'bg-sky-50 text-sky-800 dark:bg-sky-500/20 dark:text-sky-200',
+}
+
+const BGV_STATUS_COLORS: Record<string, string> = {
+  Pending: 'bg-amber-50 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200',
+  'In Progress': 'bg-sky-50 text-sky-800 dark:bg-sky-500/20 dark:text-sky-200',
+  Completed: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200',
+  Verified: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200',
+  Failed: 'bg-rose-50 text-rose-800 dark:bg-rose-500/20 dark:text-rose-200',
+}
+
 function offerStatusPillClass(status: string | undefined): string {
   const base =
     'inline-flex max-w-max items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide'
@@ -773,16 +792,9 @@ const OffersPlacement = () => {
           const offer = row.original
           if (offer.offerStatus !== 'Accepted') return <span className="text-slate-400">—</span>
           const status = offer.bgvStatus || 'Pending'
-          const colors: Record<string, string> = {
-            'Pending': 'bg-amber-50 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200',
-            'In Progress': 'bg-sky-50 text-sky-800 dark:bg-sky-500/20 dark:text-sky-200',
-            'Completed': 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200',
-            'Verified': 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200',
-            'Failed': 'bg-rose-50 text-rose-800 dark:bg-rose-500/20 dark:text-rose-200',
-          }
           return (
             <span
-              className={`inline-flex items-center rounded-full border-0 px-2.5 py-0.5 text-[11px] font-medium ${colors[status] || 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300'}`}
+              className={`inline-flex items-center rounded-full border-0 px-2.5 py-0.5 text-[11px] font-medium ${BGV_STATUS_COLORS[status] || 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300'}`}
             >
               {status}
             </span>
@@ -794,17 +806,10 @@ const OffersPlacement = () => {
         accessor: 'offerStatus',
         Cell: ({ row }: any) => {
           const offer = row.original
-          const statusColors: Record<string, string> = {
-            'Accepted': 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200',
-            'Pending': 'bg-amber-50 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200',
-            'Under Negotiation': 'bg-sky-50 text-sky-800 dark:bg-sky-500/20 dark:text-sky-200',
-            'Rejected': 'bg-rose-50 text-rose-800 dark:bg-rose-500/20 dark:text-rose-200',
-            'Withdrawn': 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300',
-          }
           return (
             <div className="min-w-0">
               <span
-                className={`inline-flex items-center rounded-full border-0 px-2.5 py-0.5 text-[11px] font-medium ${statusColors[offer.offerStatus] || 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300'}`}
+                className={`inline-flex items-center rounded-full border-0 px-2.5 py-0.5 text-[11px] font-medium ${OFFER_STATUS_COLORS[offer.offerStatus] || 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300'}`}
               >
                 {offer.offerStatus}
               </span>
@@ -1218,68 +1223,134 @@ const OffersPlacement = () => {
                 </div>
               ) : (
                 <div className={`min-h-0 w-full min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto ${pipelineStyles.tableCard}`}>
-                  <div className="divide-y divide-slate-200/90 dark:divide-white/10 lg:hidden">
+                  <div className="divide-y divide-slate-200/90 dark:divide-white/10 xl:hidden">
                     {rows.map((row: any, index: number) => {
                       const offer = row.original
-                      const statusColors: Record<string, string> = {
-                        Accepted: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200',
-                        Pending: 'bg-amber-50 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200',
-                        'Under Negotiation': 'bg-sky-50 text-sky-800 dark:bg-sky-500/20 dark:text-sky-200',
-                        Rejected: 'bg-rose-50 text-rose-800 dark:bg-rose-500/20 dark:text-rose-200',
-                        Withdrawn: 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300',
-                        Draft: 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300',
-                        Active: 'bg-indigo-50 text-indigo-800 dark:bg-indigo-500/20 dark:text-indigo-200',
-                        Sent: 'bg-sky-50 text-sky-800 dark:bg-sky-500/20 dark:text-sky-200',
-                      }
+                      const bgvStatus =
+                        offer.offerStatus === 'Accepted' ? offer.bgvStatus || 'Pending' : null
                       return (
                         <article
                           key={offer.id}
-                          className={`px-3.5 py-3.5 ${offersStyles.rowIn}`}
+                          className={`${offersStyles.mobileCard} ${offersStyles.rowIn}`}
                           style={{ animationDelay: `${Math.min(index, 16) * 45}ms` }}
                         >
-                          <div className="flex items-start gap-3">
+                          <div className={offersStyles.mobileCardHeader}>
                             <input
-                              className="form-check-input mt-2 !h-5 !w-5 accent-indigo-600"
+                              className="form-check-input mt-1 !h-5 !w-5 shrink-0 accent-indigo-600"
                               type="checkbox"
                               checked={selectedRows.has(offer.id)}
                               onChange={() => handleRowSelect(offer.id)}
                               aria-label={`Select offer ${offer.offerId}`}
                             />
                             <div className="min-w-0 flex-1">
-                              <div className={pipelineStyles.jobClamp} title={offer.position}>
+                              <div
+                                className={`text-sm font-semibold leading-snug text-gray-900 dark:text-white ${pipelineStyles.jobClamp}`}
+                                title={offer.position}
+                              >
                                 {offer.position}
                               </div>
-                              <div className="mt-1 text-xs font-medium text-indigo-600">{offer.offerId}</div>
-                              <div className="mt-1 truncate text-sm font-medium" title={offer.candidate.name}>
+                              <div className="mt-0.5 inline-flex min-w-0 items-center gap-1 text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
+                                <i className="ri-file-text-line shrink-0" aria-hidden />
+                                <span className="truncate">{offer.offerId}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className={offersStyles.mobileCardPerson}>
+                            <PersonAvatar
+                              name={offer.candidate.name}
+                              email={offer.candidate.email}
+                              imageUrl={offer.candidate.displayPicture}
+                              className="h-9 w-9 shrink-0 rounded-full ring-1 ring-slate-200/80 dark:ring-white/10"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <span className={offersStyles.mobileCardMetaLabel}>Employee</span>
+                              <div
+                                className="truncate text-sm font-medium text-gray-900 dark:text-white"
+                                title={offer.candidate.name}
+                              >
                                 {offer.candidate.name}
                               </div>
                               {offer.candidate.email ? (
-                                <div className="truncate text-xs text-slate-500" title={offer.candidate.email}>
+                                <div
+                                  className="truncate text-xs text-slate-500 dark:text-slate-400"
+                                  title={offer.candidate.email}
+                                >
                                   {offer.candidate.email}
                                 </div>
                               ) : null}
-                              <div className="truncate text-xs text-slate-500" title={offer.recruiter.name}>
-                                {offer.recruiter.name}
-                              </div>
-                              <div className="mt-2">
-                                <span
-                                  className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColors[offer.offerStatus] || 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300'}`}
-                                >
-                                  {offer.offerStatus}
-                                </span>
-                              </div>
-                              <div className="mt-1 text-xs text-slate-500">
-                                <JoiningDateTableCell value={offer.joiningDate} />
-                              </div>
-                              <div className="mt-2.5 flex flex-col gap-2">{renderRowActions(offer)}</div>
                             </div>
                           </div>
+
+                          <div className={offersStyles.mobileCardPerson}>
+                            <PersonAvatar
+                              name={offer.recruiter.name}
+                              email={offer.recruiter.email}
+                              imageUrl={offer.recruiter.displayPicture}
+                              className="h-8 w-8 shrink-0 rounded-full ring-1 ring-slate-200/80 dark:ring-white/10"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <span className={offersStyles.mobileCardMetaLabel}>Recruiter</span>
+                              <div
+                                className="truncate text-sm text-gray-800 dark:text-slate-100"
+                                title={offer.recruiter.name}
+                              >
+                                {offer.recruiter.name}
+                              </div>
+                              {offer.recruiter.email ? (
+                                <div
+                                  className="truncate text-xs text-slate-500 dark:text-slate-400"
+                                  title={offer.recruiter.email}
+                                >
+                                  {offer.recruiter.email}
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <div className={offersStyles.mobileCardMeta}>
+                            <div>
+                              <span className={offersStyles.mobileCardMetaLabel}>BGV</span>
+                              {bgvStatus ? (
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${BGV_STATUS_COLORS[bgvStatus] || 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300'}`}
+                                >
+                                  {bgvStatus}
+                                </span>
+                              ) : (
+                                <span className="text-sm text-slate-400">—</span>
+                              )}
+                            </div>
+                            <div>
+                              <span className={offersStyles.mobileCardMetaLabel}>Offer Status</span>
+                              <span
+                                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${OFFER_STATUS_COLORS[offer.offerStatus] || 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300'}`}
+                              >
+                                {offer.offerStatus}
+                              </span>
+                              <div className="mt-1 flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400">
+                                <i
+                                  className={`ri-${offer.signedStatus === 'Signed' ? 'check' : offer.signedStatus === 'Pending' ? 'time' : 'close'}-line`}
+                                  aria-hidden
+                                />
+                                {offer.signedStatus}
+                              </div>
+                            </div>
+                            <div className="col-span-2 sm:col-span-1">
+                              <span className={offersStyles.mobileCardMetaLabel}>Joining Date</span>
+                              <div className="text-sm text-slate-700 dark:text-slate-200">
+                                <JoiningDateTableCell value={offer.joiningDate} />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className={offersStyles.mobileCardActions}>{renderRowActions(offer)}</div>
                         </article>
                       )
                     })}
                   </div>
 
-                  <div className={`hidden min-w-0 max-w-full lg:block ${pipelineStyles.tableNoHScroll}`}>
+                  <div className={`hidden min-w-0 max-w-full xl:block ${pipelineStyles.tableNoHScroll}`}>
                     <table
                       {...getTableProps()}
                       className={`table mb-0 whitespace-normal border-separate border-spacing-0 text-[0.8125rem] text-defaulttextcolor dark:text-white/80 ${pipelineStyles.tableFit}`}
