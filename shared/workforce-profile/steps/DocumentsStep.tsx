@@ -1,11 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { inferDocumentVersionSlot } from "@/shared/components/candidates/VersionedDocumentSlot";
 import {
-  VersionedDocumentSlot,
-  findLatestVersionedDocument,
-  inferDocumentVersionSlot,
-} from "@/shared/components/candidates/VersionedDocumentSlot";
+  ApplicationDocumentSlotsSection,
+  GenericDocumentTypeSelect,
+  getReservedVersionedDocumentLabelError,
+  OtherDocumentsDropdownNote,
+  OtherDocumentsSectionHeader,
+  ReservedVersionedLabelError,
+  resolveGenericDocumentUploadLabel,
+} from "@/shared/components/candidates/documentUploadUx";
 import { useWorkforceStore } from "../state/workforce.store";
 import { useWizardContext } from "../engine/WizardContext";
 import wizardUi from "../engine/workforce-wizard.module.css";
@@ -14,27 +19,6 @@ import { useDocumentUpload } from "../resources/useDocumentUpload";
 import { ResumeSkillsExtractOverlay } from "../components/ResumeSkillsExtractOverlay";
 import { useResumeSkillsExtract } from "../resources/useResumeSkillsExtract";
 import type { DocumentResource } from "../types/resource.types";
-
-const DOC_TYPE_GROUPS: Array<{ label: string; options: string[] }> = [
-  {
-    label: "Identity / KYC (Pre-boarding)",
-    options: ["Aadhar", "PAN", "Bank", "Passport"],
-  },
-  {
-    label: "Application",
-    options: [
-      "CV/Resume",
-      "Marksheet",
-      "Degree Certificate",
-      "Experience Letter",
-      "Offer Letter",
-      "Visa",
-      "EAD Card",
-      "I-765 Receipt",
-      "I-983 Form-only",
-    ],
-  },
-];
 
 type DraftRow = {
   draftId: string;
@@ -97,7 +81,7 @@ export function DocumentsStep() {
   const upload = useDocumentUpload();
   const { maybeExtractFromResume, overlayStatus, addedCount, errorMessage } =
     useResumeSkillsExtract();
-  const { issuesByField, candidateId, refreshProfile } = useWizardContext();
+  const { issuesByField, candidateId, refreshDocuments } = useWizardContext();
 
   const docErr = issuesByField["documents"]?.[0]?.message ?? null;
 
@@ -106,10 +90,13 @@ export function DocumentsStep() {
   const versionedDocRows = existingUploaded.map((doc) => ({
     type: doc.type,
     label: doc.label,
+    logicalSlot: doc.logicalSlot,
+    slotVersion: doc.slotVersion,
     url: doc.metadata?.url,
     originalName: doc.metadata?.originalName,
   }));
   const newDocs = documents.filter(isNewDoc);
+  const hasVersionedSlots = Boolean(candidateId);
 
   const [drafts, setDrafts] = useState<DraftRow[]>([]);
   const [existingOpen, setExistingOpen] = useState(false);
@@ -144,8 +131,9 @@ export function DocumentsStep() {
     setDrafts((d) => d.filter((row) => row.draftId !== draftId));
 
   const submitDraft = async (draft: DraftRow, file: File) => {
-    const label = draft.type === "Other" ? draft.customName : draft.type;
+    const label = resolveGenericDocumentUploadLabel(draft.type, draft.customName);
     if (!label || !file) return;
+    if (getReservedVersionedDocumentLabelError(label, hasVersionedSlots)) return;
     await upload.add(file, { label, type: draft.type });
     removeDraft(draft.draftId);
     await maybeExtractFromResume(file, { type: draft.type, label });
@@ -192,17 +180,24 @@ export function DocumentsStep() {
       />
       <div className="p-4">
       <p className="mb-1 font-semibold text-[#8c9097] opacity-50 text-[1.25rem]">04</p>
-      <div className="text-[0.9375rem] font-semibold sm:flex block items-center justify-between mb-4">
-        <div>Documents (Optional) :</div>
-        <button
-          type="button"
-          onClick={addDraft}
-          className={wizardUi.actionBtn}
-        >
-          + Add Document
-        </button>
-      </div>
       {docErr && <div className="text-red-500 text-sm mb-3">{docErr}</div>}
+
+      {candidateId ? (
+        <ApplicationDocumentSlotsSection
+          candidateId={candidateId}
+          versionedDocs={versionedDocRows}
+          onUpdated={refreshDocuments}
+        />
+      ) : null}
+
+      <OtherDocumentsSectionHeader
+        action={
+          <button type="button" onClick={addDraft} className={wizardUi.actionBtn}>
+            + Add Document
+          </button>
+        }
+      />
+      <OtherDocumentsDropdownNote hasVersionedSlots={hasVersionedSlots} />
 
       {(drafts.length > 0 || newDocs.length > 0) && (
         <div ref={newDocsRef} className="mb-6">
@@ -210,7 +205,14 @@ export function DocumentsStep() {
             New Documents
           </h6>
 
-          {drafts.map((draft) => (
+          {drafts.map((draft) => {
+            const draftLabel = resolveGenericDocumentUploadLabel(draft.type, draft.customName);
+            const reservedLabelError = getReservedVersionedDocumentLabelError(
+              draftLabel,
+              hasVersionedSlots,
+            );
+            const customNameErrorId = `doc-custom-name-error-${draft.draftId}`;
+            return (
             <div
               key={draft.draftId}
               data-draft-id={draft.draftId}
@@ -232,29 +234,17 @@ export function DocumentsStep() {
                 <label className="form-label">
                   Document Type <span className="text-red-500">*</span>
                 </label>
-                <select
-                  className="form-control !w-full !rounded-md h-11"
+                <GenericDocumentTypeSelect
                   value={draft.type}
-                  onChange={(e) => {
-                    const t = e.target.value;
+                  hasVersionedSlots={hasVersionedSlots}
+                  className="form-control !w-full !rounded-md h-11"
+                  onChange={(t) =>
                     updateDraft(draft.draftId, {
                       type: t,
                       customName: t === "Other" ? draft.customName : "",
-                    });
-                  }}
-                >
-                  <option value="">Select Document Type</option>
-                  {DOC_TYPE_GROUPS.map((group) => (
-                    <optgroup key={group.label} label={group.label}>
-                      {group.options.map((opt) => (
-                        <option key={opt} value={opt}>
-                          {opt}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                  <option value="Other">Other</option>
-                </select>
+                    })
+                  }
+                />
                 <div className="mt-1 min-h-4 text-xs opacity-0 select-none" aria-hidden="true">
                   helper
                 </div>
@@ -270,13 +260,17 @@ export function DocumentsStep() {
                     className="form-control w-full !rounded-md"
                     placeholder="Enter custom document name"
                     value={draft.customName}
+                    aria-invalid={reservedLabelError ? true : undefined}
+                    aria-describedby={reservedLabelError ? customNameErrorId : undefined}
                     onChange={(e) =>
                       updateDraft(draft.draftId, { customName: e.target.value })
                     }
                   />
-                  <div className="mt-1 min-h-4 text-xs opacity-0 select-none" aria-hidden="true">
-                    helper
-                  </div>
+                  <ReservedVersionedLabelError
+                    id={customNameErrorId}
+                    label={draftLabel}
+                    hasVersionedSlots={hasVersionedSlots}
+                  />
                 </div>
               )}
 
@@ -291,13 +285,15 @@ export function DocumentsStep() {
                 <DraftFileButton
                   disabled={
                     !draft.type ||
-                    (draft.type === "Other" && !draft.customName.trim())
+                    (draft.type === "Other" && !draft.customName.trim()) ||
+                    Boolean(reservedLabelError)
                   }
                   onFile={(file) => void submitDraft(draft, file)}
                 />
               </div>
             </div>
-          ))}
+          );
+          })}
 
           {newDocs.map((doc) => (
             <div
@@ -367,24 +363,6 @@ export function DocumentsStep() {
           ))}
         </div>
       )}
-
-      {candidateId ? (
-        <div className="mb-6 space-y-4">
-          <h6 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Application documents</h6>
-          <VersionedDocumentSlot
-            candidateId={candidateId}
-            slot="resume"
-            fallbackDocument={findLatestVersionedDocument(versionedDocRows, "resume")}
-            onUpdated={refreshProfile}
-          />
-          <VersionedDocumentSlot
-            candidateId={candidateId}
-            slot="cover-letter"
-            fallbackDocument={findLatestVersionedDocument(versionedDocRows, "cover-letter")}
-            onUpdated={refreshProfile}
-          />
-        </div>
-      ) : null}
 
       {existingDocs.length > 0 && (
         <div className="mb-6">

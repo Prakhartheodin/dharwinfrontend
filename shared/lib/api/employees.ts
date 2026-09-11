@@ -80,8 +80,12 @@ export function getCandidateRecruiterFeedback(
 export type DocumentType = 'Aadhar' | 'PAN' | 'Bank' | 'Passport' | 'Other';
 
 export interface CandidateDocument {
+  index?: number;
   type?: DocumentType;
   label?: string;
+  /** Server-owned: which versioned slot this row represents, when it represents one. */
+  logicalSlot?: "resume" | "cover-letter";
+  slotVersion?: number;
   url?: string;
   key?: string;
   originalName?: string;
@@ -362,6 +366,8 @@ export interface CandidateDocumentVersion {
   mimeType?: string;
   createdAt?: string;
   createdBy?: string;
+  /** Null for versions backfilled from a pre-existing file — that upload has no recorded actor. */
+  createdByName?: string | null;
 }
 
 export async function listCandidateDocumentVersions(

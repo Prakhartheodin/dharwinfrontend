@@ -39,8 +39,14 @@ export type WizardContextValue = {
 
   submit: () => Promise<void>;
   goNext: () => void;
-  /** Reload profile from server (e.g. after versioned document upload/delete). */
+  /**
+   * Reload the whole profile from the server. Replaces every section and resets dirty tracking,
+   * so unsaved edits anywhere in the wizard are discarded — after a document change use
+   * `refreshDocuments` instead.
+   */
   refreshProfile: () => Promise<void>;
+  /** Reload only the documents slice (e.g. after a versioned document upload or delete). */
+  refreshDocuments: () => Promise<void>;
 };
 
 const WizardContext = createContext<WizardContextValue | null>(null);

@@ -11,11 +11,16 @@ import {
   importCandidatesFromExcel,
   getCandidateDocuments,
 } from "@/shared/lib/api/candidates";
+import { inferDocumentVersionSlot } from "@/shared/components/candidates/VersionedDocumentSlot";
 import {
-  VersionedDocumentSlot,
-  findLatestVersionedDocument,
-  inferDocumentVersionSlot,
-} from "@/shared/components/candidates/VersionedDocumentSlot";
+  ApplicationDocumentSlotsSection,
+  GenericDocumentTypeSelect,
+  getReservedVersionedDocumentLabelError,
+  OtherDocumentsDropdownNote,
+  OtherDocumentsSectionHeader,
+  ReservedVersionedLabelError,
+  resolveGenericDocumentUploadLabel,
+} from "@/shared/components/candidates/documentUploadUx";
 import { listDepartments, type Department } from "@/shared/lib/api/departments";
 import { resolveDownloadUrlForBrowser } from "@/shared/lib/api/client";
 import { resolveEmployeeJobTitle } from "@/shared/lib/employee-job-title";
@@ -437,6 +442,9 @@ const getFileThumbnail = (file: File) => {
 type ExistingDocRow = {
   type?: string;
   label?: string;
+  /** Server-owned slot stamp; carried through so a save never un-slots the resume row. */
+  logicalSlot?: "resume" | "cover-letter";
+  slotVersion?: number;
   url: string;
   key?: string;
   originalName?: string;
@@ -766,6 +774,8 @@ export const EmployeeForm = ({
         docs.map((d) => ({
           type: d.type,
           label: d.label ?? "",
+          logicalSlot: d.logicalSlot,
+          slotVersion: d.slotVersion,
           url: d.url ?? "",
           key: d.key,
           originalName: d.originalName,
@@ -1135,7 +1145,23 @@ export const EmployeeForm = ({
         break;
         
       case 3: // Documents (Optional)
-        // Documents are now optional, no validation required
+        if (candidateId) {
+          const reservedDoc = documentsList.find((doc) =>
+            Boolean(
+              getReservedVersionedDocumentLabelError(
+                resolveGenericDocumentUploadLabel(doc.name, doc.customName),
+                true,
+              ),
+            ),
+          );
+          if (reservedDoc) {
+            errors.push(
+              'Resume and cover letter must be uploaded via the Resume / CV and Cover Letter cards above.',
+            );
+            newFieldErrors.documents =
+              'Resume and cover letter must be uploaded via the Resume / CV and Cover Letter cards above.';
+          }
+        }
         break;
         
       case 4: // Salary Slips (Optional)
@@ -1941,6 +1967,8 @@ export const EmployeeForm = ({
           initialData.documents.map((d: any) => ({
             type: d.type,
             label: d.label ?? "",
+            logicalSlot: d.logicalSlot,
+            slotVersion: d.slotVersion,
             url: d.url ?? "",
             key: d.key,
             originalName: d.originalName,
@@ -2046,11 +2074,27 @@ export const EmployeeForm = ({
         mimeType: string; 
       }[] = [];
       const documentsToUpload = documentsList.filter(doc => doc.file && doc.name);
+
+      if (candidateId) {
+        const reservedUpload = documentsToUpload.find((doc) =>
+          Boolean(
+            getReservedVersionedDocumentLabelError(
+              resolveGenericDocumentUploadLabel(doc.name, doc.customName),
+              true,
+            ),
+          ),
+        );
+        if (reservedUpload) {
+          throw new Error(
+            'Resume and cover letter must be uploaded via the Resume / CV and Cover Letter cards above.',
+          );
+        }
+      }
       
       if (documentsToUpload.length > 0) {
         const files = documentsToUpload.map(doc => doc.file!);
         const labels = documentsToUpload.map(doc => 
-          doc.name === "Other" ? doc.customName : doc.name
+          resolveGenericDocumentUploadLabel(doc.name, doc.customName)
         );
         
         try {
@@ -3459,23 +3503,37 @@ export const EmployeeForm = ({
       <Step title={<><i className="ri-checkbox-circle-line basicstep-icon"></i> Document Uploads</>}>
         <div className="p-4">
           <p className="mb-1 font-semibold wizard-step-number text-[1.25rem]">04</p>
-          <div className="text-[0.9375rem] font-semibold sm:flex block items-center justify-between mb-4">
-            <div>Documents (Optional) :</div>
-                <button
-                  type="button"
-                  onClick={handleAddDocument}
-                  className={ADD_ROW_BTN_CLASS}
-                >
-                  + Add Document
-                </button>
-              </div>
               <FieldError message={fieldErrors['documents']} className="text-red-500 text-sm mb-3" />
+
+              {candidateId ? (
+                <ApplicationDocumentSlotsSection
+                  candidateId={candidateId}
+                  versionedDocs={existingDocs}
+                  onUpdated={refreshExistingDocuments}
+                />
+              ) : null}
+
+              <OtherDocumentsSectionHeader
+                action={
+                  <button type="button" onClick={handleAddDocument} className={ADD_ROW_BTN_CLASS}>
+                    + Add Document
+                  </button>
+                }
+              />
+              <OtherDocumentsDropdownNote hasVersionedSlots={Boolean(candidateId)} />
 
               {/* New Documents â€” directly under the add button so rows are visible immediately */}
               {documentsList.length > 0 && (
                 <div ref={newDocumentsRef} className="mb-6">
                   <h6 className="text-sm font-semibold mb-3 text-gray-700 dark:text-gray-300">New Documents</h6>
-                  {documentsList.map((doc, index) => (
+                  {documentsList.map((doc, index) => {
+                    const docLabel = resolveGenericDocumentUploadLabel(doc.name, doc.customName);
+                    const reservedLabelError = getReservedVersionedDocumentLabelError(
+                      docLabel,
+                      Boolean(candidateId),
+                    );
+                    const customNameErrorId = `employee-doc-custom-name-error-${doc.id}`;
+                    return (
                     <div key={doc.id} className="relative grid grid-cols-12 gap-4 items-start border rounded-sm p-3 mb-3">
                       <button
                         type="button"
@@ -3483,45 +3541,25 @@ export const EmployeeForm = ({
                         className={REMOVE_ROW_BTN_CLASS}
                         aria-label={`Remove new document ${index + 1}`}
                       >
-                        âœ•
+                        <i className="ri-close-line text-lg leading-none" aria-hidden />
                       </button>
 
                       <div className="xl:col-span-4 col-span-12 flex flex-col">
                         <label className="form-label block">Document Type <span className="text-red-500">*</span></label>
-                        <select
-                          className={`form-control w-full !rounded-md h-11 ${fieldErrors['documents'] ? 'border-red-500' : ''}`}
+                        <GenericDocumentTypeSelect
                           value={doc.name}
-                          onChange={(e) => {
+                          hasVersionedSlots={Boolean(candidateId)}
+                          className={`form-control w-full !rounded-md h-11 ${fieldErrors['documents'] ? 'border-red-500' : ''}`}
+                          required
+                          onChange={(value) => {
                             const updated = [...documentsList];
-                            updated[index].name = e.target.value;
-                            // Clear custom name when changing from "Other" to a predefined type
-                            if (e.target.value !== "Other") {
+                            updated[index].name = value;
+                            if (value !== "Other") {
                               updated[index].customName = "";
                             }
                             setDocumentsList(updated);
                           }}
-                          required
-                        >
-                          <option value="">Select Document Type</option>
-                          <optgroup label="Identity / KYC (Pre-boarding)">
-                            <option value="Aadhar">Aadhar</option>
-                            <option value="PAN">PAN</option>
-                            <option value="Bank">Bank</option>
-                            <option value="Passport">Passport</option>
-                          </optgroup>
-                          <optgroup label="Application">
-                            {!candidateId ? <option value="CV/Resume">CV/Resume</option> : null}
-                            <option value="Marksheet">Marksheet</option>
-                            <option value="Degree Certificate">Degree Certificate</option>
-                            <option value="Experience Letter">Experience Letter</option>
-                            <option value="Offer Letter">Offer Letter</option>
-                            <option value="Visa">Visa</option>
-                            <option value="EAD Card">EAD Card</option>
-                            <option value="I-765 Receipt">I-765 Receipt</option>
-                            <option value="I-983 Form-only">I-983 Form-only</option>
-                          </optgroup>
-                          <option value="Other">Other</option>
-                        </select>
+                        />
                         <div className="mt-1 min-h-4 text-xs opacity-0 select-none" aria-hidden="true">
                           helper
                         </div>
@@ -3533,9 +3571,11 @@ export const EmployeeForm = ({
                           <label className="form-label">Custom Document Name <span className="text-red-500">*</span></label>
                           <input
                             type="text"
-                            className={`form-control w-full !rounded-md ${fieldErrors['documents'] ? 'border-red-500' : ''}`}
+                            className={`form-control w-full !rounded-md ${fieldErrors['documents'] || reservedLabelError ? 'border-red-500' : ''}`}
                             placeholder="Enter custom document name"
                             value={doc.customName}
+                            aria-invalid={reservedLabelError ? true : undefined}
+                            aria-describedby={reservedLabelError ? customNameErrorId : undefined}
                             onChange={(e) => {
                               const updated = [...documentsList];
                               updated[index].customName = e.target.value;
@@ -3543,16 +3583,23 @@ export const EmployeeForm = ({
                             }}
                             required
                           />
-                          <div className="mt-1 min-h-4 text-xs opacity-0 select-none" aria-hidden="true">
-                            helper
-                          </div>
+                          <ReservedVersionedLabelError
+                            id={customNameErrorId}
+                            label={docLabel}
+                            hasVersionedSlots={Boolean(candidateId)}
+                            className="text-red-500 text-xs mt-1"
+                          />
                         </div>
                       )}
 
                       <div className="xl:col-span-4 col-span-12 flex flex-col">
                         <label className="form-label">Upload File <span className="text-red-500">*</span></label>
                         <DraftFileButton
-                          disabled={!doc.name || (doc.name === "Other" && !doc.customName.trim())}
+                          disabled={
+                            !doc.name ||
+                            (doc.name === "Other" && !doc.customName.trim()) ||
+                            Boolean(reservedLabelError)
+                          }
                           onFile={(file) => {
                             const updated = [...documentsList];
                             updated[index].file = file;
@@ -3576,27 +3623,10 @@ export const EmployeeForm = ({
                         </div>
                       )}
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
               )}
-
-              {candidateId ? (
-            <div className="mb-6 space-y-4">
-              <h6 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Application documents</h6>
-              <VersionedDocumentSlot
-                candidateId={candidateId}
-                slot="resume"
-                fallbackDocument={findLatestVersionedDocument(existingDocs, "resume")}
-                onUpdated={refreshExistingDocuments}
-              />
-              <VersionedDocumentSlot
-                candidateId={candidateId}
-                slot="cover-letter"
-                fallbackDocument={findLatestVersionedDocument(existingDocs, "cover-letter")}
-                onUpdated={refreshExistingDocuments}
-              />
-            </div>
-          ) : null}
 
           {/* Existing Documents */}
           {existingDocs.some((doc) => !inferDocumentVersionSlot(doc)) && (
@@ -3628,7 +3658,7 @@ export const EmployeeForm = ({
                     className={REMOVE_ROW_BTN_CLASS}
                     aria-label={`Remove existing document ${doc.label || index + 1}`}
                   >
-                    âœ•
+                    <i className="ri-close-line text-lg leading-none" aria-hidden />
                   </button>
 
                   <div className="xl:col-span-4 col-span-12">
@@ -3732,7 +3762,7 @@ export const EmployeeForm = ({
                   className={REMOVE_ROW_BTN_CLASS}
                   aria-label={`Remove salary slip ${slip.month} ${slip.year}`}
                 >
-                  âœ•
+                  <i className="ri-close-line text-lg leading-none" aria-hidden />
                 </button>
 
                 <div className="xl:col-span-4 col-span-12">
@@ -3788,7 +3818,7 @@ export const EmployeeForm = ({
               className={REMOVE_ROW_BTN_CLASS}
               aria-label={`Remove salary slip entry ${index + 1}`}
             >
-              âœ•
+              <i className="ri-close-line text-lg leading-none" aria-hidden />
             </button>
 
             <div className="xl:col-span-2 col-span-6">

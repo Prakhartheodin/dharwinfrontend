@@ -77,6 +77,12 @@ function ctx(): WizardContextValue {
     issuesBySection: {},
     submitAttempted: false,
     submit: vi.fn(),
+    candidateId: null,
+    validationOverlay: { status: "idle", title: "" },
+    dismissValidationOverlay: vi.fn(),
+    goNext: vi.fn(),
+    refreshProfile: vi.fn(),
+    refreshDocuments: vi.fn(),
   } as WizardContextValue;
 }
 

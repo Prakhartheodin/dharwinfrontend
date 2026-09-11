@@ -16,7 +16,12 @@ import {
 import { ROUTES } from "@/shared/lib/constants";
 import { readStoredJobReferralRef, rememberJobReferralRef } from "@/shared/lib/jobReferralRef";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
+import { PublicApplyCaptcha } from "@/shared/components/ats/PublicApplyCaptcha";
+import { PublicApplyResumeSection } from "@/shared/components/ats/PublicApplyResumeSection";
+import { usePublicApplyCaptcha } from "@/shared/hooks/usePublicApplyCaptcha";
+import { usePublicResumeParse } from "@/shared/hooks/usePublicResumeParse";
 import { getPhoneValidationError } from "@/shared/lib/phoneCountries";
+import { isPublicResumeFile, PUBLIC_RESUME_FORMAT_MESSAGE } from "@/shared/lib/publicApplyResume";
 import {
   formatJobDescriptionForDisplay,
   JOB_DESCRIPTION_PROSE_CLASS,
@@ -80,6 +85,45 @@ export default function PublicJobDetailsPage() {
 
   const resumeInputRef = useRef<HTMLInputElement>(null);
   const documentsInputRef = useRef<HTMLInputElement>(null);
+  const {
+    ensureCaptchaReady,
+    setCaptchaToken,
+    registerCaptchaReset,
+    rotateCaptchaToken,
+    finalizeProtectedAttempt,
+    handleCaptchaApiError,
+    captchaRetryMessage,
+  } = usePublicApplyCaptcha();
+  const {
+    entryMode,
+    setEntryMode,
+    parseStatus,
+    parseMessage,
+    suggestedSkills,
+    suggestedExperiences,
+    setSuggestedExperiences,
+    suggestedQualifications,
+    setSuggestedQualifications,
+    suggestedSocialLinks,
+    setSuggestedSocialLinks,
+    markFieldEdited,
+    runParse,
+    retryParse,
+    resetParseState,
+    getSubmitSkills,
+    getSubmitProfileArrays,
+  } = usePublicResumeParse(jobId, { onCaptchaTokenConsumed: rotateCaptchaToken });
+
+  const prefillTargets = {
+    fullName,
+    email,
+    phoneNumber,
+    countryCode,
+    setFullName,
+    setEmail,
+    setPhoneNumber,
+    setCountryCode,
+  };
 
   useEffect(() => {
     loadJobDetails();
@@ -156,27 +200,29 @@ export default function PublicJobDetailsPage() {
     }
   };
 
-  const handleResumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const validTypes = ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
-      if (!validTypes.includes(file.type)) {
-        Swal.fire({
-          icon: "error",
-          title: "Invalid File Type",
-          text: "Please upload a PDF or DOC file for your resume.",
-        });
-        return;
-      }
-      if (file.size > 10 * 1024 * 1024) {
-        Swal.fire({
-          icon: "error",
-          title: "File Too Large",
-          text: "Resume file must be less than 10MB.",
-        });
-        return;
-      }
-      setResume(file);
+  const handleResumeSelected = (file: File) => {
+    if (!isPublicResumeFile(file)) {
+      void Swal.fire({
+        icon: "error",
+        title: "Invalid File Type",
+        text: PUBLIC_RESUME_FORMAT_MESSAGE,
+      });
+      if (resumeInputRef.current) resumeInputRef.current.value = "";
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      void Swal.fire({
+        icon: "error",
+        title: "File Too Large",
+        text: "Resume file must be less than 10MB.",
+      });
+      if (resumeInputRef.current) resumeInputRef.current.value = "";
+      return;
+    }
+
+    setResume(file);
+    if (entryMode === "ai") {
+      void runParse(file, prefillTargets);
     }
   };
 
@@ -190,13 +236,23 @@ export default function PublicJobDetailsPage() {
       });
       return;
     }
-    const validTypes = ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/jpeg", "image/jpg", "image/png"];
-    const invalidFiles = files.filter((f) => !validTypes.includes(f.type));
+    const validTypes = [
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+    ];
+    const invalidFiles = files.filter((f) => {
+      const lower = f.name.toLowerCase();
+      const okExt = [".pdf", ".docx", ".jpg", ".jpeg", ".png"].some((ext) => lower.endsWith(ext));
+      return !validTypes.includes(f.type) && !okExt;
+    });
     if (invalidFiles.length > 0) {
-      Swal.fire({
+      void Swal.fire({
         icon: "error",
         title: "Invalid File Type",
-        text: "Documents must be PDF, DOC, JPG, or PNG files.",
+        text: "Documents must be PDF, DOCX, JPG, or PNG files.",
       });
       return;
     }
@@ -248,9 +304,21 @@ export default function PublicJobDetailsPage() {
       return;
     }
 
+    const captchaError = ensureCaptchaReady();
+    if (captchaError) {
+      await Swal.fire({
+        icon: "warning",
+        title: "Security check required",
+        text: captchaError,
+      });
+      return;
+    }
+
     setApplying(true);
 
     try {
+      const profileArrays = getSubmitProfileArrays();
+      const submitSkills = getSubmitSkills();
       const payload: PublicApplyPayload = {
         fullName: fullName.trim(),
         email: email.trim().toLowerCase(),
@@ -259,8 +327,13 @@ export default function PublicJobDetailsPage() {
         // Prepending here would double up at re-hydration ("+91" + "+91...").
         phoneNumber: (phoneNumber || "").replace(/\D/g, ""),
         countryCode,
+        entryMode,
         coverLetter: coverLetter.trim(),
         ...(resolvedReferralRef ? { ref: resolvedReferralRef } : {}),
+        ...(submitSkills.length > 0 ? { skills: submitSkills } : {}),
+        ...(profileArrays.experiences.length > 0 ? { experiences: profileArrays.experiences } : {}),
+        ...(profileArrays.qualifications.length > 0 ? { qualifications: profileArrays.qualifications } : {}),
+        ...(profileArrays.socialLinks.length > 0 ? { socialLinks: profileArrays.socialLinks } : {}),
       };
 
       const result = await publicApplyToJob(jobId, payload, resume!, documents);
@@ -281,6 +354,15 @@ export default function PublicJobDetailsPage() {
         `${ROUTES.signIn}?registered=1&message=${encodeURIComponent("Application submitted. Account pending—verify your email, then sign in when an administrator has activated your account.")}`
       );
     } catch (error: unknown) {
+      if (handleCaptchaApiError(error)) {
+        await Swal.fire({
+          icon: "warning",
+          title: "Security check required",
+          text: captchaRetryMessage,
+        });
+        return;
+      }
+
       const errorMessage = getApplySubmissionErrorMessage(error);
 
       if (errorMessage.includes("already exists")) {
@@ -313,6 +395,7 @@ export default function PublicJobDetailsPage() {
         });
       }
     } finally {
+      finalizeProtectedAttempt();
       setApplying(false);
     }
   };
@@ -473,14 +556,23 @@ export default function PublicJobDetailsPage() {
               <div className="sticky top-0 z-20 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-6 flex justify-between items-center">
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Apply for {job.title}</h2>
                 <button
-                  onClick={() => setApplyModalOpen(false)}
+                  type="button"
+                  onClick={() => {
+                    resetParseState();
+                    setApplyModalOpen(false);
+                  }}
                   className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl"
+                  aria-label="Close apply form"
                 >
                   ×
                 </button>
               </div>
 
               <form onSubmit={handleApplySubmit} className="p-6 space-y-4">
+                <PublicApplyCaptcha
+                  onTokenChange={setCaptchaToken}
+                  onRegisterReset={registerCaptchaReset}
+                />
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Full Name <span className="text-red-500">*</span>
@@ -488,7 +580,10 @@ export default function PublicJobDetailsPage() {
                   <input
                     type="text"
                     value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
+                    onChange={(e) => {
+                      markFieldEdited("fullName");
+                      setFullName(e.target.value);
+                    }}
                     className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
                     placeholder="John Doe"
                     required
@@ -502,7 +597,10 @@ export default function PublicJobDetailsPage() {
                   <input
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      markFieldEdited("email");
+                      setEmail(e.target.value);
+                    }}
                     autoComplete="email"
                     className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
                     placeholder="john@example.com"
@@ -540,14 +638,20 @@ export default function PublicJobDetailsPage() {
                     <div className="w-full shrink-0 sm:w-44">
                       <PhoneCountrySelect
                         value={countryCode}
-                        onChange={setCountryCode}
+                        onChange={(value) => {
+                          markFieldEdited("countryCode");
+                          setCountryCode(value);
+                        }}
                         className="w-full"
                       />
                     </div>
                     <input
                       type="tel"
                       value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      onChange={(e) => {
+                        markFieldEdited("phoneNumber");
+                        setPhoneNumber(e.target.value);
+                      }}
                       className="min-w-0 flex-1 w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
                       placeholder="Enter phone number"
                       inputMode="numeric"
@@ -608,24 +712,28 @@ export default function PublicJobDetailsPage() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Resume <span className="text-red-500">*</span> (PDF, DOC - Max 10MB)
-                  </label>
-                  <input
-                    ref={resumeInputRef}
-                    type="file"
-                    accept=".pdf,.doc,.docx"
-                    onChange={handleResumeChange}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
-                    required
-                  />
-                  {resume && (
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                      Selected: {resume.name} ({(resume.size / 1024).toFixed(0)} KB)
-                    </p>
-                  )}
-                </div>
+                <PublicApplyResumeSection
+                  entryMode={entryMode}
+                  onEntryModeChange={(mode) => {
+                    setEntryMode(mode);
+                    if (mode === "ai" && resume) {
+                      void runParse(resume, prefillTargets);
+                    }
+                  }}
+                  resume={resume}
+                  resumeInputRef={resumeInputRef}
+                  onResumeSelected={handleResumeSelected}
+                  parseStatus={parseStatus}
+                  parseMessage={parseMessage}
+                  suggestedSkills={suggestedSkills}
+                  suggestedExperiences={suggestedExperiences}
+                  suggestedQualifications={suggestedQualifications}
+                  suggestedSocialLinks={suggestedSocialLinks}
+                  onExperiencesChange={setSuggestedExperiences}
+                  onQualificationsChange={setSuggestedQualifications}
+                  onSocialLinksChange={setSuggestedSocialLinks}
+                  onRetryParse={() => retryParse(prefillTargets)}
+                />
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -634,7 +742,7 @@ export default function PublicJobDetailsPage() {
                   <input
                     ref={documentsInputRef}
                     type="file"
-                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                    accept=".pdf,.docx,.jpg,.jpeg,.png"
                     multiple
                     onChange={handleDocumentsChange}
                     className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"

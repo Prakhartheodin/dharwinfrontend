@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Seo from "@/shared/layout-components/seo/seo";
 import { useAuth } from "@/shared/contexts/auth-context";
@@ -13,6 +13,17 @@ import {
   getSalarySlipDownloadUrl,
   getMyCandidate,
 } from "@/shared/lib/api/candidates";
+import { getCandidateDocuments } from "@/shared/lib/api/employees";
+import { inferDocumentVersionSlot } from "@/shared/components/candidates/VersionedDocumentSlot";
+import {
+  ApplicationDocumentSlotsSection,
+  GenericDocumentTypeSelect,
+  getReservedVersionedDocumentLabelError,
+  OtherDocumentsDropdownNote,
+  OtherDocumentsSectionHeader,
+  ReservedVersionedLabelError,
+  resolveGenericDocumentUploadLabel,
+} from "@/shared/components/candidates/documentUploadUx";
 import type { NotificationPreferences } from "@/shared/lib/api/users";
 import { useHasEmployeeRole } from "@/shared/hooks/use-has-employee-role";
 import { EmployeeProfileWizard, ProfilePhotoUploader } from "@/shared/workforce-profile";
@@ -80,6 +91,17 @@ type ExpRow = {
   endDate?: string;
   currentlyWorking?: boolean;
   description?: string;
+};
+
+type ExistingDocRow = {
+  index?: number;
+  type?: string;
+  label?: string;
+  logicalSlot?: "resume" | "cover-letter";
+  slotVersion?: number;
+  url?: string;
+  key?: string;
+  originalName?: string;
 };
 
 /** Split comma-joined Joi messages and rewrite them for profile forms. */
@@ -341,7 +363,30 @@ export default function PersonalInformationPage() {
   const [qualifications, setQualifications] = useState<Array<{ degree: string; institute: string; location?: string; startYear?: number; endYear?: number; description?: string }>>([]);
   const [experiences, setExperiences] = useState<Array<{ company: string; role: string; startDate?: string; endDate?: string; currentlyWorking?: boolean; description?: string }>>([]);
   const [documentsList, setDocumentsList] = useState<{ id: number; name: string; customName: string; file: File | null }[]>([]);
-  const [existingDocs, setExistingDocs] = useState<Array<{ type?: string; label?: string; url?: string; key?: string; originalName?: string }>>([]);
+  const [existingDocs, setExistingDocs] = useState<ExistingDocRow[]>([]);
+  const candidateId = candidate?.id ?? candidate?._id ? String(candidate.id ?? candidate._id) : null;
+
+  const refreshExistingDocuments = useCallback(async () => {
+    if (!candidateId) return;
+    try {
+      const docs = await getCandidateDocuments(candidateId);
+      setExistingDocs(
+        docs.map((d) => ({
+          index: d.index,
+          type: d.type,
+          label: d.label,
+          logicalSlot: d.logicalSlot,
+          slotVersion: d.slotVersion,
+          url: d.url,
+          key: d.key,
+          originalName: d.originalName,
+        }))
+      );
+    } catch {
+      /* keep prior list */
+    }
+  }, [candidateId]);
+
   const [salarySlips, setSalarySlips] = useState<Array<{ id: number; month: string; year: string; file: File | null }>>([]);
   const [existingSalarySlips, setExistingSalarySlips] = useState<Array<{ month: string; year: string; documentUrl?: string; key?: string; originalName?: string }>>([]);
   const [socialLinkRows, setSocialLinkRows] = useState<Array<{ id: number; platform: string; url: string }>>([]);
@@ -440,9 +485,12 @@ export default function PersonalInformationPage() {
 
     const syncAttachmentsFromCandidate = () => {
       setExistingDocs(
-        candidate.documents?.map((d) => ({
+        candidate.documents?.map((d, index) => ({
+          index,
           type: d.type,
           label: d.label,
+          logicalSlot: d.logicalSlot,
+          slotVersion: d.slotVersion,
           url: d.url,
           key: d.key,
           originalName: d.originalName,
@@ -774,9 +822,21 @@ export default function PersonalInformationPage() {
           "I-983 Form-only",
           "Other",
         ] as const;
-        let finalDocs: Array<{ type: string; label?: string; url?: string; key?: string; originalName?: string; size?: number; mimeType?: string }> = existingDocs.map((d) => ({
+        let finalDocs: Array<{
+          type: string;
+          label?: string;
+          logicalSlot?: "resume" | "cover-letter";
+          slotVersion?: number;
+          url?: string;
+          key?: string;
+          originalName?: string;
+          size?: number;
+          mimeType?: string;
+        }> = existingDocs.map((d) => ({
           type: d.type || "Other",
           label: d.label,
+          logicalSlot: d.logicalSlot,
+          slotVersion: d.slotVersion,
           url: d.url,
           key: d.key,
           originalName: d.originalName,
@@ -784,9 +844,30 @@ export default function PersonalInformationPage() {
         /** Merged with AI when CV/Resume is uploaded (after S3). */
         let skillsForPayload: SkillRow[] = skillsRows;
         const docsToUpload = documentsList.filter((d) => d.file && d.name);
+        if (candidateId && docsToUpload.length > 0) {
+          const reservedUpload = docsToUpload.find((doc) =>
+            Boolean(
+              getReservedVersionedDocumentLabelError(
+                resolveGenericDocumentUploadLabel(doc.name, doc.customName),
+                true,
+              ),
+            ),
+          );
+          if (reservedUpload) {
+            await showProfileSaveToast(
+              "error",
+              "Can't upload documents",
+              "Resume and cover letter must be uploaded via the Resume / CV and Cover Letter cards above.",
+            );
+            setSaveLoading(false);
+            return;
+          }
+        }
         if (docsToUpload.length > 0) {
           const files = docsToUpload.map((d) => d.file!);
-          const labels = docsToUpload.map((d) => (d.name === "Other" ? d.customName : d.name));
+          const labels = docsToUpload.map((d) =>
+            resolveGenericDocumentUploadLabel(d.name, d.customName),
+          );
           const uploadRes = await uploadDocuments(files, labels);
           if (uploadRes.success && uploadRes.data) {
             uploadRes.data.forEach((fileData, i) => {
@@ -1915,24 +1996,44 @@ export default function PersonalInformationPage() {
 
             {/* Documents */}
             <div className="box overflow-hidden">
-              <div className="box-header px-4 py-2 border-b border-dashed dark:border-defaultborder/10 flex items-center justify-between">
+              <div className="box-header px-4 py-2 border-b border-dashed dark:border-defaultborder/10">
                 <h6 className="font-medium mb-0 text-[0.875rem]">Documents</h6>
-                <button
-                  type="button"
-                  className="ti-btn ti-btn-primary ti-btn-sm whitespace-nowrap !w-auto !h-auto !py-1 !px-2"
-                  onClick={() => setDocumentsList((arr) => [...arr, { id: Date.now(), name: "", customName: "", file: null }])}
-                  disabled={!candidate}
-                >
-                  <i className="ri-add-line me-1 align-middle" />
-                  Add document
-                </button>
               </div>
               <div className="box-body px-4 py-4 space-y-4">
-                {existingDocs.length > 0 && (
+                {candidateId ? (
+                  <ApplicationDocumentSlotsSection
+                    candidateId={candidateId}
+                    versionedDocs={existingDocs}
+                    onUpdated={refreshExistingDocuments}
+                    headingClassName="text-sm font-semibold text-defaulttextcolor"
+                  />
+                ) : null}
+
+                <OtherDocumentsSectionHeader
+                  className="text-sm font-semibold text-defaulttextcolor sm:flex block items-center justify-between mb-4"
+                  action={
+                    <button
+                      type="button"
+                      className="ti-btn ti-btn-primary ti-btn-sm whitespace-nowrap !w-auto !h-auto !py-1 !px-2"
+                      onClick={() =>
+                        setDocumentsList((arr) => [...arr, { id: Date.now(), name: "", customName: "", file: null }])
+                      }
+                      disabled={!candidate}
+                    >
+                      <i className="ri-add-line me-1 align-middle" />
+                      Add document
+                    </button>
+                  }
+                />
+                <OtherDocumentsDropdownNote hasVersionedSlots={Boolean(candidateId)} />
+                {existingDocs.some((doc) => !inferDocumentVersionSlot(doc)) && (
                   <div>
                     <h6 className="text-sm font-semibold mb-3 text-defaulttextcolor">Existing documents</h6>
-                    {existingDocs.map((doc, i) => (
-                      <div key={i} className="relative p-3 border border-defaultborder rounded-md bg-gray-50/50 dark:bg-gray-800/30 mb-3 flex flex-col gap-3">
+                    {existingDocs
+                      .map((doc, i) => ({ doc, i }))
+                      .filter(({ doc }) => !inferDocumentVersionSlot(doc))
+                      .map(({ doc, i }) => (
+                      <div key={`${doc.index ?? i}-${doc.key ?? doc.url ?? i}`} className="relative p-3 border border-defaultborder rounded-md bg-gray-50/50 dark:bg-gray-800/30 mb-3 flex flex-col gap-3">
                         <span className="text-sm">{doc.label || doc.type || "Document"}</span>
                         <div className="flex flex-wrap items-center gap-2">
                           <button
@@ -1941,8 +2042,9 @@ export default function PersonalInformationPage() {
                             onClick={async () => {
                               const cid = candidate?.id ?? candidate?._id;
                               if (!cid) return;
+                              const docIndex = doc.index ?? i;
                               try {
-                                const { url } = await getDocumentDownloadUrl(cid, i);
+                                const { url } = await getDocumentDownloadUrl(String(cid), docIndex);
                                 window.open(url, "_blank");
                               } catch {
                                 Swal.fire("Error", "Could not open document.", "error");
@@ -1965,7 +2067,14 @@ export default function PersonalInformationPage() {
                     ))}
                   </div>
                 )}
-                {documentsList.map((doc, i) => (
+                {documentsList.map((doc, i) => {
+                  const docLabel = resolveGenericDocumentUploadLabel(doc.name, doc.customName);
+                  const reservedLabelError = getReservedVersionedDocumentLabelError(
+                    docLabel,
+                    Boolean(candidateId),
+                  );
+                  const customNameErrorId = `personal-info-doc-custom-name-error-${doc.id}`;
+                  return (
                   <div key={doc.id} className="p-3 border border-defaultborder rounded-md grid grid-cols-12 gap-3 items-start">
                     <div
                       className={`col-span-12 ${
@@ -1973,41 +2082,22 @@ export default function PersonalInformationPage() {
                       } flex flex-col`}
                     >
                       <label className="form-label text-xs !mb-1">Type</label>
-                      <select
-                        className="form-control !rounded-md h-11"
+                      <GenericDocumentTypeSelect
                         value={doc.name}
+                        hasVersionedSlots={Boolean(candidateId)}
                         disabled={!candidate}
-                        onChange={(e) => {
-                          const val = e.target.value;
+                        className="form-control !rounded-md h-11"
+                        emptyLabel="Select"
+                        onChange={(val) =>
                           setDocumentsList((arr) =>
                             arr.map((d, j) =>
                               j === i
                                 ? { ...d, name: val, customName: val !== "Other" ? "" : d.customName }
                                 : d
                             )
-                          );
-                        }}
-                      >
-                        <option value="">Select</option>
-                        <optgroup label="Identity / KYC">
-                          <option value="Aadhar">Aadhar</option>
-                          <option value="PAN">PAN</option>
-                          <option value="Bank">Bank</option>
-                          <option value="Passport">Passport</option>
-                        </optgroup>
-                        <optgroup label="Application">
-                          <option value="CV/Resume">CV/Resume</option>
-                          <option value="Marksheet">Marksheet</option>
-                          <option value="Degree Certificate">Degree Certificate</option>
-                          <option value="Experience Letter">Experience Letter</option>
-                          <option value="Offer Letter">Offer Letter</option>
-                          <option value="Visa">Visa</option>
-                          <option value="EAD Card">EAD Card</option>
-                          <option value="I-765 Receipt">I-765 Receipt</option>
-                          <option value="I-983 Form-only">I-983 Form-only</option>
-                        </optgroup>
-                        <option value="Other">Other</option>
-                      </select>
+                          )
+                        }
+                      />
                       <div className="mt-1 min-h-4 text-xs opacity-0 select-none" aria-hidden="true">
                         helper
                       </div>
@@ -2017,15 +2107,20 @@ export default function PersonalInformationPage() {
                         <label className="form-label text-xs !mb-1">Label</label>
                         <input
                           type="text"
-                          className="form-control !rounded-md h-11"
+                          className={`form-control !rounded-md h-11 ${reservedLabelError ? "border-danger" : ""}`}
                           placeholder="Document name"
                           value={doc.customName}
                           disabled={!candidate}
+                          aria-invalid={reservedLabelError ? true : undefined}
+                          aria-describedby={reservedLabelError ? customNameErrorId : undefined}
                           onChange={(e) => setDocumentsList((arr) => arr.map((d, j) => (j === i ? { ...d, customName: e.target.value } : d)))}
                         />
-                        <div className="mt-1 min-h-4 text-xs opacity-0 select-none" aria-hidden="true">
-                          helper
-                        </div>
+                        <ReservedVersionedLabelError
+                          id={customNameErrorId}
+                          label={docLabel}
+                          hasVersionedSlots={Boolean(candidateId)}
+                          className="text-danger text-xs mt-1"
+                        />
                       </div>
                     )}
                     <div
@@ -2038,10 +2133,17 @@ export default function PersonalInformationPage() {
                         type="file"
                         accept=".jpg,.jpeg,.png,.pdf"
                         className="form-control !rounded-md"
-                        disabled={!candidate}
+                        disabled={
+                          !candidate ||
+                          Boolean(reservedLabelError) ||
+                          (doc.name === "Other" && !doc.customName.trim())
+                        }
                         onChange={(e) => {
                           const file = e.target.files?.[0];
-                          if (file) setDocumentsList((arr) => arr.map((d, j) => (j === i ? { ...d, file } : d)));
+                          if (file && !reservedLabelError) {
+                            setDocumentsList((arr) => arr.map((d, j) => (j === i ? { ...d, file } : d)));
+                          }
+                          e.target.value = "";
                         }}
                       />
                       <small className="mt-1 min-h-4 text-xs text-defaulttextcolor/70">
@@ -2054,11 +2156,12 @@ export default function PersonalInformationPage() {
                       </button>
                     </div>
                   </div>
-                ))}
-                {existingDocs.length === 0 && documentsList.length === 0 && (
+                );
+                })}
+                {existingDocs.length === 0 && documentsList.length === 0 && !candidateId && (
                   <p className="text-defaulttextcolor/70 text-sm mb-0">No documents. Click "Add document" to add a row, then select type and file.</p>
                 )}
-                {(documentsList.length > 0 || existingDocs.length > 0) && (
+                {(documentsList.length > 0 || existingDocs.some((doc) => !inferDocumentVersionSlot(doc))) && (
                   <p className="text-defaulttextcolor/70 text-sm mb-2">
                     {documentsList.some((d) => d.file && d.name) ? 'Click "Upload documents" below to save.' : "Add document rows above, select type and file, then click Upload."}
                   </p>
@@ -2068,7 +2171,19 @@ export default function PersonalInformationPage() {
                     <button
                       type="button"
                       onClick={handleSaveProfile}
-                      disabled={saveLoading || !user || !candidate}
+                      disabled={
+                        saveLoading ||
+                        !user ||
+                        !candidate ||
+                        documentsList.some((d) =>
+                          Boolean(
+                            getReservedVersionedDocumentLabelError(
+                              resolveGenericDocumentUploadLabel(d.name, d.customName),
+                              Boolean(candidateId),
+                            ),
+                          ),
+                        )
+                      }
                       className="ti-btn ti-btn-primary ti-btn-sm !py-2 !px-4 whitespace-nowrap shrink-0 inline-flex items-center justify-center !min-w-max"
                     >
                       {saveLoading ? "Uploading…" : "Upload documents"}

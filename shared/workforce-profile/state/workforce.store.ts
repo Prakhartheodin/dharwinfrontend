@@ -51,6 +51,8 @@ export type WorkforceStoreState = WorkforceFormState & {
   updateSalarySlip: (id: SalarySlip["id"], patch: Partial<SalarySlip>) => void;
 
   hydrate: (state: WorkforceFormState) => void;
+  /** Refresh only the documents slice from the server, leaving every other section untouched. */
+  hydrateDocuments: (serverDocuments: DocumentResource[]) => void;
   commitSnapshot: () => void;
   reset: () => void;
 };
@@ -180,6 +182,31 @@ export const useWorkforceStore = create<WorkforceStoreState>((set, get) => {
         ...state,
         snapshot: cloneState(state),
       })),
+
+    // Uploading a resume version used to call the full `hydrate`, which replaces every section and
+    // the snapshot with it — silently discarding unsaved edits on Personal Info, Qualification,
+    // Work Experience and Salary, and clearing the dirty flags that would have warned about it.
+    // Only the documents slice can have changed server-side, so only it is refreshed. Rows still
+    // queued for upload are local work the server has never seen: keep them, and keep them dirty.
+    hydrateDocuments: (serverDocuments) =>
+      set((s) => {
+        const pending = s.documents.documents.filter(
+          (d) => !(d.status === "uploaded" && !d.file),
+        );
+        return {
+          documents: { ...s.documents, documents: [...serverDocuments, ...pending] },
+          // Snapshot holds the server truth only, so the step stays dirty exactly while rows are
+          // still pending upload. A File handle cannot be structured-cloned, and server rows never
+          // carry one — a shallow copy per row is enough to keep the two arrays independent.
+          snapshot: {
+            ...s.snapshot,
+            documents: {
+              ...s.snapshot.documents,
+              documents: serverDocuments.map((d) => ({ ...d })),
+            },
+          },
+        };
+      }),
     commitSnapshot: () => {
       const { personalInfo, qualification, experience, documents, salary } = get();
       set({

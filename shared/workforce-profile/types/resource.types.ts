@@ -21,6 +21,9 @@ export type DocumentResource = {
   metadata?: DocumentResourceMetadata;
   label: string;
   type?: string;
+  /** Server-owned slot stamp — preserved across document-only refresh. */
+  logicalSlot?: "resume" | "cover-letter";
+  slotVersion?: number;
   error?: string;
   retryCount: number;
 };

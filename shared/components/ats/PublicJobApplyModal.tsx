@@ -10,7 +10,12 @@ import {
   type PublicApplyPayload,
 } from "@/shared/lib/api/jobs";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
+import { PublicApplyCaptcha } from "@/shared/components/ats/PublicApplyCaptcha";
+import { PublicApplyResumeSection } from "@/shared/components/ats/PublicApplyResumeSection";
+import { usePublicApplyCaptcha } from "@/shared/hooks/usePublicApplyCaptcha";
+import { usePublicResumeParse } from "@/shared/hooks/usePublicResumeParse";
 import { getPhoneValidationError } from "@/shared/lib/phoneCountries";
+import { isPublicResumeFile, PUBLIC_RESUME_FORMAT_MESSAGE } from "@/shared/lib/publicApplyResume";
 
 const PASSWORD_MIN_LENGTH = 8;
 
@@ -73,32 +78,69 @@ export function PublicJobApplyModal({
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const resumeInputRef = useRef<HTMLInputElement>(null);
   const documentsInputRef = useRef<HTMLInputElement>(null);
+  const {
+    ensureCaptchaReady,
+    setCaptchaToken,
+    registerCaptchaReset,
+    rotateCaptchaToken,
+    finalizeProtectedAttempt,
+    handleCaptchaApiError,
+    captchaRetryMessage,
+  } = usePublicApplyCaptcha();
+  const {
+    entryMode,
+    setEntryMode,
+    parseStatus,
+    parseMessage,
+    suggestedSkills,
+    suggestedExperiences,
+    setSuggestedExperiences,
+    suggestedQualifications,
+    setSuggestedQualifications,
+    suggestedSocialLinks,
+    setSuggestedSocialLinks,
+    markFieldEdited,
+    runParse,
+    retryParse,
+    resetParseState,
+    getSubmitSkills,
+    getSubmitProfileArrays,
+  } = usePublicResumeParse(jobId, { onCaptchaTokenConsumed: rotateCaptchaToken });
 
-  const handleResumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const validTypes = [
-        "application/pdf",
-        "application/msword",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      ];
-      if (!validTypes.includes(file.type)) {
-        void Swal.fire({
-          icon: "error",
-          title: "Invalid File Type",
-          text: "Please upload a PDF or DOC file for your resume.",
-        });
-        return;
-      }
-      if (file.size > 10 * 1024 * 1024) {
-        void Swal.fire({
-          icon: "error",
-          title: "File Too Large",
-          text: "Resume file must be less than 10MB.",
-        });
-        return;
-      }
-      setResume(file);
+  const prefillTargets = {
+    fullName,
+    email,
+    phoneNumber,
+    countryCode,
+    setFullName,
+    setEmail,
+    setPhoneNumber,
+    setCountryCode,
+  };
+
+  const handleResumeSelected = (file: File) => {
+    if (!isPublicResumeFile(file)) {
+      void Swal.fire({
+        icon: "error",
+        title: "Invalid File Type",
+        text: PUBLIC_RESUME_FORMAT_MESSAGE,
+      });
+      if (resumeInputRef.current) resumeInputRef.current.value = "";
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      void Swal.fire({
+        icon: "error",
+        title: "File Too Large",
+        text: "Resume file must be less than 10MB.",
+      });
+      if (resumeInputRef.current) resumeInputRef.current.value = "";
+      return;
+    }
+
+    setResume(file);
+    if (entryMode === "ai") {
+      void runParse(file, prefillTargets);
     }
   };
 
@@ -114,18 +156,21 @@ export function PublicJobApplyModal({
     }
     const validTypes = [
       "application/pdf",
-      "application/msword",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "image/jpeg",
       "image/jpg",
       "image/png",
     ];
-    const invalidFiles = files.filter((f) => !validTypes.includes(f.type));
+    const invalidFiles = files.filter((f) => {
+      const lower = f.name.toLowerCase();
+      const okExt = [".pdf", ".docx", ".jpg", ".jpeg", ".png"].some((ext) => lower.endsWith(ext));
+      return !validTypes.includes(f.type) && !okExt;
+    });
     if (invalidFiles.length > 0) {
       void Swal.fire({
         icon: "error",
         title: "Invalid File Type",
-        text: "Documents must be PDF, DOC, JPG, or PNG files.",
+        text: "Documents must be PDF, DOCX, JPG, or PNG files.",
       });
       return;
     }
@@ -172,8 +217,16 @@ export function PublicJobApplyModal({
       return;
     }
 
+    const captchaError = ensureCaptchaReady();
+    if (captchaError) {
+      await Swal.fire({ icon: "warning", title: "Security check required", text: captchaError });
+      return;
+    }
+
     setApplying(true);
     try {
+      const profileArrays = getSubmitProfileArrays();
+      const submitSkills = getSubmitSkills();
       const payload: PublicApplyPayload = {
         fullName: fullName.trim(),
         email: email.trim().toLowerCase(),
@@ -181,8 +234,13 @@ export function PublicJobApplyModal({
         // Store local digits only — countryCode is the source of truth for dial prefix.
         phoneNumber: (phoneNumber || "").replace(/\D/g, ""),
         countryCode,
+        entryMode,
         coverLetter: coverLetter.trim(),
         ...(referralRef?.trim() ? { ref: referralRef.trim() } : {}),
+        ...(submitSkills.length > 0 ? { skills: submitSkills } : {}),
+        ...(profileArrays.experiences.length > 0 ? { experiences: profileArrays.experiences } : {}),
+        ...(profileArrays.qualifications.length > 0 ? { qualifications: profileArrays.qualifications } : {}),
+        ...(profileArrays.socialLinks.length > 0 ? { socialLinks: profileArrays.socialLinks } : {}),
       };
       const applyRes = await publicApplyToJob(jobId, payload, resume!, documents);
       onClose();
@@ -201,6 +259,15 @@ export function PublicJobApplyModal({
         `${ROUTES.signIn}?registered=1&message=${encodeURIComponent("Application submitted. Account pending—verify your email, then sign in when an administrator has activated your account.")}`
       );
     } catch (error: unknown) {
+      if (handleCaptchaApiError(error)) {
+        await Swal.fire({
+          icon: "warning",
+          title: "Security check required",
+          text: captchaRetryMessage,
+        });
+        return;
+      }
+
       const errorMessage = getApplySubmissionErrorMessage(error);
       if (errorMessage.includes("already exists")) {
         const result = await Swal.fire({
@@ -222,6 +289,7 @@ export function PublicJobApplyModal({
         await Swal.fire({ icon: "error", title: "Application failed", html: errorMessage });
       }
     } finally {
+      finalizeProtectedAttempt();
       setApplying(false);
     }
   };
@@ -235,7 +303,12 @@ export function PublicJobApplyModal({
           <h2 className="text-xl font-bold text-gray-900 dark:text-white sm:text-2xl">Apply · {jobTitle}</h2>
           <button
             type="button"
-            onClick={() => !applying && onClose()}
+            onClick={() => {
+              if (!applying) {
+                resetParseState();
+                onClose();
+              }
+            }}
             className="text-2xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
             aria-label="Close"
           >
@@ -248,6 +321,10 @@ export function PublicJobApplyModal({
             Create your account and submit this application in one step. Use a real phone number you can answer for
             verification calls.
           </p>
+          <PublicApplyCaptcha
+            onTokenChange={setCaptchaToken}
+            onRegisterReset={registerCaptchaReset}
+          />
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
               Full name <span className="text-red-500">*</span>
@@ -255,7 +332,10 @@ export function PublicJobApplyModal({
             <input
               type="text"
               value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
+              onChange={(e) => {
+                markFieldEdited("fullName");
+                setFullName(e.target.value);
+              }}
               className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-primary dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               placeholder="Your name"
               required
@@ -268,7 +348,10 @@ export function PublicJobApplyModal({
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                markFieldEdited("email");
+                setEmail(e.target.value);
+              }}
               className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-primary dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               placeholder="you@example.com"
               required
@@ -279,11 +362,21 @@ export function PublicJobApplyModal({
               Phone <span className="text-red-500">*</span>
             </label>
             <div className="flex gap-2">
-              <PhoneCountrySelect value={countryCode} onChange={setCountryCode} className="w-40" />
+              <PhoneCountrySelect
+                value={countryCode}
+                onChange={(value) => {
+                  markFieldEdited("countryCode");
+                  setCountryCode(value);
+                }}
+                className="w-40"
+              />
               <input
                 type="tel"
                 value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
+                onChange={(e) => {
+                  markFieldEdited("phoneNumber");
+                  setPhoneNumber(e.target.value);
+                }}
                 className="flex-1 min-w-0 rounded-lg border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-primary dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                 placeholder="Phone number"
                 inputMode="numeric"
@@ -340,24 +433,28 @@ export function PublicJobApplyModal({
               </button>
             </div>
           </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Resume <span className="text-red-500">*</span> (PDF or DOC, max 10MB)
-            </label>
-            <input
-              ref={resumeInputRef}
-              type="file"
-              accept=".pdf,.doc,.docx"
-              onChange={handleResumeChange}
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-              required
-            />
-            {resume ? (
-              <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                {resume.name} ({(resume.size / 1024).toFixed(0)} KB)
-              </p>
-            ) : null}
-          </div>
+          <PublicApplyResumeSection
+            entryMode={entryMode}
+            onEntryModeChange={(mode) => {
+              setEntryMode(mode);
+              if (mode === "ai" && resume) {
+                void runParse(resume, prefillTargets);
+              }
+            }}
+            resume={resume}
+            resumeInputRef={resumeInputRef}
+            onResumeSelected={handleResumeSelected}
+            parseStatus={parseStatus}
+            parseMessage={parseMessage}
+            suggestedSkills={suggestedSkills}
+            suggestedExperiences={suggestedExperiences}
+            suggestedQualifications={suggestedQualifications}
+            suggestedSocialLinks={suggestedSocialLinks}
+            onExperiencesChange={setSuggestedExperiences}
+            onQualificationsChange={setSuggestedQualifications}
+            onSocialLinksChange={setSuggestedSocialLinks}
+            onRetryParse={() => retryParse(prefillTargets)}
+          />
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
               Additional documents (optional, max 5)
@@ -365,7 +462,7 @@ export function PublicJobApplyModal({
             <input
               ref={documentsInputRef}
               type="file"
-              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+              accept=".pdf,.docx,.jpg,.jpeg,.png"
               multiple
               onChange={handleDocumentsChange}
               className="w-full rounded-lg border border-gray-300 px-4 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"

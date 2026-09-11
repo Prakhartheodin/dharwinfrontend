@@ -66,12 +66,16 @@ function readSchemaVersion(data: unknown): number {
 }
 
 function mapDocument(d: NonNullable<CandidateListItem["documents"]>[number]): DocumentResource {
+  const logicalSlot =
+    d.logicalSlot === "resume" || d.logicalSlot === "cover-letter" ? d.logicalSlot : undefined;
   return {
     tempId: nextId(),
     status: "uploaded",
     progress: 1,
     label: asString(d.label, asString(d.originalName)),
     type: typeof d.type === "string" ? d.type : undefined,
+    logicalSlot,
+    slotVersion: typeof d.slotVersion === "number" ? d.slotVersion : undefined,
     retryCount: 0,
     metadata: {
       url: asString(d.url),

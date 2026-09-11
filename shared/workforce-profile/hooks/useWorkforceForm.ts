@@ -169,6 +169,19 @@ export function useWorkforceForm(
     await asyncLoad(id);
   }, [load, id, asyncLoad]);
 
+  // Deliberately not `refresh`: that routes through `hydrate`, which replaces every section and the
+  // dirty snapshot along with it. A document upload only changes documents, and wiping the user's
+  // half-filled Personal Info to pick it up is not a trade worth making. Loading directly also keeps
+  // the page out of its full-screen loading state.
+  const refreshDocuments = useCallback(async (): Promise<void> => {
+    if (!load) return;
+    const data = await load(id, new AbortController().signal);
+    if (!data) return;
+    useWorkforceStore
+      .getState()
+      .hydrateDocuments(mapToFormState(data).documents.documents);
+  }, [load, id]);
+
   const ctx: WizardContextValue = useMemo(
     () => ({
       mode,
@@ -202,6 +215,7 @@ export function useWorkforceForm(
       submit,
       goNext,
       refreshProfile: refresh,
+      refreshDocuments,
     }),
     [
       mode,
@@ -229,6 +243,7 @@ export function useWorkforceForm(
       submit,
       goNext,
       refresh,
+      refreshDocuments,
     ],
   );
 

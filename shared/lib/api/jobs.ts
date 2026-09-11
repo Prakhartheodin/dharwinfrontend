@@ -2,6 +2,7 @@
 
 import axios from "axios";
 import { apiClient, API_MUTATION_TIMEOUT_MS, normalizeApiBase } from "@/shared/lib/api/client";
+import { consumeCaptchaToken, getOptionalCaptchaToken } from "@/shared/lib/publicApplyResume";
 
 export type CompanySizeBucket =
   | '1-10'
@@ -500,6 +501,31 @@ export async function checkPublicAccountExists(email: string): Promise<boolean> 
   }
 }
 
+export interface PublicApplyExperience {
+  company: string;
+  role: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  currentlyWorking?: boolean;
+  description?: string | null;
+}
+
+export interface PublicApplyQualification {
+  degree: string;
+  institute: string;
+  location?: string | null;
+  startYear?: number | null;
+  endYear?: number | null;
+  description?: string | null;
+}
+
+export interface PublicApplySocialLink {
+  platform: string;
+  url: string;
+}
+
+export type PublicApplyEntryMode = "manual" | "ai";
+
 export interface PublicApplyPayload {
   fullName: string;
   email: string;
@@ -507,8 +533,88 @@ export interface PublicApplyPayload {
   phoneNumber: string;
   countryCode: string;
   coverLetter?: string;
+  /** Tells the backend whether to run resume skill extraction (`ai`) or not (`manual`). */
+  entryMode?: PublicApplyEntryMode;
   /** Signed referral token from job URL `?ref=`; must match candidate email in token. */
   ref?: string;
+  /** Skills from resume parse prefill — JSON-serialized on submit to skip duplicate extraction. */
+  skills?: Array<{ name: string; level?: string; category?: string }>;
+  experiences?: PublicApplyExperience[];
+  qualifications?: PublicApplyQualification[];
+  socialLinks?: PublicApplySocialLink[];
+}
+
+export type PublicResumeParseStatus = "success" | "partial" | "failed";
+
+export interface PublicResumeParseSkill {
+  name: string;
+  level: string;
+  category?: string;
+}
+
+export interface PublicResumeParseResponse {
+  status: PublicResumeParseStatus;
+  warnings: string[];
+  fields: {
+    fullName: string | null;
+    email: string | null;
+    phoneNumber: string | null;
+    countryCode: string | null;
+    skills: PublicResumeParseSkill[];
+    experiences: PublicApplyExperience[];
+    qualifications: PublicApplyQualification[];
+    socialLinks: PublicApplySocialLink[];
+  };
+}
+
+function publicApiHeaders(extra?: Record<string, string>): Record<string, string> {
+  const captcha = getOptionalCaptchaToken();
+  return {
+    ...(captcha ? { "x-captcha-token": captcha } : {}),
+    ...extra,
+  };
+}
+
+function releaseCaptchaTokenIfSent(headers: Record<string, string>): void {
+  if (headers["x-captcha-token"]) {
+    consumeCaptchaToken();
+  }
+}
+
+async function postPublicMultipart<T>(
+  url: string,
+  formData: FormData,
+  timeout: number
+): Promise<T> {
+  const headers = publicApiHeaders();
+  try {
+    const { data } = await publicApiClient.post<T>(url, formData, {
+      timeout,
+      headers,
+      transformRequest: [
+        (body: unknown, requestHeaders: Record<string, string>) => {
+          delete requestHeaders["Content-Type"];
+          return body;
+        },
+      ],
+    });
+    releaseCaptchaTokenIfSent(headers);
+    return data;
+  } catch (err) {
+    releaseCaptchaTokenIfSent(headers);
+    throw err;
+  }
+}
+
+export async function parsePublicResume(jobId: string, resume: File): Promise<PublicResumeParseResponse> {
+  const formData = new FormData();
+  formData.append("resume", resume);
+
+  return postPublicMultipart<PublicResumeParseResponse>(
+    `/public/jobs/${jobId}/parse-resume`,
+    formData,
+    90_000
+  );
 }
 
 export interface PublicApplyResponse {
@@ -545,11 +651,24 @@ export async function publicApplyToJob(
   formData.append("password", payload.password);
   formData.append("phoneNumber", payload.phoneNumber);
   formData.append("countryCode", payload.countryCode);
+  formData.append("entryMode", payload.entryMode === "ai" ? "ai" : "manual");
   if (payload.coverLetter) {
     formData.append("coverLetter", payload.coverLetter);
   }
   if (payload.ref && payload.ref.trim()) {
     formData.append("ref", payload.ref.trim());
+  }
+  if (payload.skills && payload.skills.length > 0) {
+    formData.append("skills", JSON.stringify(payload.skills));
+  }
+  if (payload.experiences && payload.experiences.length > 0) {
+    formData.append("experiences", JSON.stringify(payload.experiences));
+  }
+  if (payload.qualifications && payload.qualifications.length > 0) {
+    formData.append("qualifications", JSON.stringify(payload.qualifications));
+  }
+  if (payload.socialLinks && payload.socialLinks.length > 0) {
+    formData.append("socialLinks", JSON.stringify(payload.socialLinks));
   }
 
   // Add resume file
@@ -562,21 +681,11 @@ export async function publicApplyToJob(
     });
   }
 
-  const { data } = await publicApiClient.post<PublicApplyResponse>(
+  return postPublicMultipart<PublicApplyResponse>(
     `/public/jobs/${jobId}/apply`,
     formData,
-    {
-      timeout: 120_000,
-      transformRequest: [
-        (body: unknown, headers: Record<string, string>) => {
-          delete headers["Content-Type"];
-          return body;
-        },
-      ],
-    }
+    120_000
   );
-
-  return data;
 }
 
 export type BookmarkVisibility = "public" | "private";
