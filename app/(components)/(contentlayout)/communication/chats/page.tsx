@@ -24,6 +24,8 @@ import {
   deleteMessage,
   forwardMessage,
   reactToMessage,
+  setMessagePinned,
+  listPinnedMessages,
   uploadChatFiles,
   deleteConversation as deleteConversationApi,
   type ChatCall,
@@ -662,6 +664,7 @@ const Chat = () => {
     onCallEnded,
     onMessageDeleted,
     onMessageReacted,
+    onMessagePinned,
     onTyping,
     onMessagesRead,
     emitTyping,
@@ -1055,6 +1058,68 @@ const Chat = () => {
   }, [searchParams, conversations, selectedConversation]);
 
   const convId = getId(selectedConversation);
+
+  // Pins are conversation-wide and can point at a message far older than the loaded page,
+  // so they are their own fetch rather than something derived from `messages`.
+  const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]);
+  const [pinBusy, setPinBusy] = useState(false);
+  const [pinnedCollapsed, setPinnedCollapsed] = useState(false);
+
+  const fetchPinnedMessages = useCallback(async (cid: string) => {
+    if (!cid) {
+      setPinnedMessages([]);
+      return;
+    }
+    try {
+      setPinnedMessages(await listPinnedMessages(cid));
+    } catch {
+      // A failed pin fetch must not blank the thread — the banner just stays hidden.
+      setPinnedMessages([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    setPinnedCollapsed(false);
+    fetchPinnedMessages(convId);
+  }, [convId, fetchPinnedMessages]);
+
+  useEffect(() => {
+    const unsub = onMessagePinned((data) => {
+      if (!data.conversationId || String(data.conversationId) !== String(convId)) return;
+      fetchPinnedMessages(convId);
+      setMessages((prev) =>
+        prev.map((m) => {
+          const id = String((m as any).id || (m as any)._id);
+          if (id !== String(data.messageId)) return m;
+          return { ...m, pinnedAt: data.pinned ? new Date().toISOString() : null };
+        })
+      );
+    });
+    return unsub;
+  }, [onMessagePinned, convId, fetchPinnedMessages]);
+
+  /**
+   * Backend authority: groups allow admins only, direct chats allow either party. Mirrored here
+   * so the action is hidden rather than offered and then rejected.
+   */
+  const canPinInConversation = (c: Conversation | null) => {
+    if (!c) return false;
+    return c.type === "group" ? isGroupAdmin(c) : true;
+  };
+
+  const handleTogglePin = async (messageId: string, pinned: boolean) => {
+    if (!convId || pinBusy) return;
+    setPinBusy(true);
+    try {
+      await setMessagePinned(convId, messageId, pinned);
+      await fetchPinnedMessages(convId);
+      showToast(pinned ? "Message pinned." : "Message unpinned.");
+    } catch (e: any) {
+      showToast(e?.response?.data?.message || "Could not update pin.");
+    } finally {
+      setPinBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!selectedConversation) setIsOpen(false);
@@ -2273,6 +2338,54 @@ const Chat = () => {
                   </button>
                 </div>
               </div>
+              {pinnedMessages.length > 0 && (
+                <div className={chatStyles.pinnedBar}>
+                  <button
+                    type="button"
+                    className={chatStyles.pinnedBarToggle}
+                    onClick={() => setPinnedCollapsed((v) => !v)}
+                    aria-expanded={!pinnedCollapsed}
+                  >
+                    <i className="ri-pushpin-fill" aria-hidden="true" />
+                    <span>
+                      {pinnedMessages.length} pinned message{pinnedMessages.length > 1 ? "s" : ""}
+                    </span>
+                    <i
+                      className={pinnedCollapsed ? "ri-arrow-down-s-line" : "ri-arrow-up-s-line"}
+                      aria-hidden="true"
+                    />
+                  </button>
+                  {!pinnedCollapsed && (
+                    <ul className={chatStyles.pinnedBarList}>
+                      {pinnedMessages.map((pm) => {
+                        const pid = String((pm as any).id || (pm as any)._id);
+                        return (
+                          <li key={pid} className={chatStyles.pinnedBarItem}>
+                            <div className="min-w-0">
+                              <p className={chatStyles.pinnedBarSender}>
+                                {(pm.sender as any)?.name || "Unknown"}
+                              </p>
+                              <p className={chatStyles.pinnedBarText}>{getReplyPreviewText(pm)}</p>
+                            </div>
+                            {canPinInConversation(selectedConversation) && (
+                              <button
+                                type="button"
+                                className={chatStyles.pinnedBarUnpin}
+                                title="Unpin"
+                                aria-label={`Unpin message from ${(pm.sender as any)?.name || "Unknown"}`}
+                                disabled={pinBusy}
+                                onClick={() => handleTogglePin(pid, false)}
+                              >
+                                <i className="ri-unpin-line" aria-hidden="true" />
+                              </button>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              )}
               {error && (
                 <div className={chatStyles.errorInline}>
                   {error}
@@ -2435,6 +2548,20 @@ const Chat = () => {
                                           >
                                             Forward
                                           </button>
+                                          {canPinInConversation(selectedConversation) && (
+                                            <button
+                                              type="button"
+                                              className="w-full text-start px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-50"
+                                              disabled={pinBusy}
+                                              onClick={() => {
+                                                const mid = String((m as any).id || (m as any)._id);
+                                                setMessageMenuFor(null);
+                                                handleTogglePin(mid, !(m as any).pinnedAt);
+                                              }}
+                                            >
+                                              {(m as any).pinnedAt ? "Unpin message" : "Pin message"}
+                                            </button>
+                                          )}
                                           <button
                                             type="button"
                                             className="w-full text-start px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/10"
@@ -2464,6 +2591,13 @@ const Chat = () => {
                                         </div>
                                       )}
                                     </span>
+                                  )}
+                                  {(m as any).pinnedAt && (
+                                    <i
+                                      className="ri-pushpin-fill text-xs opacity-70 me-1"
+                                      title="Pinned"
+                                      aria-label="Pinned"
+                                    />
                                   )}
                                   {(m.sender as any)?.name} &middot;{" "}
                                   {m.createdAt ? format(new Date(m.createdAt), "h:mm a") : ""}

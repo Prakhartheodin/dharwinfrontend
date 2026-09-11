@@ -113,6 +113,7 @@ interface ChatSocketContextValue {
   onCallEnded: (callback: (data: { conversationId: string; roomName: string }) => void) => () => void;
   onMessageDeleted: (callback: (data: { conversationId: string; messageId: string; deleteFor?: string }) => void) => () => void;
   onMessageReacted: (callback: (data: { conversationId: string; message: unknown }) => void) => () => void;
+  onMessagePinned: (callback: (data: { conversationId: string; messageId: string; pinned: boolean; message: unknown }) => void) => () => void;
   onTyping: (callback: (data: { conversationId: string; userId: string; userName: string }) => void) => () => void;
   onMessagesRead: (callback: (data: { conversationId: string; userId: string; readAt: string }) => void) => () => void;
   emitTyping: (conversationId: string) => void;
@@ -163,6 +164,7 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
   const callEndedListeners = useRef<Set<(data: { conversationId: string; roomName: string }) => void>>(new Set());
   const messageDeletedListeners = useRef<Set<(data: { conversationId: string; messageId: string; deleteFor?: string }) => void>>(new Set());
   const messageReactedListeners = useRef<Set<(data: { conversationId: string; message: unknown }) => void>>(new Set());
+  const messagePinnedListeners = useRef<Set<(data: { conversationId: string; messageId: string; pinned: boolean; message: unknown }) => void>>(new Set());
   const typingListeners = useRef<Set<(data: { conversationId: string; userId: string; userName: string }) => void>>(new Set());
   const readListeners = useRef<Set<(data: { conversationId: string; userId: string; readAt: string }) => void>>(new Set());
   const dismissIncomingCallFnRef = useRef<(() => void) | null>(null);
@@ -209,6 +211,11 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
   const onMessageReacted = useCallback((cb: (data: { conversationId: string; message: unknown }) => void) => {
     messageReactedListeners.current.add(cb);
     return () => { messageReactedListeners.current.delete(cb); };
+  }, []);
+
+  const onMessagePinned = useCallback((cb: (data: { conversationId: string; messageId: string; pinned: boolean; message: unknown }) => void) => {
+    messagePinnedListeners.current.add(cb);
+    return () => { messagePinnedListeners.current.delete(cb); };
   }, []);
 
   const onCallEnded = useCallback((cb: (data: { conversationId: string; roomName: string }) => void) => {
@@ -546,6 +553,10 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
           messageReactedListeners.current.forEach((cb) => cb(data));
         });
 
+        sock.on("message_pinned", (data: { conversationId: string; messageId: string; pinned: boolean; message: unknown }) => {
+          messagePinnedListeners.current.forEach((cb) => cb(data));
+        });
+
         sock.on("user_typing", (data: { conversationId: string; userId: string; userName: string }) => {
           typingListeners.current.forEach((cb) => cb(data));
         });
@@ -606,6 +617,7 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
     onCallEnded,
     onMessageDeleted,
     onMessageReacted,
+    onMessagePinned,
     onTyping,
     onMessagesRead,
     emitTyping,

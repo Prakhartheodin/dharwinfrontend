@@ -658,6 +658,91 @@
   background: rgba(244, 63, 94, 0.08);
 }
 
+/* Pinned-message rail, directly under the thread header. Uses the accent tokens so it reads
+   as chrome rather than as a message bubble. */
+.pinnedBar {
+  border-bottom: 1px solid var(--chat-border);
+  background: var(--chat-accent-soft);
+}
+
+.pinnedBarToggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--chat-ink);
+  text-align: start;
+
+  i {
+    font-size: 0.9rem;
+    line-height: 1;
+    color: var(--chat-accent);
+  }
+
+  i:last-child {
+    margin-inline-start: auto;
+    color: inherit;
+    opacity: 0.7;
+  }
+}
+
+.pinnedBarList {
+  margin: 0;
+  padding: 0 0 0.5rem;
+  list-style: none;
+  max-height: 9rem;
+  overflow-y: auto;
+}
+
+.pinnedBarItem {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 1.25rem;
+  border-inline-start: 2px solid var(--chat-accent);
+  margin-inline-start: 1.25rem;
+}
+
+.pinnedBarSender {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--chat-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pinnedBarText {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--chat-ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pinnedBarUnpin {
+  margin-inline-start: auto;
+  flex-shrink: 0;
+  padding: 0.25rem;
+  border-radius: var(--chat-radius-md);
+  color: var(--chat-ink-muted);
+  line-height: 1;
+
+  &:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--chat-ink);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+  }
+}
+
 .errorInline {
   margin: 0.5rem 1rem 0;
   padding: 0.5rem 0.75rem;

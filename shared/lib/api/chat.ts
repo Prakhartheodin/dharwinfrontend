@@ -45,6 +45,13 @@ export interface Message {
   createdAt: string;
   deletedAt?: string;
   deletedFor?: "me" | "everyone";
+  /** Conversation-wide pin — set for every participant, not per-viewer. */
+  pinnedAt?: string | null;
+  /**
+   * Populated only on the pinned-list endpoint (and left as a raw id on thread messages).
+   * Reads come back via .lean(), so the id is `_id`, not `id`.
+   */
+  pinnedBy?: { id?: string; _id?: string; name?: string } | string | null;
 }
 
 /** Other party (or group label) for personal call log rows from GET /chats/calls */
@@ -190,6 +197,24 @@ export async function forwardMessage(
     { targetConversationIds }
   );
   return data;
+}
+
+/** Pin or unpin for the whole conversation. Groups allow admins only; direct chats, either party. */
+export async function setMessagePinned(
+  conversationId: string,
+  messageId: string,
+  pinned: boolean
+): Promise<Message> {
+  const { data } = await apiClient.post(
+    `${BASE}/conversations/${conversationId}/messages/${messageId}/pin`,
+    { pinned }
+  );
+  return data;
+}
+
+export async function listPinnedMessages(conversationId: string): Promise<Message[]> {
+  const { data } = await apiClient.get(`${BASE}/conversations/${conversationId}/pinned`);
+  return data?.results || [];
 }
 
 export async function markAsRead(conversationId: string): Promise<void> {
