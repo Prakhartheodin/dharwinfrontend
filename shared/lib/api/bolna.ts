@@ -43,11 +43,6 @@ export type BolnaExecutionDetails = {
   [key: string]: unknown;
 };
 
-export type GetCallStatusResponse = {
-  success: boolean;
-  details: BolnaExecutionDetails;
-};
-
 export type CallVerification = {
   nameConfirmed?: boolean | null;
   correctedName?: string | null;
@@ -214,13 +209,6 @@ export async function initiateCandidateVerificationCall(
   params: InitiateCandidateVerificationCallParams
 ): Promise<InitiateBolnaCallResponse> {
   const { data } = await apiClient.post<InitiateBolnaCallResponse>("/bolna/candidate-call", params);
-  return data;
-}
-
-export async function getBolnaCallStatus(
-  executionId: string
-): Promise<GetCallStatusResponse> {
-  const { data } = await apiClient.get<GetCallStatusResponse>(`/bolna/call-status/${executionId}`);
   return data;
 }
 
