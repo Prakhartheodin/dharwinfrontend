@@ -13,7 +13,7 @@ import ListPagination from '@/shared/components/ListPagination'
 import Swal from 'sweetalert2'
 import { listJobs, type Job } from '@/shared/lib/api/jobs'
 import { type CandidateListItem } from '@/shared/lib/api/candidates'
-import { listAllUsers } from '@/shared/lib/api/users'
+import { listAllUsers, hasMeetingEmailMuted } from '@/shared/lib/api/users'
 import ParticipantInvitesField, { type ParticipantUser } from '@/shared/components/meeting/ParticipantInvitesField'
 import MeetingReadOnlyView from '@/shared/components/meeting/MeetingReadOnlyView'
 import { useConfirm } from '@/shared/components/ui/useConfirm'
@@ -549,7 +549,12 @@ export default function InterviewsClient() {
       const users = await listAllUsers({ status: 'active' })
       setEditUsers(
         users
-          .map((u) => ({ id: u.id, name: u.name, email: u.email }))
+          .map((u) => ({
+            id: u.id,
+            name: u.name,
+            email: u.email,
+            muted: hasMeetingEmailMuted(u),
+          }))
           .filter((u) => u.email)
       )
       editUsersLoadedRef.current = true
@@ -559,6 +564,16 @@ export default function InterviewsClient() {
       setEditUsersLoading(false)
     }
   }, [])
+
+  /**
+   * Invitee addresses that will not receive invitation email. Keyed on the same address the
+   * picker writes into the invite list, so the read-only view can flag a listed participant
+   * without re-fetching anything.
+   */
+  const editMutedEmails = useMemo(
+    () => new Set(editUsers.filter((u) => u.muted).map((u) => u.email.toLowerCase())),
+    [editUsers]
+  )
 
   const openEditModal = useCallback((id: string) => {
     setEditMeetingId(id)
@@ -2953,6 +2968,7 @@ export default function InterviewsClient() {
                       { label: 'Description', value: editMeeting.description },
                     ]}
                     invites={editEmailInvites}
+                    mutedEmails={editMutedEmails}
                     notes={editMeeting.notes}
                   />
                   <div className="flex justify-end pt-4 border-t border-defaultborder dark:border-defaultborder/10">

@@ -1,10 +1,16 @@
 "use client"
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react'
+import NotificationsOffBadge from './NotificationsOffBadge'
 
 export interface ParticipantUser {
   id: string
   name?: string
   email: string
+  /**
+   * This user turned meeting-invitation email off, so adding them here will not email them.
+   * Set from `hasMeetingEmailMuted`; absent means opted in.
+   */
+  muted?: boolean
 }
 
 export interface ParticipantInvitesFieldProps {
@@ -219,8 +225,11 @@ export default function ParticipantInvitesField({
                             {checked ? <i className="ri-check-line text-[11px] leading-none" /> : null}
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-defaulttextcolor dark:text-white">
-                              {u.name || u.email}
+                            <span className="flex items-center gap-1.5">
+                              <span className="truncate text-defaulttextcolor dark:text-white">
+                                {u.name || u.email}
+                              </span>
+                              {u.muted ? <NotificationsOffBadge className="flex-shrink-0" /> : null}
                             </span>
                             {u.name ? (
                               <span className="block truncate text-xs text-defaulttextcolor/60 dark:text-white/60">
@@ -273,6 +282,7 @@ export default function ParticipantInvitesField({
                     <span className="truncate" title={u?.name ? `${u.name} — ${e}` : e}>
                       {u?.name || e}
                     </span>
+                    {u?.muted ? <NotificationsOffBadge className="flex-shrink-0" /> : null}
                     <button
                       type="button"
                       className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full hover:bg-primary/20"

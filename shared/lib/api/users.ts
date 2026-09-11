@@ -133,6 +133,21 @@ export function pickOfficialEmail(u: User): string {
   return official || u.email;
 }
 
+/**
+ * True when this user has switched OFF meeting-invitation email in their own notification
+ * preferences (Settings → Personal Information → Meetings & learning).
+ *
+ * The backend drops such a recipient before the send, so an address appearing on a meeting's
+ * invite list says nothing about whether they were actually told. Callers use this to mark the
+ * invitee in the UI instead of letting the list imply a delivery that never happens. Unset
+ * preferences mean opted in, matching the backend schema default.
+ */
+export function hasMeetingEmailMuted(u: User): boolean {
+  const r = u as Record<string, unknown>;
+  const prefs = r.notificationPreferences as NotificationPreferences | undefined;
+  return prefs?.meetingInvitations === false;
+}
+
 /** The company-assigned work email only (empty string if none assigned). No personal fallback. */
 export function getCompanyAssignedEmail(u: User): string {
   const r = u as Record<string, unknown>;

@@ -6,7 +6,7 @@ import { useAuth } from "@/shared/contexts/auth-context"
 import { appendJoinIdentityToUrl, resolveMeetingShareUrl, resolvePersonalJoinIdentity } from "@/shared/lib/join-room-url"
 import type { InternalMeeting } from "@/shared/lib/api/internal-meetings"
 import MeetingCreatedSuccess from "@/shared/components/meeting/MeetingCreatedSuccess"
-import { listAllUsers, pickOfficialEmail } from "@/shared/lib/api/users"
+import { listAllUsers, pickOfficialEmail, hasMeetingEmailMuted } from "@/shared/lib/api/users"
 import ParticipantInvitesField, { type ParticipantUser } from "@/shared/components/meeting/ParticipantInvitesField"
 import RecurrenceFields from "@/shared/components/meeting/RecurrenceFields"
 import DateTimeOverlay from "@/shared/components/datetime/DateTimeOverlay"
@@ -84,7 +84,12 @@ export default function CreateInternalMeetingModal({
       setParticipantUsers(
         // Show ALL users: company work email when assigned, otherwise personal login email.
         users
-          .map((u) => ({ id: u.id, name: u.name, email: pickOfficialEmail(u) }))
+          .map((u) => ({
+            id: u.id,
+            name: u.name,
+            email: pickOfficialEmail(u),
+            muted: hasMeetingEmailMuted(u),
+          }))
           .filter((u) => u.email)
       )
     } catch {

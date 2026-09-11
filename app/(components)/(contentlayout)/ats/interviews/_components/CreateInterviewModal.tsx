@@ -19,7 +19,7 @@ import DateTimeOverlay from '@/shared/components/datetime/DateTimeOverlay'
 import { to12Hour } from '@/shared/components/datetime/daySlots'
 import AgentMultiSelect from './AgentMultiSelect'
 import { saveDraft, loadDraft, clearDraft, type InterviewDraftData } from './interviewDraft'
-import { listAllUsers, pickOfficialEmail } from '@/shared/lib/api/users'
+import { listAllUsers, pickOfficialEmail, hasMeetingEmailMuted } from '@/shared/lib/api/users'
 import ParticipantInvitesField, { type ParticipantUser } from '@/shared/components/meeting/ParticipantInvitesField'
 
 function jobIdFromAppJob(job: JobApplication['job'] | undefined | null): string | null {
@@ -184,7 +184,14 @@ export default function CreateInterviewModal({
     try {
       const users = await listAllUsers({ status: 'active' })
       setParticipantUsers(
-        users.map((u) => ({ id: u.id, name: u.name, email: pickOfficialEmail(u) })).filter((u) => u.email)
+        users
+          .map((u) => ({
+            id: u.id,
+            name: u.name,
+            email: pickOfficialEmail(u),
+            muted: hasMeetingEmailMuted(u),
+          }))
+          .filter((u) => u.email)
       )
     } catch {
       setParticipantUsersError('Could not load users.')

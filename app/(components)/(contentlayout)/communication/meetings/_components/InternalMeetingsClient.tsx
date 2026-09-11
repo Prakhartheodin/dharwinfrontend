@@ -22,7 +22,7 @@ import {
 } from "@/shared/lib/api/internal-meetings"
 import CreateInternalMeetingModal from "./CreateInternalMeetingModal"
 import RecordingsModal, { type RecordingListItem } from "../../../ats/interviews/_components/RecordingsModal"
-import { listAllUsers, pickOfficialEmail } from "@/shared/lib/api/users"
+import { listAllUsers, pickOfficialEmail, hasMeetingEmailMuted } from "@/shared/lib/api/users"
 import ParticipantInvitesField, { type ParticipantUser } from "@/shared/components/meeting/ParticipantInvitesField"
 import MeetingReadOnlyView from "@/shared/components/meeting/MeetingReadOnlyView"
 import { useConfirm } from "@/shared/components/ui/useConfirm"
@@ -557,7 +557,12 @@ export default function InternalMeetingsClient() {
       const users = await listAllUsers({ status: "active" })
       setEditUsers(
         users
-          .map((u) => ({ id: u.id, name: u.name, email: pickOfficialEmail(u) }))
+          .map((u) => ({
+            id: u.id,
+            name: u.name,
+            email: pickOfficialEmail(u),
+            muted: hasMeetingEmailMuted(u),
+          }))
           .filter((u) => u.email)
       )
       editUsersLoadedRef.current = true
@@ -567,6 +572,16 @@ export default function InternalMeetingsClient() {
       setEditUsersLoading(false)
     }
   }, [])
+
+  /**
+   * Invitee addresses that will not receive invitation email. Keyed on the same address the
+   * picker writes into the invite list, so the read-only view can flag a listed participant
+   * without re-fetching anything.
+   */
+  const editMutedEmails = useMemo(
+    () => new Set(editUsers.filter((u) => u.muted).map((u) => u.email.toLowerCase())),
+    [editUsers]
+  )
 
   const openEditModal = useCallback((id: string, seriesMode: SeriesEditMode = "single") => {
     setEditMeetingId(id)
@@ -1403,6 +1418,7 @@ export default function InternalMeetingsClient() {
                       { label: "Description", value: editMeeting.description },
                     ]}
                     invites={editEmailInvites}
+                    mutedEmails={editMutedEmails}
                     notes={editMeeting.notes}
                   />
                   <div className="flex justify-end pt-4 border-t border-defaultborder dark:border-defaultborder/10">

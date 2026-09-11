@@ -1,5 +1,6 @@
 "use client"
 import React from 'react'
+import NotificationsOffBadge from './NotificationsOffBadge'
 
 export interface ReadOnlyRow {
   label: string
@@ -13,6 +14,12 @@ export interface MeetingReadOnlyViewProps {
   rows: ReadOnlyRow[]
   /** Optional invite/participant emails to list. */
   invites?: string[]
+  /**
+   * Lowercased addresses whose owner has meeting-invitation email switched off. Listed
+   * invitees matching one of these get a badge — the address alone looks identical whether
+   * or not the invitation was actually delivered.
+   */
+  mutedEmails?: ReadonlySet<string>
   notes?: string
 }
 
@@ -22,7 +29,13 @@ export interface MeetingReadOnlyViewProps {
  * editable. Per the `read-only-distinction` UX rule, this is visually distinct
  * from disabled inputs: plain labelled values, not greyed-out form controls.
  */
-export default function MeetingReadOnlyView({ banner, rows, invites, notes }: MeetingReadOnlyViewProps) {
+export default function MeetingReadOnlyView({
+  banner,
+  rows,
+  invites,
+  mutedEmails,
+  notes,
+}: MeetingReadOnlyViewProps) {
   const cleanInvites = (invites ?? []).map((e) => e.trim()).filter(Boolean)
   return (
     <div className="space-y-4 max-h-[calc(100vh-12rem)] overflow-y-auto">
@@ -56,9 +69,10 @@ export default function MeetingReadOnlyView({ banner, rows, invites, notes }: Me
             {cleanInvites.map((email, i) => (
               <li
                 key={i}
-                className="inline-flex items-center rounded-md border border-defaultborder/70 bg-light/40 px-2 py-0.5 text-xs text-defaulttextcolor dark:border-defaultborder/20 dark:bg-white/[0.03] dark:text-white"
+                className="inline-flex items-center gap-1.5 rounded-md border border-defaultborder/70 bg-light/40 px-2 py-0.5 text-xs text-defaulttextcolor dark:border-defaultborder/20 dark:bg-white/[0.03] dark:text-white"
               >
                 {email}
+                {mutedEmails?.has(email.toLowerCase()) ? <NotificationsOffBadge /> : null}
               </li>
             ))}
           </ul>
