@@ -168,26 +168,56 @@ function mergeGmailLabelCounts(
   counts: emailApi.EmailFolderCounts
 ): EmailLabel[] {
   return labels.map((label) => {
-    const key = GMAIL_FOLDER_COUNT_KEY_BY_LABEL[label.id];
-    const bucket = key ? counts[key] : undefined;
+    // User labels come back keyed by their own id.
+    const bucket = counts[GMAIL_FOLDER_COUNT_KEY_BY_LABEL[label.id] ?? label.id];
     if (!bucket) return label;
     return { ...label, unread: bucket.unread, total: bucket.total };
   });
 }
 
+/** 950 → "950", 23_650 → "23.7K", 1_250_000 → "1.3M". Fixed "en" so en-IN does not render lakh/crore suffixes. */
+const mailNavCountFormat = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
+
 function formatMailNavBadgeCount(count: number): string {
-  if (count > 999) return `${(count / 1000).toFixed(1)}k`;
-  return String(count);
+  return mailNavCountFormat.format(count);
 }
 
-function MailNavUnreadBadge({ count }: { count: number }) {
-  if (count <= 0) return null;
+/**
+ * Green pill for unread (hidden at 0), muted total beside it whenever the provider reported one.
+ * `capped`: the provider stopped counting (Gmail archive), so the total is a floor and reads "500+".
+ */
+function MailNavCountBadge({
+  unread,
+  total,
+  capped = false,
+}: {
+  unread: number;
+  total?: number;
+  capped?: boolean;
+}) {
+  const hasTotal = typeof total === "number";
+  if (unread <= 0 && !hasTotal) return null;
   return (
-    <span
-      className="badge !rounded-full !bg-success/20 !text-success !text-[.65rem] !px-1.5 !py-0"
-      title="Unread conversations"
-    >
-      {formatMailNavBadgeCount(count)}
+    <span className="flex items-center gap-1.5 shrink-0 ms-2">
+      {unread > 0 && (
+        <span
+          className="badge !rounded-full !bg-success/20 !text-success !text-[.65rem] !px-1.5 !py-0 tabular-nums"
+          title={`${unread.toLocaleString()} unread`}
+        >
+          {formatMailNavBadgeCount(unread)}
+          <span className="sr-only"> unread</span>
+        </span>
+      )}
+      {hasTotal && (
+        <span
+          className="text-[.6875rem] tabular-nums text-textmuted dark:text-white/50"
+          title={capped ? `More than ${total.toLocaleString()}` : `${total.toLocaleString()} total`}
+        >
+          {formatMailNavBadgeCount(total)}
+          {capped ? "+" : ""}
+          <span className="sr-only">{capped ? " or more" : " total"}</span>
+        </span>
+      )}
     </span>
   );
 }
@@ -384,6 +414,8 @@ const Mailapp = () => {
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [labels, setLabels] = useState<EmailLabel[]>([]);
   const [gmailFolderCounts, setGmailFolderCounts] = useState<emailApi.EmailFolderCounts | null>(null);
+  /** Bumped by every labels/counts load; a load whose number is no longer current discards its result. */
+  const labelsLoadSeqRef = useRef(0);
   const [selectedLabelId, setSelectedLabelId] = useState<string>("ALL");
   const [threads, setThreads] = useState<EmailThreadListItem[]>([]);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
@@ -951,6 +983,7 @@ const Mailapp = () => {
 
   useEffect(() => {
     const accountId = selectedAccountId;
+    const seq = ++labelsLoadSeqRef.current;
     if (!accountId) {
       setLabels([]);
       setGmailFolderCounts(null);
@@ -958,26 +991,25 @@ const Mailapp = () => {
     }
     const id: string = accountId;
     let cancelled = false;
+    const stale = () => cancelled || seq !== labelsLoadSeqRef.current;
     async function load() {
       try {
         const list = await emailApi.getLabels(id, mailProvider);
-        if (cancelled) return;
-        if (mailProvider === "gmail") {
-          try {
-            const counts = await emailApi.getFolderCounts(id, mailProvider);
-            if (cancelled) return;
-            setGmailFolderCounts(counts);
-            setLabels(mergeGmailLabelCounts(list, counts));
-          } catch {
-            setGmailFolderCounts(null);
-            setLabels(list);
-          }
-        } else {
-          setGmailFolderCounts(null);
-          setLabels(list);
+        if (stale()) return;
+        // Folders first, counts after: Gmail counts cost a call per label and can take seconds.
+        setGmailFolderCounts(null);
+        setLabels(list);
+        if (mailProvider !== "gmail") return;
+        try {
+          const counts = await emailApi.getFolderCounts(id, mailProvider);
+          if (stale()) return;
+          setGmailFolderCounts(counts);
+          setLabels(mergeGmailLabelCounts(list, counts));
+        } catch {
+          // Folders are already on screen; they just carry no numbers.
         }
       } catch {
-        if (!cancelled) {
+        if (!stale()) {
           setLabels([]);
           setGmailFolderCounts(null);
         }
@@ -995,19 +1027,27 @@ const Mailapp = () => {
 
   const refreshMailboxLabels = useCallback(async () => {
     const accountId = selectedAccountId;
+    const seq = ++labelsLoadSeqRef.current;
     if (!accountId) {
       setLabels([]);
       setGmailFolderCounts(null);
       return;
     }
+    // Refreshes overlap (every trash / read / spam fires one) and can outlive an account
+    // switch. Only the newest load may write, or an older response - possibly for the
+    // mailbox just switched away from - lands on top with the wrong numbers.
+    const stale = () => seq !== labelsLoadSeqRef.current;
     try {
       const list = await emailApi.getLabels(accountId, mailProvider);
+      if (stale()) return;
       if (mailProvider === "gmail") {
         try {
           const counts = await emailApi.getFolderCounts(accountId, mailProvider);
+          if (stale()) return;
           setGmailFolderCounts(counts);
           setLabels(mergeGmailLabelCounts(list, counts));
         } catch {
+          if (stale()) return;
           setGmailFolderCounts(null);
           setLabels(list);
         }
@@ -1016,6 +1056,7 @@ const Mailapp = () => {
         setLabels(list);
       }
     } catch {
+      if (stale()) return;
       setLabels([]);
       setGmailFolderCounts(null);
     }
@@ -2285,12 +2326,25 @@ const Mailapp = () => {
     [labels]
   );
 
+  const totalForLabel = useCallback(
+    (labelId: string): number | undefined => labels.find((l) => l.id === labelId)?.total,
+    [labels]
+  );
+
   const allMailsUnread = useMemo(() => {
     if (mailProvider === "gmail") {
       return gmailFolderCounts?.all?.unread ?? unreadForLabel("INBOX");
     }
     return labels.reduce((sum, l) => sum + (l.unread ?? 0), 0);
   }, [mailProvider, gmailFolderCounts, labels, unreadForLabel]);
+
+  const allMailsTotal = useMemo((): number | undefined => {
+    if (mailProvider === "gmail") return gmailFolderCounts?.all?.total;
+    // Outlook folders do not overlap, so their totals add up to the mailbox.
+    return labels.some((l) => typeof l.total === "number")
+      ? labels.reduce((sum, l) => sum + (l.total ?? 0), 0)
+      : undefined;
+  }, [mailProvider, gmailFolderCounts, labels]);
 
 
   /**
@@ -2830,7 +2884,15 @@ const Mailapp = () => {
   // Outlook has a real Archive folder and already lists it among its own.
   const navLabels =
     currentProvider === "gmail"
-      ? [...filteredLabels, { id: ARCHIVE_LABEL_ID, name: "Archive", type: "system" as const }]
+      ? [
+          ...filteredLabels,
+          {
+            id: ARCHIVE_LABEL_ID,
+            name: "Archive",
+            type: "system" as const,
+            total: gmailFolderCounts?.archive?.total,
+          },
+        ]
       : filteredLabels;
 
   const mailLabelsOrdered = [...navLabels].sort((a, b) => {
@@ -3159,7 +3221,7 @@ const Mailapp = () => {
                               <i className="ri-mail-line align-middle text-[.875rem] me-2"></i>
                               <span className="whitespace-nowrap">All Mails</span>
                             </div>
-                            <MailNavUnreadBadge count={allMailsUnread} />
+                            <MailNavCountBadge unread={allMailsUnread} total={allMailsTotal} />
                           </div>
                           </button>
                         </li>
@@ -3177,7 +3239,7 @@ const Mailapp = () => {
                               <i className="ri-inbox-line align-middle text-[.875rem] me-2"></i>
                               <span className="whitespace-nowrap">Inbox</span>
                             </div>
-                            <MailNavUnreadBadge count={unreadForLabel("INBOX")} />
+                            <MailNavCountBadge unread={unreadForLabel("INBOX")} total={totalForLabel("INBOX")} />
                           </div>
                           </button>
                         </li>
@@ -3198,11 +3260,18 @@ const Mailapp = () => {
                                       className={`${getLabelIcon(label.id)} align-middle text-[.875rem] me-2`}
                                       aria-hidden
                                     ></i>
-                                    <span className="whitespace-nowrap">
+                                    {/* truncate: a long label name would otherwise push the counts off the row. */}
+                                    <span className="truncate" title={label.name}>
                                       {label.id === "conversationhistory" ? "Conversation History" : label.name}
                                     </span>
                                   </div>
-                                  <MailNavUnreadBadge count={unreadForLabel(label.id)} />
+                                  {/* Read off the label, not the lookup: Gmail's Archive entry is
+                                      synthesized in navLabels and is not in `labels`. */}
+                                  <MailNavCountBadge
+                                    unread={label.unread ?? 0}
+                                    total={label.total}
+                                    capped={label.id === ARCHIVE_LABEL_ID && gmailFolderCounts?.archive?.capped}
+                                  />
                                 </div>
                               </button>
                             </li>
@@ -3357,9 +3426,9 @@ const Mailapp = () => {
                                         className="ri-price-tag-line align-middle text-[.875rem] me-2 text-secondary"
                                         aria-hidden
                                       ></i>
-                                      <span className="whitespace-nowrap">{label.name}</span>
+                                      <span className="truncate" title={label.name}>{label.name}</span>
                                     </div>
-                                    <MailNavUnreadBadge count={unreadForLabel(label.id)} />
+                                    <MailNavCountBadge unread={label.unread ?? 0} total={label.total} />
                                   </div>
                                 </button>
                               </li>

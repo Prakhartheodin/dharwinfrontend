@@ -2,7 +2,7 @@
 
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
-import React, { Fragment, useEffect, useState } from "react";
+import React, { Fragment, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ROUTES } from "@/shared/lib/constants";
 import * as usersApi from "@/shared/lib/api/users";
@@ -14,9 +14,19 @@ import {
   DEFAULT_PHONE_COUNTRY,
 } from "@/shared/lib/phoneCountries";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
+import { PublicApplyCaptcha } from "@/shared/components/ats/PublicApplyCaptcha";
+import {
+  PublicApplyOptionalProfileDetails,
+  PublicApplyResumeSection,
+  PublicApplyResumeUploadField,
+} from "@/shared/components/ats/PublicApplyResumeSection";
+import { usePublicApplyCaptcha } from "@/shared/hooks/usePublicApplyCaptcha";
+import { useCandidateOnboardResumeParse } from "@/shared/hooks/useCandidateOnboardResumeParse";
+import { isPublicResumeFile, PUBLIC_RESUME_FORMAT_MESSAGE } from "@/shared/lib/publicApplyResume";
 
 const PASSWORD_MIN_LENGTH = 8;
-const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?])/;
+/** Matches backend `custom.validation.js` password rules. */
+const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)/;
 
 function decryptBase64(s: string): string {
   try {
@@ -35,9 +45,9 @@ function getErrorMessage(err: unknown): string {
 }
 
 /**
- * Public candidate onboarding (Dharwrin-style).
+ * Public candidate onboarding.
  * URL: /candidate-onboard?token=...&adminId=...&email=...&expires=...
- * Creates User (active) + Candidate, returns tokens. User can log in immediately.
+ * Creates a pending User + Candidate; email verification activates the account (no tokens on register).
  */
 export default function CandidateOnboardPage() {
   const router = useRouter();
@@ -58,6 +68,91 @@ export default function CandidateOnboardPage() {
   const [isValidToken, setIsValidToken] = useState(false);
   const [referralRef, setReferralRef] = useState<string | null>(null);
   const [emailFromLink, setEmailFromLink] = useState(false);
+  const [resume, setResume] = useState<File | null>(null);
+  const resumeInputRef = useRef<HTMLInputElement>(null);
+
+  const {
+    ensureCaptchaReady,
+    setCaptchaToken,
+    registerCaptchaReset,
+    rotateCaptchaToken,
+    finalizeProtectedAttempt,
+    handleCaptchaApiError,
+    captchaRetryMessage,
+  } = usePublicApplyCaptcha();
+
+  const {
+    entryMode,
+    setEntryMode,
+    parseStatus,
+    parseMessage,
+    suggestedSkills,
+    setSuggestedSkills,
+    suggestedExperiences,
+    setSuggestedExperiences,
+    suggestedQualifications,
+    setSuggestedQualifications,
+    suggestedSocialLinks,
+    setSuggestedSocialLinks,
+    markFieldEdited,
+    runParse,
+    retryParse,
+    getSubmitSkills,
+    getSubmitProfileArrays,
+  } = useCandidateOnboardResumeParse({ onCaptchaTokenConsumed: rotateCaptchaToken });
+
+  const onboardPrefillTargets = {
+    firstName,
+    lastName,
+    email,
+    phoneNumber,
+    countryCode,
+    setFirstName: (value: string) => {
+      markFieldEdited("firstName");
+      setFirstName(value);
+    },
+    setLastName: (value: string) => {
+      markFieldEdited("lastName");
+      setLastName(value);
+    },
+    setEmail: (value: string) => {
+      markFieldEdited("email");
+      setEmail(value);
+    },
+    setPhoneNumber: (value: string) => {
+      markFieldEdited("phoneNumber");
+      setPhoneNumber(value);
+    },
+    setCountryCode: (value: string) => {
+      markFieldEdited("countryCode");
+      setCountryCode(value);
+    },
+  };
+
+  const handleResumeSelected = (file: File) => {
+    if (!isPublicResumeFile(file)) {
+      void Swal.fire({
+        icon: "error",
+        title: "Invalid file type",
+        text: PUBLIC_RESUME_FORMAT_MESSAGE,
+      });
+      if (resumeInputRef.current) resumeInputRef.current.value = "";
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      void Swal.fire({
+        icon: "error",
+        title: "File too large",
+        text: "Resume must be less than 10MB.",
+      });
+      if (resumeInputRef.current) resumeInputRef.current.value = "";
+      return;
+    }
+    setResume(file);
+    if (entryMode === "ai") {
+      void runParse(file, onboardPrefillTargets);
+    }
+  };
 
   useEffect(() => {
     const refParam = searchParams.get("ref");
@@ -145,26 +240,49 @@ export default function CandidateOnboardPage() {
       return;
     }
     if (!PASSWORD_REGEX.test(password)) {
-      setError("Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character.");
+      setError("Password must contain at least one uppercase letter and one number.");
       return;
     }
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
       return;
     }
+    if (!resume) {
+      setError("Please upload your resume.");
+      return;
+    }
+
+    const captchaError = ensureCaptchaReady();
+    if (captchaError) {
+      setError(captchaError);
+      return;
+    }
+
+    const profileArrays = getSubmitProfileArrays();
+    const registrationExtras = {
+      entryMode,
+      resume,
+      skills: getSubmitSkills(),
+      experiences: profileArrays.experiences,
+      qualifications: profileArrays.qualifications,
+      socialLinks: profileArrays.socialLinks,
+    };
 
     setLoading(true);
     try {
       if (adminId) {
-        const res = await usersApi.registerCandidateFromInvite({
-          name: `${fn} ${ln}`,
-          email: em,
-          password,
-          role: "user",
-          phoneNumber: phone,
-          countryCode,
-          adminId,
-        });
+        const res = await usersApi.registerCandidateFromInvite(
+          {
+            name: `${fn} ${ln}`,
+            email: em,
+            password,
+            role: "user",
+            phoneNumber: phone,
+            countryCode,
+            adminId,
+          },
+          registrationExtras
+        );
         await Swal.fire({
           title: res.resent ? "Verification Email Re-sent" : "Registration Successful!",
           html: `
@@ -188,22 +306,46 @@ export default function CandidateOnboardPage() {
           )}`
         );
       } else {
-        const res = await usersApi.publicRegisterCandidate({
-          name: `${fn} ${ln}`,
-          email: em,
-          password,
-          // Store local digits only — countryCode is the source of truth for dial prefix.
-          // Invite path (above) already saves local digits; both paths must agree to avoid
-          // Edit Profile rehydrating "+91..." as a malformed local number.
-          phoneNumber: phone,
-          countryCode,
-          ...(referralRef ? { ref: referralRef } : {}),
-        });
-        router.push(
-          `${ROUTES.signIn}?registered=1&message=${encodeURIComponent(res.message ?? "Registration successful. You can sign in.")}`
+        const res = await usersApi.publicRegisterCandidate(
+          {
+            name: `${fn} ${ln}`,
+            email: em,
+            password,
+            // Store local digits only — countryCode is the source of truth for dial prefix.
+            // Invite path (above) already saves local digits; both paths must agree to avoid
+            // Edit Profile rehydrating "+91..." as a malformed local number.
+            phoneNumber: phone,
+            countryCode,
+            ...(referralRef ? { ref: referralRef } : {}),
+          },
+          registrationExtras
         );
+        const verifyMessage =
+          res.message ??
+          "Registration successful. Check your email to verify your address and activate your account.";
+        await Swal.fire({
+          title: "Registration Successful!",
+          html: `
+            <p class="mb-4">We sent a verification email to <strong>${em}</strong>.</p>
+            <div class="text-left bg-gray-50 rounded-lg p-4 text-sm">
+              <p class="font-semibold mb-2">Next steps:</p>
+              <ul class="list-disc list-inside space-y-1 text-gray-700">
+                <li>Open the email and click <strong>Verify</strong></li>
+                <li>After verification, your account becomes active and you can sign in</li>
+              </ul>
+            </div>
+          `,
+          icon: "success",
+          confirmButtonText: "Go to Login",
+          confirmButtonColor: "#36af4c",
+        });
+        router.push(`${ROUTES.signIn}?registered=1&message=${encodeURIComponent(verifyMessage)}`);
       }
     } catch (err: unknown) {
+      if (handleCaptchaApiError(err)) {
+        setError(captchaRetryMessage);
+        return;
+      }
       const msg = getErrorMessage(err);
       const errorCode = err instanceof AxiosError ? err.response?.data?.errorCode : undefined;
       // Only a real duplicate account should send the user to login. Matching any message that
@@ -231,6 +373,7 @@ export default function CandidateOnboardPage() {
         setError(msg);
       }
     } finally {
+      finalizeProtectedAttempt();
       setLoading(false);
     }
   };
@@ -268,7 +411,7 @@ export default function CandidateOnboardPage() {
 
   return (
     <Fragment>
-      <Seo title="Employee onboarding" />
+      <Seo title="Candidate onboarding" />
       <div className="min-h-screen flex flex-col lg:flex-row">
         {/* Left: Form */}
         <div className="flex-1 bg-white dark:bg-white/5 flex flex-col justify-between items-center p-6 sm:p-8 lg:p-12">
@@ -277,12 +420,40 @@ export default function CandidateOnboardPage() {
               Find better jobs—faster
             </h1>
             <p className="text-defaulttextcolor/80 dark:text-white/70 mb-6">
-              Create your account using the email from your invitation.
+              {emailFromLink
+                ? "Create your account using the email from your invitation."
+                : "Create your candidate account to join the talent network."}
             </p>
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
                 <div className="p-3 rounded-lg bg-danger/10 border border-danger/30 text-danger text-sm">{error}</div>
               )}
+              <PublicApplyCaptcha onTokenChange={setCaptchaToken} onRegisterReset={registerCaptchaReset} />
+              <PublicApplyResumeSection
+                entryMode={entryMode}
+                onEntryModeChange={(mode) => {
+                  setEntryMode(mode);
+                  if (mode === "ai" && resume) {
+                    void runParse(resume, onboardPrefillTargets);
+                  }
+                }}
+                resume={resume}
+                resumeInputRef={resumeInputRef}
+                onResumeSelected={handleResumeSelected}
+                parseStatus={parseStatus}
+                parseMessage={parseMessage}
+                suggestedSkills={suggestedSkills}
+                suggestedExperiences={suggestedExperiences}
+                suggestedQualifications={suggestedQualifications}
+                suggestedSocialLinks={suggestedSocialLinks}
+                onExperiencesChange={setSuggestedExperiences}
+                onQualificationsChange={setSuggestedQualifications}
+                onSocialLinksChange={setSuggestedSocialLinks}
+                onSkillsChange={setSuggestedSkills}
+                onRetryParse={() => retryParse(onboardPrefillTargets)}
+                showOptionalProfile={false}
+                showResumeUpload={entryMode === "ai"}
+              />
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="firstName" className="form-label">First Name</label>
@@ -292,7 +463,10 @@ export default function CandidateOnboardPage() {
                     className="form-control"
                     placeholder="First name"
                     value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
+                    onChange={(e) => {
+                      markFieldEdited("firstName");
+                      setFirstName(e.target.value);
+                    }}
                     minLength={2}
                     required
                   />
@@ -305,7 +479,10 @@ export default function CandidateOnboardPage() {
                     className="form-control"
                     placeholder="Last name"
                     value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
+                    onChange={(e) => {
+                      markFieldEdited("lastName");
+                      setLastName(e.target.value);
+                    }}
                     minLength={2}
                     required
                   />
@@ -344,13 +521,23 @@ export default function CandidateOnboardPage() {
                     className="form-control flex-1 min-w-0"
                     placeholder={getPhoneCountry(countryCode).placeholder}
                     value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    onChange={(e) => {
+                      markFieldEdited("phoneNumber");
+                      setPhoneNumber(e.target.value);
+                    }}
                     maxLength={getPhoneCountry(countryCode).maxLength}
                     inputMode="numeric"
                     required
                   />
                 </div>
               </div>
+              {entryMode === "manual" ? (
+                <PublicApplyResumeUploadField
+                  resume={resume}
+                  resumeInputRef={resumeInputRef}
+                  onResumeSelected={handleResumeSelected}
+                />
+              ) : null}
               <div>
                 <label htmlFor="password" className="form-label">Password</label>
                 <div className="relative">
@@ -358,7 +545,7 @@ export default function CandidateOnboardPage() {
                     id="password"
                     type={showPassword ? "text" : "password"}
                     className="form-control pe-10"
-                    placeholder="Min 8 chars, 1 upper, 1 lower, 1 number, 1 special"
+                    placeholder="Min 8 chars, 1 uppercase letter, 1 number"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     minLength={PASSWORD_MIN_LENGTH}
@@ -368,7 +555,7 @@ export default function CandidateOnboardPage() {
                     type="button"
                     onClick={() => setShowPassword((p) => !p)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-defaulttextcolor/70 hover:text-defaulttextcolor"
-                    aria-label={showPassword ? "Hide" : "Show"}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
                   >
                     <i className={showPassword ? "ri-eye-off-line" : "ri-eye-line"} />
                   </button>
@@ -390,12 +577,26 @@ export default function CandidateOnboardPage() {
                     type="button"
                     onClick={() => setShowConfirmPassword((p) => !p)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-defaulttextcolor/70 hover:text-defaulttextcolor"
-                    aria-label={showConfirmPassword ? "Hide" : "Show"}
+                    aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
                   >
                     <i className={showConfirmPassword ? "ri-eye-off-line" : "ri-eye-line"} />
                   </button>
                 </div>
               </div>
+              {entryMode === "ai" ? (
+                <PublicApplyOptionalProfileDetails
+                  entryMode={entryMode}
+                  parseStatus={parseStatus}
+                  suggestedSkills={suggestedSkills}
+                  suggestedExperiences={suggestedExperiences}
+                  suggestedQualifications={suggestedQualifications}
+                  suggestedSocialLinks={suggestedSocialLinks}
+                  onExperiencesChange={setSuggestedExperiences}
+                  onQualificationsChange={setSuggestedQualifications}
+                  onSocialLinksChange={setSuggestedSocialLinks}
+                  onSkillsChange={setSuggestedSkills}
+                />
+              ) : null}
               <button type="submit" className="ti-btn ti-btn-primary w-full" disabled={loading}>
                 {loading ? "Creating account..." : "Create Account"}
               </button>

@@ -159,7 +159,7 @@ describe("usePublicResumeParse", () => {
     expect(result.current.suggestedSocialLinks).toHaveLength(1);
   });
 
-  it("defaults to manual entry mode and sanitizes submit profile arrays", async () => {
+  it("defaults to manual entry mode and omits profile arrays from submit payload", async () => {
     const { result } = renderHook(() => usePublicResumeParse("job-1"));
 
     expect(result.current.entryMode).toBe("manual");
@@ -167,11 +167,30 @@ describe("usePublicResumeParse", () => {
     act(() => {
       result.current.setSuggestedExperiences([
         { company: " Acme ", role: " Engineer ", currentlyWorking: false },
+      ]);
+      result.current.setSuggestedQualifications([{ degree: " BSc ", institute: " State U " }]);
+      result.current.setSuggestedSocialLinks([
+        { platform: " LinkedIn ", url: " https://linkedin.com/in/jane " },
+      ]);
+    });
+
+    expect(result.current.getSubmitProfileArrays()).toEqual({
+      experiences: [],
+      qualifications: [],
+      socialLinks: [],
+    });
+  });
+
+  it("sanitizes submit profile arrays in AI mode", async () => {
+    const { result } = renderHook(() => usePublicResumeParse("job-1"));
+
+    act(() => {
+      result.current.setEntryMode("ai");
+      result.current.setSuggestedExperiences([
+        { company: " Acme ", role: " Engineer ", currentlyWorking: false },
         { company: "", role: "Skip me", currentlyWorking: false },
       ]);
-      result.current.setSuggestedQualifications([
-        { degree: " BSc ", institute: " State U " },
-      ]);
+      result.current.setSuggestedQualifications([{ degree: " BSc ", institute: " State U " }]);
       result.current.setSuggestedSocialLinks([
         { platform: " LinkedIn ", url: " https://linkedin.com/in/jane " },
       ]);
@@ -318,10 +337,17 @@ describe("usePublicResumeParse", () => {
     });
 
     act(() => {
+      result.current.setSuggestedExperiences([{ company: "Acme", role: "Dev", currentlyWorking: true }]);
       result.current.setEntryMode("manual");
     });
 
     expect(result.current.suggestedSkills).toEqual([]);
+    expect(result.current.suggestedExperiences).toEqual([]);
     expect(result.current.getSubmitSkills()).toEqual([]);
+    expect(result.current.getSubmitProfileArrays()).toEqual({
+      experiences: [],
+      qualifications: [],
+      socialLinks: [],
+    });
   });
 });

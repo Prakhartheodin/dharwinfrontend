@@ -1,5 +1,76 @@
 /* Shared ATS pipeline list shell — aligned with offers-placement (keep visual tokens in sync) */
 
+/* Below 2xl (1536px): row 1 = title + count; row 2 = pipeline, show, toolbar (wrap). At 2xl+: single flat row. */
+.listHeader {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.625rem;
+  min-width: 0;
+}
+
+.listHeaderTitle {
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.listHeaderControls {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.listHeaderControlsTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.listHeaderToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+@media (max-width: 1535.98px) {
+  .listHeaderControlsTop,
+  .listHeaderToolbar {
+    display: contents;
+  }
+}
+
+@media (min-width: 1536px) {
+  .listHeader {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .listHeaderTitle {
+    width: auto;
+  }
+
+  .listHeaderControls,
+  .listHeaderControlsTop {
+    display: contents;
+  }
+
+  .listHeaderToolbar {
+    width: auto;
+    margin-left: auto;
+  }
+}
+
 .listShell {
   animation: pipelinePageIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -168,5 +239,29 @@
   .skeleton {
     animation: none;
     background: rgba(148, 163, 184, 0.15);
+  }
+}
+
+/* Below 2xl (1536px): icon-only pipeline nav + row actions (Tailwind max-2xl:sr-only is not emitted). */
+@media (max-width: 1535.98px) {
+  .pipelineNavLabel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .rowActionIconOnly {
+    min-width: 2.75rem;
+    padding-inline: 0.625rem;
+  }
+
+  .pipelineNavIcon {
+    margin-inline-end: 0 !important;
   }
 }

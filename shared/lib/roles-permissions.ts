@@ -119,7 +119,10 @@ export const PERMISSION_SECTIONS: {
   {
     id: "support",
     label: "Support",
-    features: [{ id: "tickets", label: "Support Tickets" }],
+    features: [
+      { id: "help-and-support", label: "Help & Support" },
+      { id: "tickets", label: "Support Tickets" },
+    ],
   },
   {
     id: "ai",
@@ -192,6 +195,12 @@ export function permissionsFromApi(permissions: string[]): RolePermissionsState 
   permissions.forEach((p) => {
     const trimmed = typeof p === "string" ? p.trim() : "";
     if (!trimmed) return;
+    if (trimmed === "devTickets.view") {
+      if (state.support?.["help-and-support"]) {
+        state.support["help-and-support"].view = true;
+      }
+      return;
+    }
     const colonIdx = trimmed.indexOf(":");
     if (colonIdx < 0) return;
     const actionsStr = trimmed.slice(colonIdx + 1);

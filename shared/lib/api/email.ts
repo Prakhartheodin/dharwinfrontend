@@ -72,7 +72,10 @@ export interface EmailLabel {
 
 export interface EmailFolderCount {
   unread: number;
-  total: number;
+  /** Missing when the provider could not report one (Gmail `all` without a profile). */
+  total?: number;
+  /** Gmail archive only: more threads exist than were counted, so `total` is a floor. */
+  capped?: boolean;
   messagesUnread?: number;
   messagesTotal?: number;
 }

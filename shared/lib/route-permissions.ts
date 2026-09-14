@@ -144,13 +144,11 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/communication/filemanager": "communication.files-storage:",
   "/communication/recordings": "communication.meetings:",
   "/support-tickets": "support.tickets:",
-  "/dev-tickets": "__standalone__devTickets.view",
+  "/help-and-support": "support.help-and-support:",
 };
 
 /** Paths gated by a single raw permission string (not matrix prefix:action). */
-export const STANDALONE_PATH_PERMISSIONS: Record<string, string> = {
-  "/dev-tickets": "devTickets.view",
-};
+export const STANDALONE_PATH_PERMISSIONS: Record<string, string> = {};
 
 const STANDALONE_PATH_KEYS = Object.keys(STANDALONE_PATH_PERMISSIONS).sort(
   (a, b) => b.length - a.length
@@ -251,6 +249,12 @@ export function canAccessPath(userPermissions: string[], pathname: string): bool
   if (required == null) return true;
   if (required.startsWith("__standalone__")) {
     return hasStandalonePermission(userPermissions, required.slice("__standalone__".length));
+  }
+  if (
+    required === "support.help-and-support:" &&
+    userPermissions.includes("devTickets.view")
+  ) {
+    return true;
   }
   return hasPermissionForPath(userPermissions, required);
 }

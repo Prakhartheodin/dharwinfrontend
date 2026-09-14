@@ -2,6 +2,7 @@
 
 import { apiClient } from "@/shared/lib/api/client";
 import { AUTH_ENDPOINTS } from "@/shared/lib/constants";
+import { consumeCaptchaToken, getOptionalCaptchaToken } from "@/shared/lib/publicApplyResume";
 import type { User, UsersListResponse } from "@/shared/lib/types";
 import type { AuthResponse } from "@/shared/lib/types";
 
@@ -212,8 +213,15 @@ export interface RegisterUserPayload {
 
 /** Public registration – POST /v1/auth/register. No auth required; sets HttpOnly cookies on success. */
 export async function registerUser(payload: RegisterUserPayload): Promise<AuthResponse> {
-  const { data } = await apiClient.post<AuthResponse>(AUTH_ENDPOINTS.register, payload);
-  return data;
+  const headers = publicCandidateRegistrationHeaders();
+  try {
+    const { data } = await apiClient.post<AuthResponse>(AUTH_ENDPOINTS.register, payload, { headers });
+    releaseCaptchaTokenIfSent(headers);
+    return data;
+  } catch (err) {
+    releaseCaptchaTokenIfSent(headers);
+    throw err;
+  }
 }
 
 /** Public registration – POST /v1/public/register. No auth required; user created with status pending. */
@@ -221,6 +229,15 @@ export async function publicRegisterUser(payload: PublicRegisterPayload): Promis
   const { data } = await apiClient.post<PublicRegisterResponse>(AUTH_ENDPOINTS.publicRegister, payload);
   return data;
 }
+
+export type PublicCandidateRegistrationExtras = {
+  entryMode?: "manual" | "ai";
+  resume?: File | null;
+  skills?: Array<{ name: string; level?: string; category?: string }>;
+  experiences?: unknown[];
+  qualifications?: unknown[];
+  socialLinks?: unknown[];
+};
 
 export interface PublicRegisterCandidatePayload {
   name: string;
@@ -233,21 +250,98 @@ export interface PublicRegisterCandidatePayload {
   ref?: string;
 }
 
+function appendCandidateRegistrationProfileFields(
+  formData: FormData,
+  extras?: PublicCandidateRegistrationExtras
+) {
+  const mode = extras?.entryMode === "ai" ? "ai" : "manual";
+  formData.append("entryMode", mode);
+  if (extras?.skills && extras.skills.length > 0) {
+    formData.append("skills", JSON.stringify(extras.skills));
+  }
+  if (extras?.experiences && extras.experiences.length > 0) {
+    formData.append("experiences", JSON.stringify(extras.experiences));
+  }
+  if (extras?.qualifications && extras.qualifications.length > 0) {
+    formData.append("qualifications", JSON.stringify(extras.qualifications));
+  }
+  if (extras?.socialLinks && extras.socialLinks.length > 0) {
+    formData.append("socialLinks", JSON.stringify(extras.socialLinks));
+  }
+  if (extras?.resume) {
+    formData.append("resume", extras.resume);
+  }
+}
+
 export interface PublicRegisterCandidateResponse {
   user: User;
   candidate: { _id: string; fullName: string; email: string; [key: string]: unknown };
   message: string;
 }
 
+function publicCandidateRegistrationHeaders(): Record<string, string> {
+  const captcha = getOptionalCaptchaToken();
+  return captcha ? { "x-captcha-token": captcha } : {};
+}
+
+function releaseCaptchaTokenIfSent(headers: Record<string, string>): void {
+  if (headers["x-captcha-token"]) {
+    consumeCaptchaToken();
+  }
+}
+
 /** Public candidate onboarding – POST /v1/public/register-candidate. Creates User (pending) + Candidate so they appear in ATS list. */
 export async function publicRegisterCandidate(
-  payload: PublicRegisterCandidatePayload
+  payload: PublicRegisterCandidatePayload,
+  extras?: PublicCandidateRegistrationExtras
 ): Promise<PublicRegisterCandidateResponse> {
-  const { data } = await apiClient.post<PublicRegisterCandidateResponse>(
-    AUTH_ENDPOINTS.publicRegisterCandidate,
-    payload
-  );
-  return data;
+  if (!extras?.resume) {
+    const headers = publicCandidateRegistrationHeaders();
+    try {
+      const { data } = await apiClient.post<PublicRegisterCandidateResponse>(
+        AUTH_ENDPOINTS.publicRegisterCandidate,
+        payload,
+        { headers }
+      );
+      releaseCaptchaTokenIfSent(headers);
+      return data;
+    } catch (err) {
+      releaseCaptchaTokenIfSent(headers);
+      throw err;
+    }
+  }
+
+  const formData = new FormData();
+  formData.append("name", payload.name);
+  formData.append("email", payload.email);
+  formData.append("password", payload.password);
+  if (payload.phoneNumber) formData.append("phoneNumber", payload.phoneNumber);
+  if (payload.countryCode) formData.append("countryCode", payload.countryCode);
+  if (payload.ref?.trim()) formData.append("ref", payload.ref.trim());
+  appendCandidateRegistrationProfileFields(formData, extras);
+
+  const headers = publicCandidateRegistrationHeaders();
+  try {
+    const { data } = await apiClient.post<PublicRegisterCandidateResponse>(
+      AUTH_ENDPOINTS.publicRegisterCandidate,
+      formData,
+      {
+        timeout: 120_000,
+        headers,
+        transformRequest: [
+          (body: unknown, requestHeaders: Record<string, string>) => {
+            delete requestHeaders["Content-Type"];
+            return body;
+          },
+        ],
+      }
+    );
+    releaseCaptchaTokenIfSent(headers);
+    return data;
+  } catch (err) {
+    releaseCaptchaTokenIfSent(headers);
+    throw err;
+  }
 }
 
 /** Share-candidate invite – POST /v1/auth/register (with adminId). Creates pending User + Candidate role; verify email to activate. */
@@ -270,10 +364,51 @@ export interface RegisterCandidateFromInviteResponse {
 }
 
 export async function registerCandidateFromInvite(
-  payload: RegisterCandidateFromInvitePayload
+  payload: RegisterCandidateFromInvitePayload,
+  extras?: PublicCandidateRegistrationExtras
 ): Promise<RegisterCandidateFromInviteResponse> {
-  const { data } = await apiClient.post<RegisterCandidateFromInviteResponse>(AUTH_ENDPOINTS.register, payload);
-  return data;
+  if (!extras?.resume) {
+    const headers = publicCandidateRegistrationHeaders();
+    try {
+      const { data } = await apiClient.post<RegisterCandidateFromInviteResponse>(AUTH_ENDPOINTS.register, payload, {
+        headers,
+      });
+      releaseCaptchaTokenIfSent(headers);
+      return data;
+    } catch (err) {
+      releaseCaptchaTokenIfSent(headers);
+      throw err;
+    }
+  }
+
+  const formData = new FormData();
+  formData.append("name", payload.name);
+  formData.append("email", payload.email);
+  formData.append("password", payload.password);
+  formData.append("role", payload.role);
+  formData.append("phoneNumber", payload.phoneNumber);
+  formData.append("countryCode", payload.countryCode);
+  formData.append("adminId", payload.adminId);
+  appendCandidateRegistrationProfileFields(formData, extras);
+
+  const headers = publicCandidateRegistrationHeaders();
+  try {
+    const { data } = await apiClient.post<RegisterCandidateFromInviteResponse>(AUTH_ENDPOINTS.register, formData, {
+      timeout: 120_000,
+      headers,
+      transformRequest: [
+        (body: unknown, requestHeaders: Record<string, string>) => {
+          delete requestHeaders["Content-Type"];
+          return body;
+        },
+      ],
+    });
+    releaseCaptchaTokenIfSent(headers);
+    return data;
+  } catch (err) {
+    releaseCaptchaTokenIfSent(headers);
+    throw err;
+  }
 }
 
 /** Notification preferences per channel (matches backend user.notificationPreferences). */

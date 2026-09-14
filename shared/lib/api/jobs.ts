@@ -532,7 +532,6 @@ export interface PublicApplyPayload {
   password: string;
   phoneNumber: string;
   countryCode: string;
-  coverLetter?: string;
   /** Tells the backend whether to run resume skill extraction (`ai`) or not (`manual`). */
   entryMode?: PublicApplyEntryMode;
   /** Signed referral token from job URL `?ref=`; must match candidate email in token. */
@@ -617,6 +616,13 @@ export async function parsePublicResume(jobId: string, resume: File): Promise<Pu
   );
 }
 
+/** Candidate onboarding — same parse shape as job apply, without a job id. */
+export async function parsePublicResumeOnboard(resume: File): Promise<PublicResumeParseResponse> {
+  const formData = new FormData();
+  formData.append("resume", resume);
+  return postPublicMultipart<PublicResumeParseResponse>("/public/parse-resume", formData, 90_000);
+}
+
 export interface PublicApplyResponse {
   user: {
     id: string;
@@ -641,7 +647,8 @@ export async function publicApplyToJob(
   jobId: string,
   payload: PublicApplyPayload,
   resume: File,
-  documents?: File[]
+  documents?: File[],
+  coverLetter?: File | null
 ): Promise<PublicApplyResponse> {
   const formData = new FormData();
 
@@ -652,8 +659,8 @@ export async function publicApplyToJob(
   formData.append("phoneNumber", payload.phoneNumber);
   formData.append("countryCode", payload.countryCode);
   formData.append("entryMode", payload.entryMode === "ai" ? "ai" : "manual");
-  if (payload.coverLetter) {
-    formData.append("coverLetter", payload.coverLetter);
+  if (coverLetter) {
+    formData.append("coverLetter", coverLetter);
   }
   if (payload.ref && payload.ref.trim()) {
     formData.append("ref", payload.ref.trim());

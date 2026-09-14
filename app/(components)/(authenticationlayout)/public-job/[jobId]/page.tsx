@@ -17,10 +17,15 @@ import { ROUTES } from "@/shared/lib/constants";
 import { readStoredJobReferralRef, rememberJobReferralRef } from "@/shared/lib/jobReferralRef";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
 import { PublicApplyCaptcha } from "@/shared/components/ats/PublicApplyCaptcha";
-import { PublicApplyResumeSection } from "@/shared/components/ats/PublicApplyResumeSection";
+import {
+  PublicApplyOptionalProfileDetails,
+  PublicApplyResumeSection,
+  PublicApplyResumeUploadField,
+} from "@/shared/components/ats/PublicApplyResumeSection";
+import { PublicApplyCoverLetterField } from "@/shared/components/ats/PublicApplyCoverLetterField";
 import { usePublicApplyCaptcha } from "@/shared/hooks/usePublicApplyCaptcha";
 import { usePublicResumeParse } from "@/shared/hooks/usePublicResumeParse";
-import { getPhoneValidationError } from "@/shared/lib/phoneCountries";
+import { getPhoneCountry, getPhoneValidationError } from "@/shared/lib/phoneCountries";
 import { isPublicResumeFile, PUBLIC_RESUME_FORMAT_MESSAGE } from "@/shared/lib/publicApplyResume";
 import {
   formatJobDescriptionForDisplay,
@@ -28,6 +33,8 @@ import {
 } from "@/shared/lib/ats/jobDescriptionHtml";
 
 const PASSWORD_MIN_LENGTH = 8;
+/** Matches backend `custom.validation.js` password rules. */
+const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)/;
 
 function getApplySubmissionErrorMessage(error: unknown): string {
   if (isAxiosError(error) && !error.response) {
@@ -75,15 +82,17 @@ export default function PublicJobDetailsPage() {
   const [countryCode, setCountryCode] = useState("US");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [coverLetter, setCoverLetter] = useState("");
+  const [coverLetter, setCoverLetter] = useState<File | null>(null);
   const [resume, setResume] = useState<File | null>(null);
   const [documents, setDocuments] = useState<File[]>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [emailExists, setEmailExists] = useState(false);
   const [checkingEmail, setCheckingEmail] = useState(false);
+  const [formError, setFormError] = useState("");
 
   const resumeInputRef = useRef<HTMLInputElement>(null);
+  const coverLetterInputRef = useRef<HTMLInputElement>(null);
   const documentsInputRef = useRef<HTMLInputElement>(null);
   const {
     ensureCaptchaReady,
@@ -100,6 +109,7 @@ export default function PublicJobDetailsPage() {
     parseStatus,
     parseMessage,
     suggestedSkills,
+    setSuggestedSkills,
     suggestedExperiences,
     setSuggestedExperiences,
     suggestedQualifications,
@@ -282,6 +292,9 @@ export default function PublicJobDetailsPage() {
     if (password.length < PASSWORD_MIN_LENGTH) {
       return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
     }
+    if (!PASSWORD_REGEX.test(password)) {
+      return "Password must contain at least one uppercase letter and one number.";
+    }
     if (password !== confirmPassword) {
       return "Passwords do not match.";
     }
@@ -293,24 +306,17 @@ export default function PublicJobDetailsPage() {
 
   const handleApplySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError("");
 
     const validationError = validateForm();
     if (validationError) {
-      await Swal.fire({
-        icon: "error",
-        title: "Validation Error",
-        text: validationError,
-      });
+      setFormError(validationError);
       return;
     }
 
     const captchaError = ensureCaptchaReady();
     if (captchaError) {
-      await Swal.fire({
-        icon: "warning",
-        title: "Security check required",
-        text: captchaError,
-      });
+      setFormError(captchaError);
       return;
     }
 
@@ -328,7 +334,6 @@ export default function PublicJobDetailsPage() {
         phoneNumber: (phoneNumber || "").replace(/\D/g, ""),
         countryCode,
         entryMode,
-        coverLetter: coverLetter.trim(),
         ...(resolvedReferralRef ? { ref: resolvedReferralRef } : {}),
         ...(submitSkills.length > 0 ? { skills: submitSkills } : {}),
         ...(profileArrays.experiences.length > 0 ? { experiences: profileArrays.experiences } : {}),
@@ -336,17 +341,28 @@ export default function PublicJobDetailsPage() {
         ...(profileArrays.socialLinks.length > 0 ? { socialLinks: profileArrays.socialLinks } : {}),
       };
 
-      const result = await publicApplyToJob(jobId, payload, resume!, documents);
+      const result = await publicApplyToJob(jobId, payload, resume!, documents, coverLetter);
 
       const detail =
         result?.message ||
         "Your application is saved. Your account is pending—check your email to verify, then an administrator can activate your access. You can sign in once your account is active.";
 
+      const em = email.trim().toLowerCase();
       await Swal.fire({
         icon: "success",
         title: "Application submitted",
-        text: detail,
+        html: `
+          <p class="mb-4">${detail}</p>
+          <div class="text-left bg-gray-50 rounded-lg p-4 text-sm">
+            <p class="font-semibold mb-2">Next steps:</p>
+            <ul class="list-disc list-inside space-y-1 text-gray-700">
+              <li>Check <strong>${em}</strong> and verify your address if you have not already</li>
+              <li>Sign in once your account is active to track this application</li>
+            </ul>
+          </div>
+        `,
         confirmButtonText: "Go to sign in",
+        confirmButtonColor: "#36af4c",
         width: 560,
       });
 
@@ -355,11 +371,7 @@ export default function PublicJobDetailsPage() {
       );
     } catch (error: unknown) {
       if (handleCaptchaApiError(error)) {
-        await Swal.fire({
-          icon: "warning",
-          title: "Security check required",
-          text: captchaRetryMessage,
-        });
+        setFormError(captchaRetryMessage);
         return;
       }
 
@@ -569,15 +581,49 @@ export default function PublicJobDetailsPage() {
               </div>
 
               <form onSubmit={handleApplySubmit} className="p-6 space-y-4">
+                {formError ? (
+                  <div
+                    role="alert"
+                    className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300"
+                  >
+                    {formError}
+                  </div>
+                ) : null}
                 <PublicApplyCaptcha
                   onTokenChange={setCaptchaToken}
                   onRegisterReset={registerCaptchaReset}
                 />
+                <PublicApplyResumeSection
+                  entryMode={entryMode}
+                  onEntryModeChange={(mode) => {
+                    setEntryMode(mode);
+                    if (mode === "ai" && resume) {
+                      void runParse(resume, prefillTargets);
+                    }
+                  }}
+                  resume={resume}
+                  resumeInputRef={resumeInputRef}
+                  onResumeSelected={handleResumeSelected}
+                  parseStatus={parseStatus}
+                  parseMessage={parseMessage}
+                  suggestedSkills={suggestedSkills}
+                  suggestedExperiences={suggestedExperiences}
+                  suggestedQualifications={suggestedQualifications}
+                  suggestedSocialLinks={suggestedSocialLinks}
+                  onExperiencesChange={setSuggestedExperiences}
+                  onQualificationsChange={setSuggestedQualifications}
+                  onSocialLinksChange={setSuggestedSocialLinks}
+                  onSkillsChange={setSuggestedSkills}
+                  onRetryParse={() => retryParse(prefillTargets)}
+                  showOptionalProfile={false}
+                  showResumeUpload={entryMode === "ai"}
+                />
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="public-job-apply-fullName" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Full Name <span className="text-red-500">*</span>
                   </label>
                   <input
+                    id="public-job-apply-fullName"
                     type="text"
                     value={fullName}
                     onChange={(e) => {
@@ -586,15 +632,17 @@ export default function PublicJobDetailsPage() {
                     }}
                     className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
                     placeholder="John Doe"
+                    minLength={2}
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="public-job-apply-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Email <span className="text-red-500">*</span>
                   </label>
                   <input
+                    id="public-job-apply-email"
                     type="email"
                     value={email}
                     onChange={(e) => {
@@ -631,12 +679,13 @@ export default function PublicJobDetailsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="public-job-apply-phone" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Phone Number <span className="text-red-500">*</span>
                   </label>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
                     <div className="w-full shrink-0 sm:w-44">
                       <PhoneCountrySelect
+                        id="public-job-apply-countryCode"
                         value={countryCode}
                         onChange={(value) => {
                           markFieldEdited("countryCode");
@@ -646,6 +695,7 @@ export default function PublicJobDetailsPage() {
                       />
                     </div>
                     <input
+                      id="public-job-apply-phone"
                       type="tel"
                       value={phoneNumber}
                       onChange={(e) => {
@@ -653,25 +703,37 @@ export default function PublicJobDetailsPage() {
                         setPhoneNumber(e.target.value);
                       }}
                       className="min-w-0 flex-1 w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
-                      placeholder="Enter phone number"
+                      placeholder={getPhoneCountry(countryCode).placeholder}
+                      maxLength={getPhoneCountry(countryCode).maxLength}
                       inputMode="numeric"
                       required
                     />
                   </div>
                 </div>
 
+                {entryMode === "manual" ? (
+                  <PublicApplyResumeUploadField
+                    resume={resume}
+                    resumeInputRef={resumeInputRef}
+                    onResumeSelected={handleResumeSelected}
+                    inputId="public-job-apply-resume"
+                  />
+                ) : null}
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="public-job-apply-password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Password <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <input
+                      id="public-job-apply-password"
                       type={showPassword ? "text" : "password"}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className="w-full py-2 pl-4 pr-11 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
-                      placeholder="Min 8 characters"
+                      placeholder="Min 8 chars, 1 uppercase letter, 1 number"
                       autoComplete="new-password"
+                      minLength={PASSWORD_MIN_LENGTH}
                       required
                     />
                     <button
@@ -687,11 +749,12 @@ export default function PublicJobDetailsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="public-job-apply-confirmPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Confirm Password <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <input
+                      id="public-job-apply-confirmPassword"
                       type={showConfirmPassword ? "text" : "password"}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
@@ -712,27 +775,26 @@ export default function PublicJobDetailsPage() {
                   </div>
                 </div>
 
-                <PublicApplyResumeSection
-                  entryMode={entryMode}
-                  onEntryModeChange={(mode) => {
-                    setEntryMode(mode);
-                    if (mode === "ai" && resume) {
-                      void runParse(resume, prefillTargets);
-                    }
-                  }}
-                  resume={resume}
-                  resumeInputRef={resumeInputRef}
-                  onResumeSelected={handleResumeSelected}
-                  parseStatus={parseStatus}
-                  parseMessage={parseMessage}
-                  suggestedSkills={suggestedSkills}
-                  suggestedExperiences={suggestedExperiences}
-                  suggestedQualifications={suggestedQualifications}
-                  suggestedSocialLinks={suggestedSocialLinks}
-                  onExperiencesChange={setSuggestedExperiences}
-                  onQualificationsChange={setSuggestedQualifications}
-                  onSocialLinksChange={setSuggestedSocialLinks}
-                  onRetryParse={() => retryParse(prefillTargets)}
+                {entryMode === "ai" ? (
+                  <PublicApplyOptionalProfileDetails
+                    entryMode={entryMode}
+                    parseStatus={parseStatus}
+                    suggestedSkills={suggestedSkills}
+                    suggestedExperiences={suggestedExperiences}
+                    suggestedQualifications={suggestedQualifications}
+                    suggestedSocialLinks={suggestedSocialLinks}
+                    onExperiencesChange={setSuggestedExperiences}
+                    onQualificationsChange={setSuggestedQualifications}
+                    onSocialLinksChange={setSuggestedSocialLinks}
+                    onSkillsChange={setSuggestedSkills}
+                  />
+                ) : null}
+
+                <PublicApplyCoverLetterField
+                  file={coverLetter}
+                  inputRef={coverLetterInputRef}
+                  onFileSelected={setCoverLetter}
+                  disabled={applying}
                 />
 
                 <div>
@@ -752,19 +814,6 @@ export default function PublicJobDetailsPage() {
                       {documents.length} file(s) selected
                     </p>
                   )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Cover Letter (Optional)
-                  </label>
-                  <textarea
-                    value={coverLetter}
-                    onChange={(e) => setCoverLetter(e.target.value)}
-                    rows={4}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
-                    placeholder="Why are you a good fit for this role?"
-                  />
                 </div>
 
                 <div className="flex gap-3 pt-4">
@@ -790,7 +839,7 @@ export default function PublicJobDetailsPage() {
                       className="flex-1 px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition disabled:opacity-50 disabled:cursor-not-allowed"
                       disabled={applying}
                     >
-                      {applying ? "Submitting..." : "Submit Application"}
+                      {applying ? "Submitting…" : "Submit Application"}
                     </button>
                   )}
                 </div>

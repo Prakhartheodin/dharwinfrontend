@@ -150,36 +150,44 @@ function ActionButtons({
 }) {
   const card = layout === 'card'
   const wrap = card
-    ? 'mt-2.5 flex flex-col gap-2 md:flex-row'
+    ? 'mt-2.5 flex flex-col gap-2 max-2xl:flex-row max-2xl:flex-wrap md:flex-row'
     : 'flex flex-wrap items-center justify-end gap-1.5'
   const size = card
-    ? 'inline-flex min-h-11 flex-1 items-center justify-center !h-11 !min-w-11 !px-3 !py-2 !text-[0.8125rem]'
-    : '!h-8 !min-w-fit !px-2.5 !py-1.5 !text-[0.75rem]'
+    ? `inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 !h-11 !min-w-11 !px-3 !py-2 !text-[0.8125rem] max-2xl:flex-none ${pipelineStyles.rowActionIconOnly}`
+    : `inline-flex !min-h-11 !h-11 shrink-0 items-center justify-center gap-1.5 !min-w-11 !px-2.5 !py-2 !text-[0.75rem] ${pipelineStyles.rowActionIconOnly}`
   return (
     <div className={wrap}>
       {canEdit && isValidMongoId(row.placementId) ? (
         <Link
           href={`/ats/onboarding/edit?id=${row.placementId}`}
           className={`ti-btn ti-btn-sm ti-btn-primary shrink-0 whitespace-nowrap !w-auto !mb-0 ${size}`}
+          aria-label="Edit HRMS"
+          title="Edit HRMS"
         >
-          Edit HRMS
+          <i className="ri-user-settings-line text-[0.95rem] align-middle" aria-hidden />
+          <span className={pipelineStyles.pipelineNavLabel}>Edit HRMS</span>
         </Link>
       ) : null}
       {row.cid ? (
         <Link
           href={`/ats/employees/edit?id=${row.cid}`}
           className={`ti-btn ti-btn-sm ti-btn-light shrink-0 whitespace-nowrap !w-auto !mb-0 ${size}`}
+          aria-label="Employee profile"
+          title="Profile"
         >
-          Profile
+          <i className="ri-user-line text-[0.95rem] align-middle" aria-hidden />
+          <span className={pipelineStyles.pipelineNavLabel}>Profile</span>
         </Link>
       ) : (
         <button
           type="button"
           disabled
           className={`ti-btn ti-btn-sm ti-btn-light shrink-0 cursor-not-allowed whitespace-nowrap !w-auto !mb-0 opacity-50 ${size}`}
+          aria-label="Employee profile unavailable"
           title="Candidate record missing"
         >
-          Profile
+          <i className="ri-user-line text-[0.95rem] align-middle" aria-hidden />
+          <span className={pipelineStyles.pipelineNavLabel}>Profile</span>
         </button>
       )}
     </div>
@@ -347,8 +355,8 @@ const Onboarding = () => {
       <div className={`onboarding-page-shell mt-5 grid grid-cols-12 gap-6 min-w-0 sm:mt-6 ${pipelineStyles.listShell}`}>
         <div className="col-span-12 h-full min-h-0 min-w-0 flex flex-col">
           <div className="box mb-0 h-full min-h-0 min-w-0 flex flex-col">
-            <div className="box-header shrink-0 flex flex-wrap items-center gap-2 overflow-visible">
-              <div className="box-title min-w-0 shrink-0">
+            <div className={`box-header shrink-0 overflow-visible ${pipelineStyles.listHeader}`}>
+              <span className={`box-title min-w-0 shrink-0 ${pipelineStyles.listHeaderTitle}`}>
                 Onboarding
                 <span className="ms-1 align-middle text-[0.7rem] font-normal text-slate-500 dark:text-slate-400 sm:text-[0.75rem]">
                   (Joined employees – HRMS)
@@ -359,52 +367,70 @@ const Onboarding = () => {
                 >
                   {totalResults}
                 </span>
-              </div>
-              {!loading && !error ? (
-                <ListPagination
-                  page={apiPage}
-                  totalPages={totalPages}
-                  totalResults={totalResults}
-                  pageSize={pageSize}
-                  onPageChange={setApiPage}
-                  onPageSizeChange={handlePageSizeChange}
-                  showSummary={false}
-                  showPager={false}
-                  ariaLabel="Onboarding list rows per page"
-                  pageSizeSelectId="onboarding-page-size"
-                  className="!gap-2 shrink-0"
-                />
-              ) : null}
-              <div
-                className="inline-flex flex-wrap items-center gap-0.5 rounded-lg border border-slate-200/90 bg-slate-50/90 p-0.5 shadow-sm dark:border-white/10 dark:bg-slate-900/40"
-                aria-label="Pipeline pages"
-              >
-                  <Link
-                    href="/ats/offers-placement"
-                    className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !rounded-md !border-0 !bg-transparent !py-1.5 !px-2.5 !text-[0.75rem] shadow-none hover:!bg-white dark:hover:!bg-slate-800/80"
+              </span>
+              <div className={pipelineStyles.listHeaderControls}>
+                <div className={pipelineStyles.listHeaderControlsTop}>
+                  <div
+                    className="inline-flex max-w-full min-w-0 flex-wrap items-center gap-0.5 rounded-lg border border-slate-200/90 bg-slate-50/90 p-0.5 shadow-sm dark:border-white/10 dark:bg-slate-900/40 max-2xl:order-1"
+                    aria-label="Pipeline pages"
                   >
-                    <i className="ri-file-paper-2-line me-1 align-middle opacity-80" aria-hidden />
-                    Offers &amp; Placement
-                  </Link>
-                  <i className="ri-arrow-right-s-line text-slate-400 dark:text-slate-600 text-[0.85rem]" aria-hidden />
-                  <Link
-                    href="/ats/pre-boarding"
-                    className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !rounded-md !border-0 !bg-transparent !py-1.5 !px-2.5 !text-[0.75rem] shadow-none hover:!bg-white dark:hover:!bg-slate-800/80"
-                  >
-                    <i className="ri-suitcase-line me-1 align-middle opacity-80" aria-hidden />
-                    Pre-boarding
-                  </Link>
-                  <i className="ri-arrow-right-s-line text-slate-400 dark:text-slate-600 text-[0.85rem]" aria-hidden />
-                  <span className="inline-flex items-center !rounded-md !bg-white dark:!bg-slate-800/80 !py-1.5 !px-2.5 !text-[0.75rem] shadow-sm font-semibold text-primary cursor-default select-none" aria-current="page">
-                    <i className="ri-user-received-2-line me-1 align-middle" aria-hidden />
-                    Onboarding
-                  </span>
-              </div>
-              <div
-                className="ms-auto flex min-w-0 flex-wrap items-center gap-2 sm:max-w-md sm:border-l sm:border-slate-200/80 sm:pl-3 dark:sm:border-white/10"
-                role="toolbar"
-                aria-label="Onboarding list tools"
-              >
+                    <Link
+                      href="/ats/offers-placement"
+                      className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !min-h-11 !rounded-md !border-0 !bg-transparent !py-1.5 !px-2.5 !text-[0.75rem] shadow-none hover:!bg-white dark:hover:!bg-slate-800/80"
+                      aria-label="Offers and placement"
+                      title="Offers and placement"
+                    >
+                      <i
+                        className={`ri-file-paper-2-line me-1 align-middle opacity-80 ${pipelineStyles.pipelineNavIcon}`}
+                        aria-hidden
+                      />
+                      <span className={pipelineStyles.pipelineNavLabel}>Offers &amp; Placement</span>
+                    </Link>
+                    <i className="ri-arrow-right-s-line text-slate-400 dark:text-slate-600 text-[0.85rem]" aria-hidden />
+                    <Link
+                      href="/ats/pre-boarding"
+                      className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !min-h-11 !rounded-md !border-0 !bg-transparent !py-1.5 !px-2.5 !text-[0.75rem] shadow-none hover:!bg-white dark:hover:!bg-slate-800/80"
+                      aria-label="Pre-boarding"
+                      title="Pre-boarding"
+                    >
+                      <i
+                        className={`ri-suitcase-line me-1 align-middle opacity-80 ${pipelineStyles.pipelineNavIcon}`}
+                        aria-hidden
+                      />
+                      <span className={pipelineStyles.pipelineNavLabel}>Pre-boarding</span>
+                    </Link>
+                    <i className="ri-arrow-right-s-line text-slate-400 dark:text-slate-600 text-[0.85rem]" aria-hidden />
+                    <span
+                      className="inline-flex items-center !min-h-11 !rounded-md !bg-white dark:!bg-slate-800/80 !py-1.5 !px-2.5 !text-[0.75rem] shadow-sm font-semibold text-primary cursor-default select-none"
+                      aria-current="page"
+                      aria-label="Onboarding"
+                      title="Onboarding"
+                    >
+                      <i className={`ri-user-received-2-line me-1 align-middle ${pipelineStyles.pipelineNavIcon}`} aria-hidden />
+                      <span className={pipelineStyles.pipelineNavLabel}>Onboarding</span>
+                    </span>
+                  </div>
+                  {!loading && !error ? (
+                    <ListPagination
+                      page={apiPage}
+                      totalPages={totalPages}
+                      totalResults={totalResults}
+                      pageSize={pageSize}
+                      onPageChange={setApiPage}
+                      onPageSizeChange={handlePageSizeChange}
+                      showSummary={false}
+                      showPager={false}
+                      ariaLabel="Onboarding list rows per page"
+                      pageSizeSelectId="onboarding-page-size"
+                      className="!gap-2 shrink-0 max-2xl:order-2"
+                    />
+                  ) : null}
+                </div>
+                <div
+                  className={`relative z-20 ${pipelineStyles.listHeaderToolbar} gap-2 2xl:border-l 2xl:border-slate-200/80 2xl:pl-3 dark:2xl:border-white/10`}
+                  role="toolbar"
+                  aria-label="Onboarding list tools"
+                >
                 <div className="relative min-w-0 flex-1 sm:max-w-xs">
                     <i
                       className="ri-search-line pointer-events-none absolute left-2.5 top-1/2 z-[1] -translate-y-1/2 text-[0.75rem] text-slate-400"
@@ -422,12 +448,18 @@ const Onboarding = () => {
                   </div>
                   <button
                     type="button"
-                    className="ti-btn ti-btn-light !mb-0 !h-8 !w-auto !min-w-fit !rounded-md !px-2.5 !py-0 !text-[0.75rem] shrink-0"
+                    className="ti-btn ti-btn-light !mb-0 !min-h-11 !h-11 !w-auto !min-w-fit !rounded-md !px-2.5 !py-0 !text-[0.75rem] shrink-0"
                     onClick={fetchPlacements}
+                    aria-label="Refresh list"
+                    title="Refresh"
                   >
-                    <i className="ri-refresh-line me-1 align-middle text-[0.85rem] opacity-80" aria-hidden />
-                    Refresh
+                    <i
+                      className={`ri-refresh-line me-1 align-middle text-[0.85rem] opacity-80 ${pipelineStyles.pipelineNavIcon}`}
+                      aria-hidden
+                    />
+                    <span className={pipelineStyles.pipelineNavLabel}>Refresh</span>
                   </button>
+                </div>
               </div>
             </div>
             <div className="box-body !p-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">

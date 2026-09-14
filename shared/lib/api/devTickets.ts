@@ -1,6 +1,7 @@
 "use client";
 
 import { apiClient } from "@/shared/lib/api/client";
+import { canAccessPath } from "@/shared/lib/route-permissions";
 
 const BASE = "/dev-tickets";
 
@@ -425,9 +426,8 @@ export async function getDevTicketAnalytics(): Promise<DevTicketAnalytics> {
   };
 }
 
-export const DEV_TICKETS_VIEW_PERMISSION = "devTickets.view";
-
+/** @deprecated Dev tickets UI; gates on Help & Support matrix permission. */
 export function hasDevTicketsView(permissions: string[], isPlatformSuperUser?: boolean): boolean {
   if (isPlatformSuperUser) return true;
-  return permissions.includes(DEV_TICKETS_VIEW_PERMISSION);
+  return canAccessPath(permissions, "/help-and-support");
 }

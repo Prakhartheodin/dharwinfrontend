@@ -1,7 +1,5 @@
 /* Offers & Placement — shared ATS-style polish, scoped to this page */
 
-/* List header uses same .box-header defaults as other ATS pages (e.g. jobs, pre-boarding) */
-
 .listShell {
   animation: offersPageIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }

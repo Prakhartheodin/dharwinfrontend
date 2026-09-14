@@ -1000,8 +1000,8 @@ const OffersPlacement = () => {
       <div className={`offers-page-shell mt-2 grid grid-cols-12 gap-6 min-w-0 sm:mt-6 ${offersStyles.listShell}`}>
         <div className="col-span-12 h-full min-h-0 min-w-0 flex flex-col">
           <div className="box mb-0 h-full min-h-0 min-w-0 flex flex-col">
-            <div className="box-header shrink-0 flex flex-wrap items-center gap-2 overflow-visible">
-              <span className="box-title min-w-0 shrink-0">
+            <div className={`box-header shrink-0 overflow-visible ${pipelineStyles.listHeader}`}>
+              <span className={`box-title min-w-0 shrink-0 ${pipelineStyles.listHeaderTitle}`}>
                 Offers &amp; Placement
                 <span
                   className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle tabular-nums"
@@ -1010,52 +1010,73 @@ const OffersPlacement = () => {
                   {totalResults}
                 </span>
               </span>
-              {!offersLoading && !listError && totalResults > 0 ? (
-                <ListPagination
-                  page={apiPage}
-                  totalPages={totalPages}
-                  totalResults={totalResults}
-                  pageSize={pageSize}
-                  onPageChange={setApiPage}
-                  onPageSizeChange={handlePageSizeChange}
-                  showSummary={false}
-                  showPager={false}
-                  ariaLabel="Offers list rows per page"
-                  pageSizeSelectId="offers-page-size"
-                  touchFriendly
-                  className="!gap-2 shrink-0"
-                />
-              ) : null}
-              <div
-                className="inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-lg border border-slate-200/90 bg-slate-50/90 p-0.5 shadow-sm dark:border-white/10 dark:bg-slate-900/40"
-                aria-label="Pipeline pages"
-              >
-                  <span className="inline-flex items-center rounded-md bg-white dark:bg-slate-800/80 py-1.5 px-2.5 text-[0.75rem] shadow-sm font-semibold text-primary cursor-default select-none" aria-current="page">
-                    <i className="ri-file-paper-2-line me-1 align-middle" aria-hidden />
-                    Offers &amp; Placement
+              <div className={pipelineStyles.listHeaderControls}>
+                <div className={pipelineStyles.listHeaderControlsTop}>
+                  <div
+                    className="inline-flex max-w-full min-w-0 flex-wrap items-center gap-0.5 rounded-lg border border-slate-200/90 bg-slate-50/90 p-0.5 shadow-sm dark:border-white/10 dark:bg-slate-900/40 max-2xl:order-1"
+                    aria-label="Pipeline pages"
+                  >
+                  <span
+                    className="inline-flex items-center rounded-md bg-white dark:bg-slate-800/80 py-1.5 px-2.5 text-[0.75rem] shadow-sm font-semibold text-primary cursor-default select-none"
+                    aria-current="page"
+                    aria-label="Offers and placement"
+                    title="Offers and placement"
+                  >
+                    <i
+                      className={`ri-file-paper-2-line me-1 align-middle ${pipelineStyles.pipelineNavIcon}`}
+                      aria-hidden
+                    />
+                    <span className={pipelineStyles.pipelineNavLabel}>Offers &amp; Placement</span>
                   </span>
                   <i className="ri-arrow-right-s-line text-slate-400 dark:text-slate-600 text-[0.85rem]" aria-hidden />
                   <Link
                     href="/ats/pre-boarding"
                     className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !rounded-md !border-0 !bg-transparent !py-1.5 !px-2.5 !text-[0.75rem] shadow-none hover:!bg-white dark:hover:!bg-slate-800/80"
+                    aria-label="Pre-boarding"
+                    title="Pre-boarding"
                   >
-                    <i className="ri-suitcase-line me-1 align-middle opacity-80" aria-hidden />
-                    Pre-boarding
+                    <i
+                      className={`ri-suitcase-line me-1 align-middle opacity-80 ${pipelineStyles.pipelineNavIcon}`}
+                      aria-hidden
+                    />
+                    <span className={pipelineStyles.pipelineNavLabel}>Pre-boarding</span>
                   </Link>
                   <i className="ri-arrow-right-s-line text-slate-400 dark:text-slate-600 text-[0.85rem]" aria-hidden />
                   <Link
                     href="/ats/onboarding"
                     className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !rounded-md !border-0 !bg-transparent !py-1.5 !px-2.5 !text-[0.75rem] shadow-none hover:!bg-white dark:hover:!bg-slate-800/80"
+                    aria-label="Onboarding"
+                    title="Onboarding"
                   >
-                    <i className="ri-user-received-2-line me-1 align-middle opacity-80" aria-hidden />
-                    Onboarding
+                    <i
+                      className={`ri-user-received-2-line me-1 align-middle opacity-80 ${pipelineStyles.pipelineNavIcon}`}
+                      aria-hidden
+                    />
+                    <span className={pipelineStyles.pipelineNavLabel}>Onboarding</span>
                   </Link>
-              </div>
-              <div
-                className="relative z-20 ms-auto flex min-w-0 flex-wrap items-center gap-2 sm:border-l sm:border-slate-200/80 sm:pl-3 dark:sm:border-white/10"
-                role="toolbar"
-                aria-label="Offer list tools"
-              >
+                  </div>
+                  {!offersLoading && !listError && totalResults > 0 ? (
+                    <ListPagination
+                      page={apiPage}
+                      totalPages={totalPages}
+                      totalResults={totalResults}
+                      pageSize={pageSize}
+                      onPageChange={setApiPage}
+                      onPageSizeChange={handlePageSizeChange}
+                      showSummary={false}
+                      showPager={false}
+                      ariaLabel="Offers list rows per page"
+                      pageSizeSelectId="offers-page-size"
+                      touchFriendly
+                      className="!gap-2 shrink-0 max-2xl:order-2"
+                    />
+                  ) : null}
+                </div>
+                <div
+                  className={`relative z-20 ${pipelineStyles.listHeaderToolbar} gap-2 2xl:border-l 2xl:border-slate-200/80 2xl:pl-3 dark:2xl:border-white/10`}
+                  role="toolbar"
+                  aria-label="Offer list tools"
+                >
                 {canCreate && (
                   <Link
                     href="/ats/offers-placement/offer-letter/new"
@@ -1146,7 +1167,7 @@ const OffersPlacement = () => {
                       )
                     : null}
                 </div>
-                <div className="relative min-w-0 flex-1 basis-full sm:basis-auto sm:w-40 sm:flex-initial">
+                <div className="relative min-w-0 w-full min-[480px]:w-auto min-[480px]:flex-1 min-[480px]:basis-[8rem] sm:w-40 sm:flex-initial">
                   <i
                     className="ri-search-line pointer-events-none absolute left-2 top-1/2 z-[1] -translate-y-1/2 text-[0.75rem] text-slate-400"
                     aria-hidden
@@ -1186,6 +1207,7 @@ const OffersPlacement = () => {
                     Delete ({selectedRows.size})
                   </button>
                 )}
+                </div>
               </div>
             </div>
             <div className="box-body !p-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">

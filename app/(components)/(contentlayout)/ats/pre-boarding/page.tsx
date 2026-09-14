@@ -24,7 +24,8 @@ const DIALOG_Z = 12050
 const TOOLBAR_BTN =
   '!mb-0 !min-h-11 !inline-flex !items-center !justify-center !rounded-md !px-3 !py-2 !text-[0.8125rem]'
 const ROW_BTN =
-  'ti-btn ti-btn-sm shrink-0 whitespace-nowrap !w-auto !min-w-fit !min-h-11 !h-11 !py-2 !px-3 !inline-flex !items-center !justify-center'
+  'ti-btn ti-btn-sm shrink-0 whitespace-nowrap !w-auto !min-w-fit !min-h-11 !h-11 !py-2 !px-3 !inline-flex !items-center !justify-center !gap-1.5'
+const ROW_BTN_COMPACT = `${ROW_BTN} ${pipelineStyles.rowActionIconOnly}`
 
 const TH_CLASS =
   'sticky top-0 z-10 border-b border-slate-200/90 bg-slate-50 px-2 py-2.5 text-start align-bottom text-[0.6875rem] font-semibold uppercase tracking-wide text-slate-500 dark:border-white/10 dark:bg-slate-900 dark:text-slate-400'
@@ -476,8 +477,8 @@ const PreBoarding = () => {
       <div className={`preboarding-page-shell mt-5 grid grid-cols-12 gap-6 min-w-0 sm:mt-6 ${pipelineStyles.listShell}`}>
         <div className="col-span-12 h-full min-h-0 min-w-0 flex flex-col">
           <div className="box mb-0 h-full min-h-0 min-w-0 flex flex-col">
-            <div className="box-header shrink-0 flex flex-wrap items-center gap-2 overflow-visible">
-              <div className="box-title min-w-0 shrink-0">
+            <div className={`box-header shrink-0 overflow-visible ${pipelineStyles.listHeader}`}>
+              <span className={`box-title min-w-0 shrink-0 ${pipelineStyles.listHeaderTitle}`}>
                 Pre-boarding
                 <span className="ms-1 align-middle text-[0.7rem] font-normal text-slate-500 dark:text-slate-400 sm:text-[0.75rem]">
                   (Not yet joined: Pending, Deferred, or Cancelled)
@@ -488,53 +489,71 @@ const PreBoarding = () => {
                 >
                   {totalResults}
                 </span>
-              </div>
-              {!loading && !error ? (
-                <ListPagination
-                  page={apiPage}
-                  totalPages={totalPages}
-                  totalResults={totalResults}
-                  pageSize={pageSize}
-                  onPageChange={setApiPage}
-                  onPageSizeChange={handlePageSizeChange}
-                  showSummary={false}
-                  showPager={false}
-                  ariaLabel="Pre-boarding list rows per page"
-                  pageSizeSelectId="preboarding-page-size"
-                  touchFriendly
-                  className="!gap-2 shrink-0"
-                />
-              ) : null}
-              <div
-                className="inline-flex flex-wrap items-center gap-0.5 rounded-lg border border-slate-200/90 bg-slate-50/90 p-0.5 shadow-sm dark:border-white/10 dark:bg-slate-900/40"
-                aria-label="Pipeline pages"
-              >
-                  <Link
-                    href="/ats/offers-placement"
-                    className={`ti-btn ti-btn-light !border-0 !bg-transparent shadow-none hover:!bg-white dark:hover:!bg-slate-800/80 ${TOOLBAR_BTN}`}
+              </span>
+              <div className={pipelineStyles.listHeaderControls}>
+                <div className={pipelineStyles.listHeaderControlsTop}>
+                  <div
+                    className="inline-flex max-w-full min-w-0 flex-wrap items-center gap-0.5 rounded-lg border border-slate-200/90 bg-slate-50/90 p-0.5 shadow-sm dark:border-white/10 dark:bg-slate-900/40 max-2xl:order-1"
+                    aria-label="Pipeline pages"
                   >
-                    <i className="ri-file-paper-2-line me-1 align-middle opacity-80" aria-hidden />
-                    Offers &amp; Placement
-                  </Link>
-                  <i className="ri-arrow-right-s-line text-slate-400 dark:text-slate-600 text-[0.85rem]" aria-hidden />
-                  <span className={`inline-flex items-center font-semibold text-primary ${TOOLBAR_BTN}`} aria-current="page">
-                    <i className="ri-suitcase-line me-1 align-middle" aria-hidden />
-                    Pre-boarding
-                  </span>
-                  <i className="ri-arrow-right-s-line text-slate-400 dark:text-slate-600 text-[0.85rem]" aria-hidden />
-                  <Link
-                    href="/ats/onboarding"
-                    className={`ti-btn ti-btn-light !border-0 !bg-transparent shadow-none hover:!bg-white dark:hover:!bg-slate-800/80 ${TOOLBAR_BTN}`}
-                  >
-                    <i className="ri-user-received-2-line me-1 align-middle opacity-80" aria-hidden />
-                    Onboarding
-                  </Link>
-              </div>
-              <div
-                className="ms-auto flex min-w-0 flex-wrap items-center gap-2 sm:border-l sm:border-slate-200/80 sm:pl-3 dark:sm:border-white/10"
-                role="toolbar"
-                aria-label="Pre-boarding list tools"
-              >
+                    <Link
+                      href="/ats/offers-placement"
+                      className={`ti-btn ti-btn-light !border-0 !bg-transparent shadow-none hover:!bg-white dark:hover:!bg-slate-800/80 ${TOOLBAR_BTN}`}
+                      aria-label="Offers and placement"
+                      title="Offers and placement"
+                    >
+                      <i
+                        className={`ri-file-paper-2-line me-1 align-middle opacity-80 ${pipelineStyles.pipelineNavIcon}`}
+                        aria-hidden
+                      />
+                      <span className={pipelineStyles.pipelineNavLabel}>Offers &amp; Placement</span>
+                    </Link>
+                    <i className="ri-arrow-right-s-line text-slate-400 dark:text-slate-600 text-[0.85rem]" aria-hidden />
+                    <span
+                      className={`inline-flex items-center font-semibold text-primary ${TOOLBAR_BTN}`}
+                      aria-current="page"
+                      aria-label="Pre-boarding"
+                      title="Pre-boarding"
+                    >
+                      <i className={`ri-suitcase-line me-1 align-middle ${pipelineStyles.pipelineNavIcon}`} aria-hidden />
+                      <span className={pipelineStyles.pipelineNavLabel}>Pre-boarding</span>
+                    </span>
+                    <i className="ri-arrow-right-s-line text-slate-400 dark:text-slate-600 text-[0.85rem]" aria-hidden />
+                    <Link
+                      href="/ats/onboarding"
+                      className={`ti-btn ti-btn-light !border-0 !bg-transparent shadow-none hover:!bg-white dark:hover:!bg-slate-800/80 ${TOOLBAR_BTN}`}
+                      aria-label="Onboarding"
+                      title="Onboarding"
+                    >
+                      <i
+                        className={`ri-user-received-2-line me-1 align-middle opacity-80 ${pipelineStyles.pipelineNavIcon}`}
+                        aria-hidden
+                      />
+                      <span className={pipelineStyles.pipelineNavLabel}>Onboarding</span>
+                    </Link>
+                  </div>
+                  {!loading && !error ? (
+                    <ListPagination
+                      page={apiPage}
+                      totalPages={totalPages}
+                      totalResults={totalResults}
+                      pageSize={pageSize}
+                      onPageChange={setApiPage}
+                      onPageSizeChange={handlePageSizeChange}
+                      showSummary={false}
+                      showPager={false}
+                      ariaLabel="Pre-boarding list rows per page"
+                      pageSizeSelectId="preboarding-page-size"
+                      touchFriendly
+                      className="!gap-2 shrink-0 max-2xl:order-2"
+                    />
+                  ) : null}
+                </div>
+                <div
+                  className={`relative z-20 ${pipelineStyles.listHeaderToolbar} gap-2 2xl:border-l 2xl:border-slate-200/80 2xl:pl-3 dark:2xl:border-white/10`}
+                  role="toolbar"
+                  aria-label="Pre-boarding list tools"
+                >
                 <label className="sr-only" htmlFor="preboard-placement-status-filter">
                     Placement status
                   </label>
@@ -569,10 +588,16 @@ const PreBoarding = () => {
                     type="button"
                     className={`ti-btn ti-btn-light ${TOOLBAR_BTN}`}
                     onClick={fetchPlacements}
+                    aria-label="Refresh list"
+                    title="Refresh"
                   >
-                    <i className="ri-refresh-line me-1 align-middle text-[0.85rem] opacity-80" aria-hidden />
-                    Refresh
+                    <i
+                      className={`ri-refresh-line me-1 align-middle text-[0.85rem] opacity-80 ${pipelineStyles.pipelineNavIcon}`}
+                      aria-hidden
+                    />
+                    <span className={pipelineStyles.pipelineNavLabel}>Refresh</span>
                   </button>
+                </div>
               </div>
             </div>
             <div className="box-body !p-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -642,23 +667,28 @@ const PreBoarding = () => {
                           <div className="mt-2">
                             <StatusChips row={row} />
                           </div>
-                          <div className="mt-2.5 flex flex-col gap-2">
+                          <div className="mt-2.5 flex flex-col gap-2 max-2xl:flex-row max-2xl:flex-wrap">
                             {canEdit ? (
                               <button
                                 type="button"
-                                className={`${ROW_BTN} ti-btn-primary flex-1`}
+                                className={`${ROW_BTN_COMPACT} ti-btn-primary flex-1 max-2xl:flex-none`}
                                 onClick={() => openEdit(row.placement)}
+                                aria-label="Edit pre-boarding"
+                                title="Edit"
                               >
-                                Edit
+                                <i className="ri-edit-line text-[0.95rem] align-middle" aria-hidden />
+                                <span className={pipelineStyles.pipelineNavLabel}>Edit</span>
                               </button>
                             ) : null}
                             <button
                               type="button"
-                              className={`${ROW_BTN} ti-btn-light flex-1`}
+                              className={`${ROW_BTN_COMPACT} ti-btn-light flex-1 max-2xl:flex-none`}
                               onClick={() => openDocumentsForPlacement(row.placement, setError, setDocumentsCandidate)}
-                              title="Manage candidate documents"
+                              aria-label="Manage candidate documents"
+                              title="Documents"
                             >
-                              Documents
+                              <i className="ri-file-list-3-line text-[0.95rem] align-middle" aria-hidden />
+                              <span className={pipelineStyles.pipelineNavLabel}>Documents</span>
                             </button>
                           </div>
                         </article>
@@ -765,19 +795,24 @@ const PreBoarding = () => {
                                   {canEdit ? (
                                     <button
                                       type="button"
-                                      className={`${ROW_BTN} ti-btn-primary`}
+                                      className={`${ROW_BTN_COMPACT} ti-btn-primary`}
                                       onClick={() => openEdit(row.placement)}
+                                      aria-label="Edit pre-boarding"
+                                      title="Edit"
                                     >
-                                      Edit
+                                      <i className="ri-edit-line text-[0.95rem] align-middle" aria-hidden />
+                                      <span className={pipelineStyles.pipelineNavLabel}>Edit</span>
                                     </button>
                                   ) : null}
                                   <button
                                     type="button"
-                                    className={`${ROW_BTN} ti-btn-light`}
+                                    className={`${ROW_BTN_COMPACT} ti-btn-light`}
                                     onClick={() => openDocumentsForPlacement(row.placement, setError, setDocumentsCandidate)}
-                                    title="Manage candidate documents"
+                                    aria-label="Manage candidate documents"
+                                    title="Documents"
                                   >
-                                    Documents
+                                    <i className="ri-file-list-3-line text-[0.95rem] align-middle" aria-hidden />
+                                    <span className={pipelineStyles.pipelineNavLabel}>Documents</span>
                                   </button>
                                 </div>
                               </td>

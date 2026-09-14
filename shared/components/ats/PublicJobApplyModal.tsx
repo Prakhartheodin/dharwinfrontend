@@ -11,13 +11,20 @@ import {
 } from "@/shared/lib/api/jobs";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
 import { PublicApplyCaptcha } from "@/shared/components/ats/PublicApplyCaptcha";
-import { PublicApplyResumeSection } from "@/shared/components/ats/PublicApplyResumeSection";
+import {
+  PublicApplyOptionalProfileDetails,
+  PublicApplyResumeSection,
+  PublicApplyResumeUploadField,
+} from "@/shared/components/ats/PublicApplyResumeSection";
+import { PublicApplyCoverLetterField } from "@/shared/components/ats/PublicApplyCoverLetterField";
 import { usePublicApplyCaptcha } from "@/shared/hooks/usePublicApplyCaptcha";
 import { usePublicResumeParse } from "@/shared/hooks/usePublicResumeParse";
-import { getPhoneValidationError } from "@/shared/lib/phoneCountries";
+import { getPhoneCountry, getPhoneValidationError } from "@/shared/lib/phoneCountries";
 import { isPublicResumeFile, PUBLIC_RESUME_FORMAT_MESSAGE } from "@/shared/lib/publicApplyResume";
 
 const PASSWORD_MIN_LENGTH = 8;
+/** Matches backend `custom.validation.js` password rules. */
+const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)/;
 
 function getApplySubmissionErrorMessage(error: unknown): string {
   if (isAxiosError(error) && !error.response) {
@@ -65,18 +72,20 @@ export function PublicJobApplyModal({
 }: PublicJobApplyModalProps) {
   const router = useRouter();
   const [applying, setApplying] = useState(false);
+  const [formError, setFormError] = useState("");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [countryCode, setCountryCode] = useState("US");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [coverLetter, setCoverLetter] = useState("");
+  const [coverLetter, setCoverLetter] = useState<File | null>(null);
   const [resume, setResume] = useState<File | null>(null);
   const [documents, setDocuments] = useState<File[]>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const resumeInputRef = useRef<HTMLInputElement>(null);
+  const coverLetterInputRef = useRef<HTMLInputElement>(null);
   const documentsInputRef = useRef<HTMLInputElement>(null);
   const {
     ensureCaptchaReady,
@@ -93,6 +102,7 @@ export function PublicJobApplyModal({
     parseStatus,
     parseMessage,
     suggestedSkills,
+    setSuggestedSkills,
     suggestedExperiences,
     setSuggestedExperiences,
     suggestedQualifications,
@@ -200,6 +210,9 @@ export function PublicJobApplyModal({
     if (password.length < PASSWORD_MIN_LENGTH) {
       return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
     }
+    if (!PASSWORD_REGEX.test(password)) {
+      return "Password must contain at least one uppercase letter and one number.";
+    }
     if (password !== confirmPassword) {
       return "Passwords do not match.";
     }
@@ -211,15 +224,16 @@ export function PublicJobApplyModal({
 
   const handleApplySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError("");
     const validationError = validateForm();
     if (validationError) {
-      await Swal.fire({ icon: "error", title: "Validation Error", text: validationError });
+      setFormError(validationError);
       return;
     }
 
     const captchaError = ensureCaptchaReady();
     if (captchaError) {
-      await Swal.fire({ icon: "warning", title: "Security check required", text: captchaError });
+      setFormError(captchaError);
       return;
     }
 
@@ -235,24 +249,34 @@ export function PublicJobApplyModal({
         phoneNumber: (phoneNumber || "").replace(/\D/g, ""),
         countryCode,
         entryMode,
-        coverLetter: coverLetter.trim(),
         ...(referralRef?.trim() ? { ref: referralRef.trim() } : {}),
         ...(submitSkills.length > 0 ? { skills: submitSkills } : {}),
         ...(profileArrays.experiences.length > 0 ? { experiences: profileArrays.experiences } : {}),
         ...(profileArrays.qualifications.length > 0 ? { qualifications: profileArrays.qualifications } : {}),
         ...(profileArrays.socialLinks.length > 0 ? { socialLinks: profileArrays.socialLinks } : {}),
       };
-      const applyRes = await publicApplyToJob(jobId, payload, resume!, documents);
+      const applyRes = await publicApplyToJob(jobId, payload, resume!, documents, coverLetter);
       onClose();
       onSuccess?.();
       const detail =
         applyRes?.message ||
         "Your application is saved. Your account is pending—check your email to verify, then an administrator can activate your access. You can sign in once your account is active.";
+      const em = email.trim().toLowerCase();
       await Swal.fire({
         icon: "success",
         title: "Application submitted",
-        text: detail,
+        html: `
+          <p class="mb-4">${detail}</p>
+          <div class="text-left bg-gray-50 rounded-lg p-4 text-sm">
+            <p class="font-semibold mb-2">Next steps:</p>
+            <ul class="list-disc list-inside space-y-1 text-gray-700">
+              <li>Check <strong>${em}</strong> and verify your address if you have not already</li>
+              <li>Sign in once your account is active to track this application</li>
+            </ul>
+          </div>
+        `,
         confirmButtonText: "Go to sign in",
+        confirmButtonColor: "#36af4c",
         width: 560,
       });
       router.push(
@@ -260,11 +284,7 @@ export function PublicJobApplyModal({
       );
     } catch (error: unknown) {
       if (handleCaptchaApiError(error)) {
-        await Swal.fire({
-          icon: "warning",
-          title: "Security check required",
-          text: captchaRetryMessage,
-        });
+        setFormError(captchaRetryMessage);
         return;
       }
 
@@ -321,118 +341,18 @@ export function PublicJobApplyModal({
             Create your account and submit this application in one step. Use a real phone number you can answer for
             verification calls.
           </p>
+          {formError ? (
+            <div
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300"
+            >
+              {formError}
+            </div>
+          ) : null}
           <PublicApplyCaptcha
             onTokenChange={setCaptchaToken}
             onRegisterReset={registerCaptchaReset}
           />
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Full name <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={fullName}
-              onChange={(e) => {
-                markFieldEdited("fullName");
-                setFullName(e.target.value);
-              }}
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-primary dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-              placeholder="Your name"
-              required
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Email <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => {
-                markFieldEdited("email");
-                setEmail(e.target.value);
-              }}
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-primary dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-              placeholder="you@example.com"
-              required
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Phone <span className="text-red-500">*</span>
-            </label>
-            <div className="flex gap-2">
-              <PhoneCountrySelect
-                value={countryCode}
-                onChange={(value) => {
-                  markFieldEdited("countryCode");
-                  setCountryCode(value);
-                }}
-                className="w-40"
-              />
-              <input
-                type="tel"
-                value={phoneNumber}
-                onChange={(e) => {
-                  markFieldEdited("phoneNumber");
-                  setPhoneNumber(e.target.value);
-                }}
-                className="flex-1 min-w-0 rounded-lg border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-primary dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                placeholder="Phone number"
-                inputMode="numeric"
-                required
-              />
-            </div>
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Password <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 py-2 pl-4 pr-11 focus:ring-2 focus:ring-primary dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                placeholder={`Min ${PASSWORD_MIN_LENGTH} characters`}
-                autoComplete="new-password"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 dark:hover:bg-white/10 dark:hover:text-gray-200"
-                aria-label={showPassword ? "Hide password" : "Show password"}
-                title={showPassword ? "Hide password" : "Show password"}
-              >
-                <i className={`text-xl ${showPassword ? "ri-eye-off-line" : "ri-eye-line"}`} aria-hidden />
-              </button>
-            </div>
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Confirm password <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <input
-                type={showConfirmPassword ? "text" : "password"}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 py-2 pl-4 pr-11 focus:ring-2 focus:ring-primary dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                autoComplete="new-password"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 dark:hover:bg-white/10 dark:hover:text-gray-200"
-                aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
-                title={showConfirmPassword ? "Hide password" : "Show password"}
-              >
-                <i className={`text-xl ${showConfirmPassword ? "ri-eye-off-line" : "ri-eye-line"}`} aria-hidden />
-              </button>
-            </div>
-          </div>
           <PublicApplyResumeSection
             entryMode={entryMode}
             onEntryModeChange={(mode) => {
@@ -453,7 +373,157 @@ export function PublicJobApplyModal({
             onExperiencesChange={setSuggestedExperiences}
             onQualificationsChange={setSuggestedQualifications}
             onSocialLinksChange={setSuggestedSocialLinks}
+            onSkillsChange={setSuggestedSkills}
             onRetryParse={() => retryParse(prefillTargets)}
+            showOptionalProfile={false}
+            showResumeUpload={entryMode === "ai"}
+          />
+          <div>
+            <label htmlFor="public-apply-modal-fullName" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Full name <span className="text-red-500">*</span>
+            </label>
+            <input
+              id="public-apply-modal-fullName"
+              type="text"
+              value={fullName}
+              onChange={(e) => {
+                markFieldEdited("fullName");
+                setFullName(e.target.value);
+              }}
+              className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-primary dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              placeholder="Your name"
+              minLength={2}
+              required
+            />
+          </div>
+          <div>
+            <label htmlFor="public-apply-modal-email" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Email <span className="text-red-500">*</span>
+            </label>
+            <input
+              id="public-apply-modal-email"
+              type="email"
+              value={email}
+              onChange={(e) => {
+                markFieldEdited("email");
+                setEmail(e.target.value);
+              }}
+              className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-primary dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              placeholder="you@example.com"
+              autoComplete="email"
+              required
+            />
+          </div>
+          <div>
+            <label htmlFor="public-apply-modal-phone" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Phone <span className="text-red-500">*</span>
+            </label>
+            <div className="flex gap-2">
+              <PhoneCountrySelect
+                id="public-apply-modal-countryCode"
+                value={countryCode}
+                onChange={(value) => {
+                  markFieldEdited("countryCode");
+                  setCountryCode(value);
+                }}
+                className="w-40"
+              />
+              <input
+                id="public-apply-modal-phone"
+                type="tel"
+                value={phoneNumber}
+                onChange={(e) => {
+                  markFieldEdited("phoneNumber");
+                  setPhoneNumber(e.target.value);
+                }}
+                className="flex-1 min-w-0 rounded-lg border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-primary dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                placeholder={getPhoneCountry(countryCode).placeholder}
+                maxLength={getPhoneCountry(countryCode).maxLength}
+                inputMode="numeric"
+                required
+              />
+            </div>
+          </div>
+          {entryMode === "manual" ? (
+            <PublicApplyResumeUploadField
+              resume={resume}
+              resumeInputRef={resumeInputRef}
+              onResumeSelected={handleResumeSelected}
+              inputId="public-apply-modal-resume"
+            />
+          ) : null}
+          <div>
+            <label htmlFor="public-apply-modal-password" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Password <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <input
+                id="public-apply-modal-password"
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 py-2 pl-4 pr-11 focus:ring-2 focus:ring-primary dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                placeholder="Min 8 chars, 1 uppercase letter, 1 number"
+                autoComplete="new-password"
+                minLength={PASSWORD_MIN_LENGTH}
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 dark:hover:bg-white/10 dark:hover:text-gray-200"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                title={showPassword ? "Hide password" : "Show password"}
+              >
+                <i className={`text-xl ${showPassword ? "ri-eye-off-line" : "ri-eye-line"}`} aria-hidden />
+              </button>
+            </div>
+          </div>
+          <div>
+            <label htmlFor="public-apply-modal-confirmPassword" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Confirm password <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <input
+                id="public-apply-modal-confirmPassword"
+                type={showConfirmPassword ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 py-2 pl-4 pr-11 focus:ring-2 focus:ring-primary dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                placeholder="Re-enter password"
+                autoComplete="new-password"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 dark:hover:bg-white/10 dark:hover:text-gray-200"
+                aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                title={showConfirmPassword ? "Hide password" : "Show password"}
+              >
+                <i className={`text-xl ${showConfirmPassword ? "ri-eye-off-line" : "ri-eye-line"}`} aria-hidden />
+              </button>
+            </div>
+          </div>
+          {entryMode === "ai" ? (
+            <PublicApplyOptionalProfileDetails
+              entryMode={entryMode}
+              parseStatus={parseStatus}
+              suggestedSkills={suggestedSkills}
+              suggestedExperiences={suggestedExperiences}
+              suggestedQualifications={suggestedQualifications}
+              suggestedSocialLinks={suggestedSocialLinks}
+              onExperiencesChange={setSuggestedExperiences}
+              onQualificationsChange={setSuggestedQualifications}
+              onSocialLinksChange={setSuggestedSocialLinks}
+              onSkillsChange={setSuggestedSkills}
+            />
+          ) : null}
+          <PublicApplyCoverLetterField
+            file={coverLetter}
+            inputRef={coverLetterInputRef}
+            onFileSelected={setCoverLetter}
+            disabled={applying}
           />
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -470,15 +540,6 @@ export function PublicJobApplyModal({
             {documents.length > 0 ? (
               <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{documents.length} file(s)</p>
             ) : null}
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Cover letter (optional)</label>
-            <textarea
-              value={coverLetter}
-              onChange={(e) => setCoverLetter(e.target.value)}
-              rows={4}
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-primary dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-            />
           </div>
           <div className="flex gap-3 pt-2">
             <button

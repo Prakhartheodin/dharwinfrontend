@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import {
-  parsePublicResume,
+  parsePublicResumeOnboard,
   type PublicApplyExperience,
   type PublicApplyQualification,
   type PublicApplySocialLink,
@@ -19,19 +19,28 @@ import {
 import { parseStoredPhone } from "@/shared/lib/phoneCountries";
 import { isPublicResumeFile, PUBLIC_RESUME_FORMAT_MESSAGE } from "@/shared/lib/publicApplyResume";
 
-export type PublicResumeParseUiStatus = "idle" | "parsing" | "prefill_ready" | "parse_failed";
-export type PublicApplyEntryMode = "manual" | "ai";
+export type CandidateOnboardParseUiStatus = "idle" | "parsing" | "prefill_ready" | "parse_failed";
+export type CandidateOnboardEntryMode = "manual" | "ai";
 
-export type PublicResumePrefillTargets = {
-  fullName: string;
+export type CandidateOnboardPrefillTargets = {
+  firstName: string;
+  lastName: string;
   email: string;
   phoneNumber: string;
   countryCode: string;
-  setFullName: (value: string) => void;
+  setFirstName: (value: string) => void;
+  setLastName: (value: string) => void;
   setEmail: (value: string) => void;
   setPhoneNumber: (value: string) => void;
   setCountryCode: (value: string) => void;
 };
+
+function splitFullName(fullName: string): { first: string; last: string } {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { first: "", last: "" };
+  if (parts.length === 1) return { first: parts[0], last: "" };
+  return { first: parts[0], last: parts.slice(1).join(" ") };
+}
 
 function fileDedupeKey(file: File): string {
   return `${file.name}:${file.size}:${file.lastModified}`;
@@ -50,48 +59,11 @@ function extractParseErrorMessage(err: unknown): string {
   return "Could not parse your resume. You can still fill in the form manually.";
 }
 
-function sanitizeExperiencesForSubmit(rows: PublicApplyExperience[]): PublicApplyExperience[] {
-  return rows
-    .map((row) => ({
-      company: row.company.trim(),
-      role: row.role.trim(),
-      startDate: row.startDate || null,
-      endDate: row.currentlyWorking ? null : row.endDate || null,
-      currentlyWorking: Boolean(row.currentlyWorking),
-      description: row.description?.trim() || null,
-    }))
-    .filter((row) => row.company && row.role);
-}
+type Options = { onCaptchaTokenConsumed?: () => void };
 
-function sanitizeQualificationsForSubmit(rows: PublicApplyQualification[]): PublicApplyQualification[] {
-  return rows
-    .map((row) => ({
-      degree: row.degree.trim(),
-      institute: row.institute.trim(),
-      location: row.location?.trim() || null,
-      startYear: row.startYear ?? null,
-      endYear: row.endYear ?? null,
-      description: row.description?.trim() || null,
-    }))
-    .filter((row) => row.degree && row.institute);
-}
-
-function sanitizeSocialLinksForSubmit(rows: PublicApplySocialLink[]): PublicApplySocialLink[] {
-  return rows
-    .map((row) => ({
-      platform: row.platform.trim(),
-      url: row.url.trim(),
-    }))
-    .filter((row) => row.platform && row.url);
-}
-
-type UsePublicResumeParseOptions = {
-  onCaptchaTokenConsumed?: () => void;
-};
-
-export function usePublicResumeParse(jobId: string, options?: UsePublicResumeParseOptions) {
-  const [entryMode, setEntryMode] = useState<PublicApplyEntryMode>("manual");
-  const [parseStatus, setParseStatus] = useState<PublicResumeParseUiStatus>("idle");
+export function useCandidateOnboardResumeParse(options?: Options) {
+  const [entryMode, setEntryMode] = useState<CandidateOnboardEntryMode>("manual");
+  const [parseStatus, setParseStatus] = useState<CandidateOnboardParseUiStatus>("idle");
   const [parseMessage, setParseMessage] = useState<string | null>(null);
   const [suggestedSkills, setSuggestedSkills] = useState<PublicResumeParseSkill[]>([]);
   const [suggestedExperiences, setSuggestedExperiences] = useState<PublicApplyExperience[]>([]);
@@ -120,11 +92,17 @@ export function usePublicResumeParse(jobId: string, options?: UsePublicResumePar
         qualifications: PublicApplyQualification[];
         socialLinks: PublicApplySocialLink[];
       },
-      targets: PublicResumePrefillTargets
+      targets: CandidateOnboardPrefillTargets
     ) => {
       const edited = editedFieldsRef.current;
-      if (!edited.has("fullName") && !targets.fullName.trim() && fields.fullName) {
-        targets.setFullName(fields.fullName);
+      if (fields.fullName) {
+        const { first, last } = splitFullName(fields.fullName);
+        if (!edited.has("firstName") && !targets.firstName.trim() && first) {
+          targets.setFirstName(first);
+        }
+        if (!edited.has("lastName") && !targets.lastName.trim() && last) {
+          targets.setLastName(last);
+        }
       }
       if (!edited.has("email") && !targets.email.trim() && fields.email) {
         targets.setEmail(fields.email);
@@ -147,7 +125,7 @@ export function usePublicResumeParse(jobId: string, options?: UsePublicResumePar
   );
 
   const runParse = useCallback(
-    async (file: File, targets: PublicResumePrefillTargets, force = false) => {
+    async (file: File, targets: CandidateOnboardPrefillTargets, force = false) => {
       if (!isPublicResumeFile(file)) {
         setParseStatus("parse_failed");
         setParseMessage(PUBLIC_RESUME_FORMAT_MESSAGE);
@@ -174,13 +152,9 @@ export function usePublicResumeParse(jobId: string, options?: UsePublicResumePar
       setParseResultStatus(null);
 
       try {
-        const result = await parsePublicResume(jobId, file);
-        if (generation !== parseGenerationRef.current) {
-          return;
-        }
-        if (fileDedupeKey(pendingFileRef.current || file) !== key) {
-          return;
-        }
+        const result = await parsePublicResumeOnboard(file);
+        if (generation !== parseGenerationRef.current) return;
+        if (fileDedupeKey(pendingFileRef.current || file) !== key) return;
 
         lastParsedKeyRef.current = key;
         setParseResultStatus(result.status);
@@ -200,15 +174,13 @@ export function usePublicResumeParse(jobId: string, options?: UsePublicResumePar
 
         applyPrefill(result.fields, targets);
         setParseStatus("prefill_ready");
-        if (result.status === "partial" && result.warnings?.length) {
-          setParseMessage(result.warnings.join(" "));
-        } else {
-          setParseMessage("We prefilled some fields from your resume. Please review before submitting.");
-        }
+        setParseMessage(
+          result.status === "partial" && result.warnings?.length
+            ? result.warnings.join(" ")
+            : "We prefilled some fields from your resume. Please review before submitting."
+        );
       } catch (err) {
-        if (generation !== parseGenerationRef.current) {
-          return;
-        }
+        if (generation !== parseGenerationRef.current) return;
         setParseStatus("parse_failed");
         setParseMessage(isCaptchaApiError(err) ? CAPTCHA_RETRY_MESSAGE : extractParseErrorMessage(err));
         setSuggestedSkills([]);
@@ -221,11 +193,11 @@ export function usePublicResumeParse(jobId: string, options?: UsePublicResumePar
         }
       }
     },
-    [applyPrefill, jobId, options]
+    [applyPrefill, options]
   );
 
   const retryParse = useCallback(
-    (targets: PublicResumePrefillTargets) => {
+    (targets: CandidateOnboardPrefillTargets) => {
       const file = pendingFileRef.current;
       if (!file) return;
       lastParsedKeyRef.current = null;
@@ -249,7 +221,7 @@ export function usePublicResumeParse(jobId: string, options?: UsePublicResumePar
     editedFieldsRef.current = new Set();
   }, []);
 
-  const changeEntryMode = useCallback((mode: PublicApplyEntryMode) => {
+  const changeEntryMode = useCallback((mode: CandidateOnboardEntryMode) => {
     setEntryMode(mode);
     if (mode === "manual") {
       setSuggestedSkills([]);
@@ -264,16 +236,19 @@ export function usePublicResumeParse(jobId: string, options?: UsePublicResumePar
     return suggestedSkills;
   }, [entryMode, suggestedSkills]);
 
-  const getSubmitProfileArrays = useCallback(() => {
-    if (entryMode !== "ai") {
-      return { experiences: [], qualifications: [], socialLinks: [] };
-    }
-    return {
-      experiences: sanitizeExperiencesForSubmit(suggestedExperiences),
-      qualifications: sanitizeQualificationsForSubmit(suggestedQualifications),
-      socialLinks: sanitizeSocialLinksForSubmit(suggestedSocialLinks),
-    };
-  }, [entryMode, suggestedExperiences, suggestedQualifications, suggestedSocialLinks]);
+  const getSubmitProfileArrays = useCallback(
+    () => {
+      if (entryMode !== "ai") {
+        return { experiences: [], qualifications: [], socialLinks: [] };
+      }
+      return {
+        experiences: suggestedExperiences,
+        qualifications: suggestedQualifications,
+        socialLinks: suggestedSocialLinks,
+      };
+    },
+    [entryMode, suggestedExperiences, suggestedQualifications, suggestedSocialLinks]
+  );
 
   return {
     entryMode,
