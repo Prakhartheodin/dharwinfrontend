@@ -7,6 +7,7 @@ import {
   addCandidateDocumentVersion,
   deleteCandidateDocumentVersion,
   getDocumentVersionDownloadUrl,
+  isMongoObjectId,
   listCandidateDocumentVersions,
   uploadDocument,
 } from "@/shared/lib/api/employees";
@@ -168,6 +169,13 @@ export function VersionedDocumentSlot({
   const displayTitle = title || SLOT_TITLES[slot];
 
   const loadVersions = useCallback(async () => {
+    if (!isMongoObjectId(candidateId)) {
+      setLoading(false);
+      setError(null);
+      setVersions([]);
+      setCurrentVersion(null);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {

@@ -35,6 +35,16 @@ export interface JobApplication {
   applicantUser?: { _id?: string; id?: string; name?: string; email?: string } | null;
   status: JobApplicationStatus;
   coverLetter?: string | null;
+  submittedResume?: {
+    slot?: string;
+    version?: number;
+    key?: string;
+    documentUrl?: string;
+    originalName?: string;
+    mimeType?: string;
+    size?: number;
+    capturedAt?: string;
+  } | null;
   appliedBy?: { _id: string; name?: string; email?: string };
   notes?: string | null;
   createdAt?: string;

@@ -323,6 +323,12 @@ export default function MyApplicationsPage() {
                           )}
                         </h2>
                         <p className="text-sm text-defaulttextcolor/70 dark:text-white/60">{company}</p>
+                        {app.submittedResume?.originalName ? (
+                          <p className="mt-1 text-xs text-defaulttextcolor/55 dark:text-white/45">
+                            Resume: {app.submittedResume.originalName}
+                            {app.submittedResume.version != null ? ` (v${app.submittedResume.version})` : ""}
+                          </p>
+                        ) : null}
                       </div>
                       {/* Badge + actions on one row: status, View, then Withdraw. */}
                       <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 min-w-0 sm:shrink-0">

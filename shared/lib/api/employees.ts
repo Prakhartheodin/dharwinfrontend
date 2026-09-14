@@ -57,6 +57,29 @@ export interface CandidateListItem {
   recruiterNotes?: RecruiterNote[];
 }
 
+const MONGO_OBJECT_ID_PATTERN = /^[0-9a-fA-F]{24}$/;
+
+export function isMongoObjectId(value: unknown): value is string {
+  return typeof value === "string" && MONGO_OBJECT_ID_PATTERN.test(value.trim());
+}
+
+/** API JSON uses `id` (Mongoose toJSON); legacy payloads may still send `_id`. */
+export function getCandidateListItemId(
+  candidate: Pick<CandidateListItem, "id" | "_id"> | null | undefined
+): string | null {
+  if (!candidate) return null;
+  const raw = candidate.id ?? candidate._id;
+  if (raw == null) return null;
+  const id = String(raw).trim();
+  return isMongoObjectId(id) ? id : null;
+}
+
+function withResolvedCandidateIds(item: CandidateListItem): CandidateListItem {
+  const id = getCandidateListItemId(item);
+  if (!id) return item;
+  return { ...item, id, _id: item._id ?? id };
+}
+
 export type RecruiterNote = {
   note: string;
   addedAt?: string;
@@ -297,19 +320,19 @@ export async function assignCompanyAssignedEmail(
 
 export async function getCandidate(candidateId: string): Promise<CandidateListItem> {
   const { data } = await apiClient.get<CandidateListItem>(`/employees/${candidateId}`);
-  return data;
+  return withResolvedCandidateIds(data);
 }
 
 /** Get current user's own candidate (auth only, no candidates.read). For role 'user' from share-candidate-form. */
 export async function getMyCandidate(): Promise<CandidateListItem> {
   const { data } = await apiClient.get<CandidateListItem>("/employees/me");
-  return data;
+  return withResolvedCandidateIds(data);
 }
 
 /** Update current user's own candidate (auth only). For role 'user' from share-candidate-form. */
 export async function updateMyCandidate(payload: Partial<CandidateListItem>): Promise<CandidateListItem> {
   const { data } = await apiClient.patch<CandidateListItem>("/employees/me", payload);
-  return data;
+  return withResolvedCandidateIds(data);
 }
 
 export async function createCandidate(payload: Partial<CandidateListItem>): Promise<CandidateListItem> {
@@ -374,10 +397,14 @@ export async function listCandidateDocumentVersions(
   candidateId: string,
   slot: DocumentVersionSlot
 ): Promise<{ slot: DocumentVersionSlot; currentVersion: number | null; versions: CandidateDocumentVersion[] }> {
+  const id = typeof candidateId === "string" ? candidateId.trim() : "";
+  if (!isMongoObjectId(id)) {
+    throw new Error("A valid candidate profile is required to load saved document versions.");
+  }
   const { data } = await apiClient.get<{
     success: boolean;
     data: { slot: DocumentVersionSlot; currentVersion: number | null; versions: CandidateDocumentVersion[] };
-  }>(`/employees/documents/${candidateId}/versions/${slot}`);
+  }>(`/employees/documents/${id}/versions/${slot}`);
   if (!data?.success || !data?.data) throw new Error("Failed to list document versions");
   return data.data;
 }

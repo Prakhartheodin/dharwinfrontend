@@ -268,11 +268,27 @@ export interface BrowseApplyResponse {
   candidateId: string;
 }
 
+export type BrowseApplyOptions = {
+  ref?: string;
+  resumeVersion?: number;
+  resumeFile?: File;
+};
+
 export async function browseApplyToJob(
   jobId: string,
-  body?: { ref?: string }
+  options?: BrowseApplyOptions
 ): Promise<BrowseApplyResponse> {
-  const { data } = await apiClient.post<BrowseApplyResponse>(`/jobs/browse/${jobId}/apply`, body ?? {});
+  if (options?.resumeFile) {
+    const form = new FormData();
+    if (options.ref?.trim()) form.append("ref", options.ref.trim());
+    form.append("resume", options.resumeFile);
+    const { data } = await apiClient.post<BrowseApplyResponse>(`/jobs/browse/${jobId}/apply`, form);
+    return data;
+  }
+  const body: { ref?: string; resumeVersion?: number } = {};
+  if (options?.ref?.trim()) body.ref = options.ref.trim();
+  if (options?.resumeVersion != null) body.resumeVersion = options.resumeVersion;
+  const { data } = await apiClient.post<BrowseApplyResponse>(`/jobs/browse/${jobId}/apply`, body);
   return data;
 }
 

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import React, { Fragment, useState, useEffect } from "react";
 import { readBrowseJobsListBackHref } from "@/shared/lib/ats/browseJobsListQuery";
-import { getPublicJobById, browseApplyToJob, isExternalJob, type PublicJob } from "@/shared/lib/api/jobs";
+import { getPublicJobById, isExternalJob, type PublicJob } from "@/shared/lib/api/jobs";
 import { getMyApplications, withdrawMyApplication, type JobApplication } from "@/shared/lib/api/jobApplications";
 import {
   candidateBadgeTone,
@@ -15,6 +15,7 @@ import {
 } from "@/shared/lib/ats/candidateSelection";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { PublicJobApplyModal } from "@/shared/components/ats/PublicJobApplyModal";
+import { ApplyResumePickerOverlay } from "@/shared/components/ats/ApplyResumePickerOverlay";
 import { formatSalaryRange, mapExperienceLevel, formatPostingDateMeta, formatApplicationDeadlineMeta, isApplicationDeadlinePast } from "@/shared/lib/ats/jobMappers";
 import {
   formatJobDescriptionForDisplay,
@@ -82,11 +83,11 @@ export default function BrowseJobDetailsPage() {
   const [jobError, setJobError] = useState<string | null>(null);
   const [existingApplication, setExistingApplication] = useState<JobApplication | null>(null);
   const [applicationsLoading, setApplicationsLoading] = useState(true);
-  const [applySubmitting, setApplySubmitting] = useState(false);
   const [withdrawSubmitting, setWithdrawSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [applyModalOpen, setApplyModalOpen] = useState(false);
+  const [resumePickerOpen, setResumePickerOpen] = useState(false);
   const [listBackHref, setListBackHref] = useState("/ats/browse-jobs");
 
   useEffect(() => {
@@ -139,30 +140,26 @@ export default function BrowseJobDetailsPage() {
       .finally(() => setApplicationsLoading(false));
   }, [jobId, user]);
 
-  const handleApplyLoggedIn = async () => {
+  const refreshApplicationForJob = async () => {
+    const res = await getMyApplications({ limit: 100 });
+    const forThisJob = (res.results ?? []).find(
+      (a) => (a.job?._id ?? (a.job as { id?: string })?.id) === jobId
+    );
+    setExistingApplication(forThisJob ?? null);
+  };
+
+  const handleApplyLoggedIn = () => {
     if (!jobId || !user) return;
-    setApplySubmitting(true);
     setMessage(null);
+    setResumePickerOpen(true);
+  };
+
+  const handleResumeApplySuccess = async () => {
+    setMessage({ type: "success", text: "Application submitted successfully." });
     try {
-      await browseApplyToJob(
-        jobId,
-        effectiveReferralRef ? { ref: effectiveReferralRef } : undefined
-      );
-      setMessage({ type: "success", text: "Application submitted successfully." });
-      const res = await getMyApplications({ limit: 100 });
-      const forThisJob = (res.results ?? []).find(
-        (a) => (a.job?._id ?? (a.job as { id?: string })?.id) === jobId
-      );
-      setExistingApplication(forThisJob ?? null);
-    } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { message?: string }; status?: number } })?.response?.data
-          ?.message ||
-        (err as Error)?.message ||
-        "Failed to apply";
-      setMessage({ type: "error", text: msg });
-    } finally {
-      setApplySubmitting(false);
+      await refreshApplicationForJob();
+    } catch {
+      /* non-blocking */
     }
   };
 
@@ -299,10 +296,9 @@ export default function BrowseJobDetailsPage() {
       ) : canApply ? (
         <button
           type="button"
-          disabled={applySubmitting}
           onClick={() => {
             if (isLoggedIn) {
-              void handleApplyLoggedIn();
+              handleApplyLoggedIn();
             } else {
               setApplyModalOpen(true);
             }
@@ -310,16 +306,8 @@ export default function BrowseJobDetailsPage() {
           className="group relative inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-stone-900 px-4 py-3.5 text-sm font-bold uppercase tracking-wide text-white shadow-lg shadow-stone-900/20 transition hover:bg-stone-800 disabled:opacity-50 dark:bg-teal-600 dark:shadow-teal-900/30 dark:hover:bg-teal-500"
         >
           <span className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 opacity-0 transition group-hover:opacity-100 dark:from-white/0 dark:via-white/5 dark:to-white/0" />
-          {applySubmitting ? (
-            <i className="ri-loader-4-line animate-spin text-xl" aria-hidden />
-          ) : (
-            <i className="ri-send-plane-fill text-xl" aria-hidden />
-          )}
-          {applySubmitting
-            ? "Submitting…"
-            : isLoggedIn
-              ? "Apply for this role"
-              : "Apply — create your account"}
+          <i className="ri-send-plane-fill text-xl" aria-hidden />
+          {isLoggedIn ? "Apply for this role" : "Apply — create your account"}
         </button>
       ) : deadlinePassed ? (
         <div className="rounded-xl border border-rose-200/80 bg-rose-50/90 px-4 py-3 text-sm text-rose-900 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-200">
@@ -581,13 +569,23 @@ export default function BrowseJobDetailsPage() {
         </button>
 
         {job && jobId ? (
-          <PublicJobApplyModal
-            open={applyModalOpen}
-            onClose={() => setApplyModalOpen(false)}
-            jobId={jobId}
-            jobTitle={job.title}
-            referralRef={effectiveReferralRef}
-          />
+          <>
+            <PublicJobApplyModal
+              open={applyModalOpen}
+              onClose={() => setApplyModalOpen(false)}
+              jobId={jobId}
+              jobTitle={job.title}
+              referralRef={effectiveReferralRef}
+            />
+            <ApplyResumePickerOverlay
+              open={resumePickerOpen}
+              onClose={() => setResumePickerOpen(false)}
+              jobId={jobId}
+              jobTitle={job.title}
+              referralRef={effectiveReferralRef}
+              onSuccess={() => void handleResumeApplySuccess()}
+            />
+          </>
         ) : null}
         {confirmDialog}
       </div>

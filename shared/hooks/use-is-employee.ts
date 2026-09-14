@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/shared/contexts/auth-context";
-import { getMyCandidate } from "@/shared/lib/api/employees";
+import { getMyCandidate, getCandidateListItemId } from "@/shared/lib/api/employees";
 
 /**
  * Record-based employee detection: user has an ATS record when
@@ -31,7 +31,7 @@ export function useIsEmployee(): {
       .then((c) => {
         if (cancelled) return;
         setIsEmployee(true);
-        setEmployeeId((c as { _id?: string; id?: string })._id ?? (c as { _id?: string; id?: string }).id ?? null);
+        setEmployeeId(getCandidateListItemId(c));
       })
       .catch(() => {
         if (!cancelled) {
