@@ -14,9 +14,7 @@ import {
 import {
   getTaskId,
   listTasks,
-  updateTaskStatus,
   type Task,
-  type TaskStatus,
   TASK_STATUS_LABELS,
 } from "@/shared/lib/api/tasks";
 import { listJobs, type Job } from "@/shared/lib/api/jobs";
@@ -58,6 +56,7 @@ import TodayEventsCard, {
 } from "./_components/TodayEventsCard";
 import {
   TODAY_EVENTS_FETCH_LIMIT,
+  TODAY_EVENTS_LIST_SCOPE,
   filterToViewerToday,
   mergeEvents,
   normalizeInternalMeeting,
@@ -1056,6 +1055,7 @@ export default function DashboardPage() {
       status: "scheduled",
       sortBy: "scheduledAt:asc,_id:asc",
       limit: TODAY_EVENTS_FETCH_LIMIT,
+      scope: TODAY_EVENTS_LIST_SCOPE,
     };
 
     setTodayEventsLoading(true);
@@ -1107,48 +1107,6 @@ export default function DashboardPage() {
   useEffect(() => {
     void loadTodayEvents();
   }, [loadTodayEvents]);
-
-  /**
-   * Task completion.
-   *
-   * Optimistic, with a per-task sequence guard: a fast check/uncheck/check settles on the
-   * last click rather than the last response to arrive, and a response for a superseded
-   * click is discarded instead of repainting a stale status. The server stays
-   * authoritative — a failure reloads rather than guessing.
-   */
-  const taskMutationSeq = useRef<Map<string, number>>(new Map());
-
-  const handleTaskToggle = useCallback(
-    async (task: Task) => {
-      const id = getTaskId(task);
-      if (!id) return;
-      const next: TaskStatus = task.status === "completed" ? "todo" : "completed";
-      const seq = (taskMutationSeq.current.get(id) ?? 0) + 1;
-      taskMutationSeq.current.set(id, seq);
-
-      setMyTasks((prev) => prev.map((t) => (getTaskId(t) === id ? { ...t, status: next } : t)));
-
-      try {
-        const saved = await updateTaskStatus(id, next);
-        if (taskMutationSeq.current.get(id) !== seq) return; // superseded by a later click
-        setMyTasks((prev) =>
-          prev.map((t) => (getTaskId(t) === id ? { ...t, status: saved.status ?? next } : t))
-        );
-      } catch {
-        if (taskMutationSeq.current.get(id) !== seq) return;
-        try {
-          const fresh = await listTasks(dashboardTaskQuery());
-          setMyTasks(fresh.results ?? []);
-        } catch {
-          /* Reload failed too — revert just this row so the UI stops claiming success. */
-          setMyTasks((prev) =>
-            prev.map((t) => (getTaskId(t) === id ? { ...t, status: task.status } : t))
-          );
-        }
-      }
-    },
-    []
-  );
 
   /* Fetch applicants when applicants modal is opened */
   useEffect(() => {
@@ -1926,26 +1884,17 @@ export default function DashboardPage() {
                     const bucket = dueBucket(t);
                     const late = daysOverdue(t);
                     const taskId = getTaskId(t);
+                    const taskHref = taskId
+                      ? `/task/task-details?taskId=${taskId}`
+                      : "/task/my-tasks";
                     return (
                       <li
                         key={taskId || t.title}
-                        className="flex items-center gap-1 rounded-lg border-b border-black/5 last:border-b-0 dark:border-white/[0.08]"
+                        className="rounded-lg border-b border-black/5 last:border-b-0 dark:border-white/[0.08]"
                       >
-                        {/* 44px target; a real control, not the decorative input this replaced. */}
-                        <button
-                          type="button"
-                          onClick={() => void handleTaskToggle(t)}
-                          aria-label={`Mark "${t.title}" complete`}
-                          className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-[#8c9097] transition-colors hover:bg-primary/5 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 dark:text-white/50"
-                        >
-                          <span
-                            aria-hidden="true"
-                            className="grid h-4 w-4 place-items-center rounded border-[1.5px] border-current"
-                          />
-                        </button>
                         <Link
-                          href="/task/my-tasks"
-                          className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 transition-colors hover:bg-primary/5"
+                          href={taskHref}
+                          className="flex min-h-11 min-w-0 items-center gap-2 rounded-lg px-1.5 transition-colors hover:bg-primary/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                         >
                           <span className="min-w-0 flex-1 truncate text-[0.8125rem]" title={t.title}>
                             {t.title}

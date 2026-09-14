@@ -12,8 +12,8 @@
  * produce false positives, and a real duplicate is not expected between a candidate
  * interview and an internal team meeting. See the note on `mergeEvents`.
  *
- * Authorization is entirely server-side. Nothing in this file filters for permission —
- * every row it receives is one the caller may already see.
+ * Authorization is server-side. Dashboard list calls pass scope=mine so tenant-wide
+ * interview/meeting access does not flood the widget with other people's events.
  *
  * Every calendar-day decision uses the VIEWER's timezone via wallClockDateKey/
  * localDateKey. Never toISOString().slice(0,10) (UTC, shifts the day east of UTC) and
@@ -64,6 +64,9 @@ export const TODAY_EVENTS_DISPLAY_CAP = 8;
  * the earliest 8 of the day across BOTH sources, without fetching the whole day.
  */
 export const TODAY_EVENTS_FETCH_LIMIT = 25;
+
+/** Dashboard lists only meetings/interviews the viewer hosts or is invited to as participant. */
+export const TODAY_EVENTS_LIST_SCOPE = "mine" as const;
 
 const DEFAULT_DURATION_MINUTES = 60;
 

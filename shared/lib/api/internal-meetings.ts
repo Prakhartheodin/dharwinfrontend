@@ -99,6 +99,7 @@ export async function listInternalMeetings(params?: {
    */
   dateFrom?: string;
   dateTo?: string;
+  scope?: "mine";
   page?: number;
   limit?: number;
   sortBy?: string;

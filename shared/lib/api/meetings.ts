@@ -161,6 +161,8 @@ export async function listMeetings(params?: {
    */
   dateFrom?: string;
   dateTo?: string;
+  /** Server-side: only rows where the caller is creator, host, recruiter, agent, or invitee. */
+  scope?: "mine";
   page?: number;
   limit?: number;
   sortBy?: string;
