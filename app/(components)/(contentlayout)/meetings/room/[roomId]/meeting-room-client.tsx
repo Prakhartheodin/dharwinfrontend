@@ -14,6 +14,7 @@ import { ConnectionState, DisconnectReason, RoomEvent } from "livekit-client";
 import { MeetingRecordingHostControls } from "@/shared/components/livekit/meeting-recording-host-controls";
 import { LiveKitAiRecordingBanner } from "@/shared/components/livekit/recording-participant-banner";
 import InterviewJoinConsentPanel from "@/shared/components/meeting/InterviewJoinConsentPanel";
+import { isCommunicationChatRoomEntry } from "@/shared/lib/interviewRoomEntry";
 import { MEETING_CONTROL_BAR_RESPONSIVE_CSS } from "@/shared/components/livekit/meeting-control-bar-responsive.css";
 import { WaitingRoom } from "@/shared/components/livekit/waiting-room";
 import { WaitingParticipantsPanel } from "@/shared/components/livekit/waiting-participants-panel";
@@ -729,15 +730,17 @@ export default function MeetingRoomClient() {
 
   const roomId = params.roomId as string;
   const fromChat = searchParams.get("from") === "chat";
+  const roomName = useMemo(() => decodeURIComponent(roomId), [roomId]);
+  const isChatCall = isCommunicationChatRoomEntry(fromChat, roomName);
   const returnConvId = searchParams.get("conv") || null;
   const chatCallIdParam = searchParams.get("callId");
   const recordChatCallJoinId = useMemo(() => {
-    if (!fromChat) return null;
-    const name = decodeURIComponent(roomId);
+    if (!isChatCall) return null;
+    const name = roomName;
     if (!name.startsWith("chat-")) return null;
     const id = chatCallIdParam?.trim();
     return id || null;
-  }, [fromChat, roomId, chatCallIdParam]);
+  }, [isChatCall, roomName, chatCallIdParam]);
   const participantName = useMemo(() => {
     return (
       searchParams.get("name") || user?.name || user?.email || `user-${Math.random().toString(36).substr(2, 9)}`
@@ -771,13 +774,12 @@ export default function MeetingRoomClient() {
     try {
       setIsLoading(true);
       setError("");
-      const roomName = decodeURIComponent(roomId);
       const data = await livekitApi.getLiveKitToken(roomName, participantName, participantEmail || undefined);
       setToken(data.token);
       setIsHost(data.isHost || false);
       setParticipantIdentity(data.participantIdentity);
       // Chat calls never use a waiting room — all peers join directly
-      setIsInWaitingRoom(!data.isHost && !fromChat);
+      setIsInWaitingRoom(!data.isHost && !isChatCall);
     } catch (err: any) {
       console.error("Error fetching token:", err);
       const errorMessage =
@@ -788,7 +790,7 @@ export default function MeetingRoomClient() {
     } finally {
       setIsLoading(false);
     }
-  }, [roomId, participantName, participantEmail, livekitUrl]);
+  }, [roomName, participantName, participantEmail, livekitUrl, isChatCall]);
 
   useEffect(() => {
     fetchToken();
@@ -860,7 +862,7 @@ export default function MeetingRoomClient() {
       const data = await livekitApi.getLiveKitToken(roomName, participantName, participantEmail || undefined);
       setToken(data.token);
       setIsHost(data.isHost || false);
-      setIsInWaitingRoom(!data.isHost && !fromChat);
+      setIsInWaitingRoom(!data.isHost && !isChatCall);
       setReconnectKey((prev) => prev + 1);
     } catch (err) {
       console.error("Error fetching token during reconnect:", err);
@@ -868,7 +870,7 @@ export default function MeetingRoomClient() {
     } finally {
       setIsLoading(false);
     }
-  }, [roomId, participantName, participantEmail]);
+  }, [roomId, participantName, participantEmail, isChatCall]);
 
   const handleAdmitted = useCallback(async (newToken: string) => {
     setToken(newToken);
@@ -985,8 +987,7 @@ export default function MeetingRoomClient() {
     return null;
   }
 
-  if (!fromChat && !interviewConsentComplete) {
-    const roomName = decodeURIComponent(roomId);
+  if (!isChatCall && !interviewConsentComplete) {
     return (
       <InterviewJoinConsentPanel
         roomName={roomName}
@@ -1038,7 +1039,7 @@ export default function MeetingRoomClient() {
         roomName={decodeURIComponent(roomId)}
         isHost={isHost}
         canRecordMeeting={canRecordMeeting}
-        isChatCall={fromChat}
+        isChatCall={isChatCall}
       />
     </LiveKitRoom>
   );

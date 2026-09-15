@@ -25,6 +25,7 @@ import {
   InterviewLinkageModal,
   type InterviewLinkageTarget,
 } from "../../_components/InterviewLinkageModal";
+import { InterviewConsentBadge } from "../../_components/InterviewConsentBadge";
 import { linkageActions, offersLinkAction } from "../../_components/interviewLinkage";
 import {
   parseInterviewDetailTab,
@@ -178,6 +179,7 @@ export default function InterviewDetailClient({
           <h1 className="text-xl font-semibold mt-1 truncate">{meeting.title}</h1>
           <div className="flex flex-wrap items-center gap-2 mt-2">
             <InterviewLinkageBadge status={meeting.linkageStatus} />
+            <InterviewConsentBadge consents={meeting.participantConsents} />
             <span className="text-xs text-defaulttextcolor/60">{meeting.status}</span>
           </div>
         </div>

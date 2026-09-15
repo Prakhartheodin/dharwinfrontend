@@ -201,9 +201,21 @@ export interface Meeting {
   linkageStatus?: InterviewLinkageStatus;
   linkageSource?: string | null;
   linkageRevision?: number;
+  participantConsents?: MeetingParticipantConsent[];
   /** Populated on GET /meetings/my-interviews for candidate dashboard rows. */
   jobTitle?: string;
   companyName?: string;
+}
+
+export interface MeetingParticipantConsent {
+  identity: string;
+  role?: string | null;
+  noticeVersion: string;
+  recording: boolean;
+  transcription: boolean;
+  aiEvaluation: boolean;
+  acceptedAt: string;
+  withdrawnAt?: string | null;
 }
 
 export interface MeetingsListResponse {
