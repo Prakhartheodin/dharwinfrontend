@@ -18,7 +18,8 @@ import { endMeetingPublic } from "@/shared/lib/api/meetings";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { WaitingParticipantsPanel } from "@/shared/components/livekit/waiting-participants-panel";
 import { MeetingRecordingHostControls } from "@/shared/components/livekit/meeting-recording-host-controls";
-import { RecordingParticipantBanner } from "@/shared/components/livekit/recording-participant-banner";
+import { LiveKitAiRecordingBanner } from "@/shared/components/livekit/recording-participant-banner";
+import InterviewJoinConsentPanel from "@/shared/components/meeting/InterviewJoinConsentPanel";
 import { MEETING_CONTROL_BAR_RESPONSIVE_CSS } from "@/shared/components/livekit/meeting-control-bar-responsive.css";
 import { useLiveKitBenignErrorSuppression } from "@/shared/lib/livekit-benign-logs";
 
@@ -1797,7 +1798,7 @@ function PublicRoomContent({
         }
       `}} />
       <div className="room-meeting-container relative flex flex-col h-full min-h-0 w-full">
-        <RecordingParticipantBanner roomName={roomName} usePublicStatusApi />
+        <LiveKitAiRecordingBanner roomName={roomName} usePublicStatusApi />
         <MeetingScheduleCountdown
           meetingEndAtIso={meetingEndAtIso}
           isHost={isHost}
@@ -1939,6 +1940,7 @@ export default function PublicMeetingRoomClient() {
 
   const [showRoom, setShowRoom] = useState(false);
   const [token, setToken] = useState<string>("");
+  const [interviewConsentComplete, setInterviewConsentComplete] = useState(false);
   const [error, setError] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [meetingEnded, setMeetingEnded] = useState(false);
@@ -2969,6 +2971,17 @@ export default function PublicMeetingRoomClient() {
   // If token exists but showRoom is false, we might be waiting
   if (!showRoom && token) {
     return <ObsLoadingScreen label="Preparing room" />;
+  }
+
+  if (showRoom && token && !interviewConsentComplete) {
+    return (
+      <InterviewJoinConsentPanel
+        roomName={decodeURIComponent(roomId)}
+        liveKitToken={token}
+        variant={isHost ? "interviewer" : "candidate"}
+        onComplete={() => setInterviewConsentComplete(true)}
+      />
+    );
   }
 
   return (

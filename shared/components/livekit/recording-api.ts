@@ -20,6 +20,15 @@ export function stopRoomRecording(egressId: string, roomName: string, hostEmail?
 }
 
 export function recordingApiError(err: unknown, fallback: string): string {
-  const e = err as { response?: { data?: { message?: string } }; message?: string };
+  const e = err as {
+    response?: { status?: number; data?: { message?: string; code?: string; errorCode?: string } };
+    message?: string;
+  };
+  if (e?.response?.status === 409) {
+    const code = e.response.data?.code || e.response.data?.errorCode;
+    if (code === "consent_required") {
+      return "Recording cannot start until the candidate completes recording consent in the join flow.";
+    }
+  }
   return e?.response?.data?.message || e?.message || fallback;
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useParticipants } from "@livekit/components-react";
 import { fetchRecordingStatus } from "./recording-api";
 import { isRecordingActive } from "./recording-status";
 
@@ -8,6 +9,8 @@ interface RecordingParticipantBannerProps {
   roomName: string;
   /** Public join rooms must poll the unauthenticated status endpoint for all participants. */
   usePublicStatusApi?: boolean;
+  /** When an AI agent participant is in the room. */
+  aiAssistantConnected?: boolean;
 }
 
 /**
@@ -17,6 +20,7 @@ interface RecordingParticipantBannerProps {
 export function RecordingParticipantBanner({
   roomName,
   usePublicStatusApi = false,
+  aiAssistantConnected = false,
 }: RecordingParticipantBannerProps) {
   const [active, setActive] = useState(false);
 
@@ -76,6 +80,9 @@ export function RecordingParticipantBanner({
           }}
         />
         This meeting is being recorded
+        {aiAssistantConnected && (
+          <span className="opacity-90 font-normal"> · AI assistant is listening to assist with notes</span>
+        )}
       </div>
       <style>{`
         @keyframes recordingBannerPulse {
@@ -90,4 +97,17 @@ export function RecordingParticipantBanner({
       `}</style>
     </>
   );
+}
+
+/** Use inside LiveKitRoom — detects connected agent participants for the AI indicator. */
+export function LiveKitAiRecordingBanner(
+  props: Omit<RecordingParticipantBannerProps, "aiAssistantConnected">
+) {
+  const participants = useParticipants();
+  const aiAssistantConnected = participants.some((p) => {
+    const id = (p.identity || "").toLowerCase();
+    const name = (p.name || "").toLowerCase();
+    return id.includes("agent") || name.includes("agent") || id.startsWith("lk-");
+  });
+  return <RecordingParticipantBanner {...props} aiAssistantConnected={aiAssistantConnected} />;
 }

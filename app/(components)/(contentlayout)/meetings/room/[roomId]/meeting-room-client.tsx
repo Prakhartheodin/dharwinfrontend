@@ -12,7 +12,8 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams, useRouter, useParams } from "next/navigation";
 import { ConnectionState, DisconnectReason, RoomEvent } from "livekit-client";
 import { MeetingRecordingHostControls } from "@/shared/components/livekit/meeting-recording-host-controls";
-import { RecordingParticipantBanner } from "@/shared/components/livekit/recording-participant-banner";
+import { LiveKitAiRecordingBanner } from "@/shared/components/livekit/recording-participant-banner";
+import InterviewJoinConsentPanel from "@/shared/components/meeting/InterviewJoinConsentPanel";
 import { MEETING_CONTROL_BAR_RESPONSIVE_CSS } from "@/shared/components/livekit/meeting-control-bar-responsive.css";
 import { WaitingRoom } from "@/shared/components/livekit/waiting-room";
 import { WaitingParticipantsPanel } from "@/shared/components/livekit/waiting-participants-panel";
@@ -617,7 +618,7 @@ function RoomContent({
         }
       `}} />
       <div className="room-meeting-container relative">
-        <RecordingParticipantBanner roomName={roomName} />
+        <LiveKitAiRecordingBanner roomName={roomName} />
         {/* Top bar: call info */}
         <div className="meeting-room-top-bar absolute top-0 left-0 right-0 z-[100] flex items-center justify-between px-5 py-3 bg-gradient-to-b from-black/70 via-black/40 to-transparent pointer-events-none">
           <div className="flex items-center gap-3 pointer-events-auto">
@@ -715,6 +716,7 @@ export default function MeetingRoomClient() {
   const [isInWaitingRoom, setIsInWaitingRoom] = useState(false);
   const [participantIdentity, setParticipantIdentity] = useState<string | null>(null);
   const [mediaFailureKind, setMediaFailureKind] = useState<string | null>(null);
+  const [interviewConsentComplete, setInterviewConsentComplete] = useState(false);
 
   // Try to get user from auth context
   let user = null;
@@ -981,6 +983,19 @@ export default function MeetingRoomClient() {
 
   if (!token) {
     return null;
+  }
+
+  if (!fromChat && !interviewConsentComplete) {
+    const roomName = decodeURIComponent(roomId);
+    return (
+      <InterviewJoinConsentPanel
+        roomName={roomName}
+        liveKitToken={token}
+        variant={isHost ? "interviewer" : "guest"}
+        onComplete={() => setInterviewConsentComplete(true)}
+        onCancel={() => void handleLeave()}
+      />
+    );
   }
 
   return (
