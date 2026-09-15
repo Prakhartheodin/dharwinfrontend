@@ -1,14 +1,18 @@
 import InterviewDetailClient from "./_components/InterviewDetailClient";
 
-type PageProps = {
-  params: { id: string };
-  searchParams?: { tab?: string };
-};
+export default async function InterviewDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ tab?: string }>;
+}) {
+  const { id } = await params;
+  const sp = searchParams ? await searchParams : undefined;
 
-export default function InterviewDetailPage({ params, searchParams }: PageProps) {
   return (
-    <div className="container-fluid py-4">
-      <InterviewDetailClient meetingId={params.id} initialTab={searchParams?.tab} />
+    <div className="container-fluid py-4 max-w-6xl mx-auto">
+      <InterviewDetailClient meetingId={id} initialTab={sp?.tab} />
     </div>
   );
 }

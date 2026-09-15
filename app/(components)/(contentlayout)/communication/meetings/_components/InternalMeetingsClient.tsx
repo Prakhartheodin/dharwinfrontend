@@ -181,8 +181,10 @@ export default function InternalMeetingsClient() {
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
   const [selectedSort, setSelectedSort] = useState<string>("")
   const [statusFilter, setStatusFilter] = useState<"all" | "scheduled" | "completed" | "cancelled">("all")
+  const [searchDraft, setSearchDraft] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [pageSize, setPageSize] = useState(100)
   const [totalResults, setTotalResults] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
   const [sortBy, setSortBy] = useState("scheduledAt:desc")
@@ -252,14 +254,24 @@ export default function InternalMeetingsClient() {
     return monday
   })
 
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedSearch(searchDraft.trim()), 300)
+    return () => window.clearTimeout(t)
+  }, [searchDraft])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch, statusFilter])
+
   const listQueryInput = useMemo(
     () => ({
       page: currentPage,
       limit: pageSize,
       sortBy,
       status: statusFilterToApi(statusFilter),
+      ...(debouncedSearch.length >= 2 ? { search: debouncedSearch } : {}),
     }),
-    [currentPage, pageSize, sortBy, statusFilter]
+    [currentPage, pageSize, sortBy, statusFilter, debouncedSearch]
   )
 
   const fetchMeetings = useCallback(async () => {
@@ -1085,6 +1097,14 @@ export default function InternalMeetingsClient() {
               </div>
               <div className="flex w-full min-w-0 max-w-full flex-col gap-2 xl:w-auto xl:flex-row xl:flex-wrap xl:items-center xl:gap-2 [&_.form-control]:shrink-0 [&_.ti-btn]:shrink-0">
                 <div className="flex flex-wrap items-center gap-1.5 sm:contents sm:gap-2">
+                <input
+                  type="search"
+                  aria-label="Search meetings"
+                  placeholder="Search title, host, email…"
+                  className="form-control !w-full !min-w-[10rem] !max-w-[14rem] !py-1.5 !text-[0.75rem] sm:!w-auto"
+                  value={searchDraft}
+                  onChange={(e) => setSearchDraft(e.target.value)}
+                />
                 <select
                   id="meetings-page-size"
                   aria-label="Rows per page"

@@ -24,6 +24,24 @@ export function speakerLabel(u: TranscriptUtterance, fallbackIdx: number): strin
   );
 }
 
+export function recordingTranscriptEmptyMessage(
+  recording: RecordingTranscriptResponse["recording"]
+): string {
+  switch (recording.aiProcessingStatus) {
+    case "dispatching":
+    case "transcribing":
+    case "finalizing":
+    case "pending":
+      return "Transcript is still being processed. Check back in a few minutes.";
+    case "failed":
+      return recording.aiProcessingError || "Transcription failed for this recording.";
+    case "completed":
+      return "No transcript utterances were captured for this recording.";
+    default:
+      return "No transcript was captured for this recording. Live transcription may not have run for this session.";
+  }
+}
+
 function speakerColor(key: string): string {
   let hash = 0;
   for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) | 0;
@@ -257,6 +275,12 @@ export default function TranscriptView({
               ))
             )}
           </>
+        )}
+
+        {!loading && !error && mode?.kind === "recording" && filteredSegments.length === 0 && (
+          <p className="text-sm text-center text-defaulttextcolor/60 py-8" role="status">
+            {recordingTranscriptEmptyMessage(mode.data.recording)}
+          </p>
         )}
 
         {!loading && !error && mode?.kind === "recording" &&

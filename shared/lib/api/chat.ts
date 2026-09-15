@@ -250,11 +250,22 @@ export async function initiateCall(
   return data;
 }
 
-export async function listCalls(params?: {
-  page?: number;
-  limit?: number;
-}): Promise<{ results: ChatCall[]; page: number; limit: number; totalPages: number }> {
-  const { data } = await apiClient.get(`${BASE}/calls`, { params });
+export async function listCalls(
+  params?: {
+    page?: number;
+    limit?: number;
+    q?: string;
+    status?: string;
+  },
+  options?: { signal?: AbortSignal }
+): Promise<{
+  results: ChatCall[];
+  page: number;
+  limit: number;
+  total?: number;
+  totalPages: number;
+}> {
+  const { data } = await apiClient.get(`${BASE}/calls`, { params, signal: options?.signal });
   return data;
 }
 

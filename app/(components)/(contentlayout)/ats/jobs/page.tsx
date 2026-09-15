@@ -200,7 +200,7 @@ const Jobs = () => {
   })
   const [pageSize, setPageSize] = useState(() => {
     const raw = Number(searchParams.get('limit'))
-    return PAGE_SIZE_OPTIONS.includes(raw) ? raw : 10
+    return PAGE_SIZE_OPTIONS.includes(raw) ? raw : 100
   })
   const [totalResults, setTotalResults] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
@@ -363,7 +363,7 @@ const Jobs = () => {
       else next.delete(key)
     }
     setParam('page', currentPage > 1 ? String(currentPage) : null)
-    setParam('limit', pageSize !== 10 ? String(pageSize) : null)
+    setParam('limit', pageSize !== 100 ? String(pageSize) : null)
     setParam('q', jobNameSearch.trim() || null)
     setParam('origin', listJobOrigin || null)
     setParam('sort', selectedSort && selectedSort !== 'newest-first' ? selectedSort : null)

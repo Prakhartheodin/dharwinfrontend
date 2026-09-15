@@ -14,7 +14,8 @@ import { useSearchParams, useRouter, useParams } from "next/navigation";
 import { ConnectionState, DisconnectReason, RoomEvent } from "livekit-client";
 import Swal from "sweetalert2";
 import * as livekitApi from "@/shared/lib/api/livekit";
-import { endMeetingPublic } from "@/shared/lib/api/meetings";
+import { endMeetingPublic, getMeeting, type Meeting } from "@/shared/lib/api/meetings";
+import InterviewHostResultOverlay from "@/shared/components/meeting/InterviewHostResultOverlay";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { WaitingParticipantsPanel } from "@/shared/components/livekit/waiting-participants-panel";
 import { MeetingRecordingHostControls } from "@/shared/components/livekit/meeting-recording-host-controls";
@@ -1903,6 +1904,10 @@ function tokenAllowsRoomJoin(data: { isHost?: boolean; canPublish?: boolean }): 
   return data.isHost === true || data.canPublish === true;
 }
 
+function isMongoUserId(identity: string | null | undefined): boolean {
+  return /^[a-f0-9]{24}$/i.test(String(identity || "").trim());
+}
+
 function displayNameFromUser(user: { name?: string; email?: string } | null): string {
   if (!user) return "";
   const n = typeof user.name === "string" ? user.name.trim() : "";
@@ -1944,6 +1949,7 @@ export default function PublicMeetingRoomClient() {
   const [error, setError] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [meetingEnded, setMeetingEnded] = useState(false);
+  const [hostPostInterview, setHostPostInterview] = useState<Meeting | null>(null);
   const [reconnectKey, setReconnectKey] = useState(0);
   const [hasPermissionError, setHasPermissionError] = useState(false);
   /** Normal participant waiting for host to admit; same page with message + loader */
@@ -2216,9 +2222,8 @@ export default function PublicMeetingRoomClient() {
       const shouldUseAuthedEndpoint =
         !opts?.forcePublic &&
         !!authedEmail &&
-        // Critical: once a non-host identity is pinned (especially admitted waiters),
-        // keep using the same public identity path to avoid auth/public identity drift.
-        (!hasPinnedIdentity || isHost) &&
+        // Pinned stable user ids must keep using /livekit/token so polls do not mint guest-* aliases.
+        (!hasPinnedIdentity || isHost || isMongoUserId(pinnedIdentity)) &&
         (!invitedEmail || sameInvitedAsAuthed);
       const guestIdentity =
         identity ||
@@ -2306,11 +2311,12 @@ export default function PublicMeetingRoomClient() {
 
   useEffect(() => {
     if (participantName && livekitUrl && !showRoom && !token) {
+      if (!authChecked) return;
       fetchToken();
     }
-  }, [participantName, livekitUrl, showRoom, token, fetchToken]);
+  }, [participantName, livekitUrl, showRoom, token, fetchToken, authChecked]);
 
-  // Poll for admission when normal participant is waiting (must send same participantIdentity or server mints a new guest id)
+  // Poll for admission when normal participant is waiting (reuse pinned identity via requestToken)
   useEffect(() => {
     if (!waitingForAdmission || !participantName || !livekitUrl || !roomId || !participantIdentity) return;
 
@@ -2332,7 +2338,7 @@ export default function PublicMeetingRoomClient() {
       }
 
       try {
-        const data = await requestToken(identity, { forcePublic: true });
+        const data = await requestToken(identity);
 
         if (data.rejected) {
           // Host denied the request while waiting — stop polling, show terminal screen.
@@ -2418,7 +2424,19 @@ export default function PublicMeetingRoomClient() {
       reconnectTimerRef.current = null;
     }
     setMeetingEnded(true);
-  }, []);
+    if (isHost) {
+      const roomName = decodeURIComponent(roomId);
+      void getMeeting(roomName)
+        .then((meeting) => {
+          if (meeting.candidate?.id || meeting.candidateId) {
+            setHostPostInterview(meeting);
+          }
+        })
+        .catch(() => {
+          /* hosts without list access still see the session-closed screen */
+        });
+    }
+  }, [isHost, roomId]);
 
   const handleReconnect = useCallback(async () => {
     if (!participantName || !roomId) return;
@@ -2532,6 +2550,19 @@ export default function PublicMeetingRoomClient() {
 
   // Terminal: the meeting has ended for everyone. Wins over every other screen so
   // host and participants all land here, disconnected, with no auto-navigation.
+  if (meetingEnded && isHost && hostPostInterview) {
+    return (
+      <>
+        <ObsidianStudioStyles />
+        <InterviewHostResultOverlay
+          meeting={hostPostInterview}
+          onDone={() => setHostPostInterview(null)}
+          variant="obsidian"
+        />
+      </>
+    );
+  }
+
   if (meetingEnded) {
     return (
       <div className="obs-error">
@@ -2973,7 +3004,7 @@ export default function PublicMeetingRoomClient() {
     return <ObsLoadingScreen label="Preparing room" />;
   }
 
-  if (showRoom && token && !interviewConsentComplete) {
+  if (showRoom && token && !isHost && !interviewConsentComplete) {
     return (
       <InterviewJoinConsentPanel
         roomName={decodeURIComponent(roomId)}

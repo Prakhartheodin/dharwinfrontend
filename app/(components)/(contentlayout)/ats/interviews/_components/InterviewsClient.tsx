@@ -39,7 +39,7 @@ function isMongoObjectIdString(value: string | undefined): boolean {
 }
 
 /** Same default as Onboarding / Jobs / Students / Recruiters / Meetings. */
-const LIST_PAGE_SIZE = 10
+const LIST_PAGE_SIZE = 100
 /** GET /meetings Joi max. Week view walks pages within the 7-day window. */
 const WEEK_LIST_LIMIT = 100
 

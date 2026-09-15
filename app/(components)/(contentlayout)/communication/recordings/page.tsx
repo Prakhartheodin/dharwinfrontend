@@ -198,10 +198,20 @@ export default function RecordingsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [statusFilter, setStatusFilter] = useState<StatusKey>("all");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [searchField, setSearchField] = useState<SearchField>("title");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [transcriptTarget, setTranscriptTarget] = useState<{ id: string; title: string } | null>(null);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter, sourceFilter]);
 
   const fetchRecordings = useCallback(async () => {
     setLoading(true);
@@ -215,7 +225,7 @@ export default function RecordingsPage() {
         page,
         limit: pageSize,
         status: serverStatus,
-        q: search.trim() || undefined,
+        q: debouncedSearch.length >= 2 ? debouncedSearch : undefined,
         source: sourceFilter || undefined,
       });
       const rows = (data.results || []).filter((rec) => rec.status !== "missing");
@@ -232,7 +242,7 @@ export default function RecordingsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, statusFilter, search, sourceFilter]);
+  }, [page, pageSize, statusFilter, debouncedSearch, sourceFilter]);
 
   useEffect(() => {
     fetchRecordings();
@@ -274,41 +284,7 @@ export default function RecordingsPage() {
     setTimeout(() => setCopiedId(null), 1800);
   }, []);
 
-  /**
-   * Client-side filter for status + search field narrowing.
-   * Server-side already applied q + source; this narrows the visible page by
-   * the selected search field for instant feedback without a round-trip.
-   */
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return recordings.filter((rec) => {
-      if (rec.status === "missing") return false;
-      if (statusFilter === "live" && !LIVE_STATUSES.has(rec.status)) return false;
-      if (statusFilter !== "all" && statusFilter !== "live" && rec.status !== statusFilter) return false;
-      if (!q) return true;
-
-      // Narrow by the selected search field
-      if (searchField === "title") {
-        const hay = [rec.meetingTitle, rec.meetingId].filter(Boolean).join(" ").toLowerCase();
-        return hay.includes(q);
-      }
-      if (searchField === "attendeeName") {
-        const names = (rec.attendees || []).map((a) => a.name || "").join(" ").toLowerCase();
-        return names.includes(q);
-      }
-      if (searchField === "attendeeEmail") {
-        const emails = (rec.attendees || []).map((a) => a.email || "").join(" ").toLowerCase();
-        return emails.includes(q);
-      }
-      // Fallback: search all fields
-      const hay = [
-        rec.meetingTitle,
-        rec.meetingId,
-        ...(rec.attendees || []).map((a) => `${a.name || ""} ${a.email || ""}`),
-      ].filter(Boolean).join(" ").toLowerCase();
-      return hay.includes(q);
-    });
-  }, [recordings, statusFilter, search, searchField]);
+  const filtered = recordings;
 
   const counts = useMemo(() => {
     const c = { all: recordings.length, live: 0, completed: 0, aborted: 0, failed: 0, expired: 0 };

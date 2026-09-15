@@ -54,6 +54,7 @@ import {
 } from "@/shared/lib/communication/directoryScope";
 import { useFeatureFlag } from "@/shared/hooks/useFeatureFlag";
 import { useConversationListPagination } from "./_hooks/useConversationListPagination";
+import { useCallsListPagination } from "./_hooks/useCallsListPagination";
 import ListPagination from "@/shared/components/ListPagination";
 import {
   CONVERSATION_LIST_PAGE_LIMIT,
@@ -62,6 +63,12 @@ import {
   conversationSearchParam,
   parseConversationListQuery,
 } from "./_lib/conversationListQuery";
+import {
+  buildCallsListSearch,
+  parseCallsListQuery,
+  CALLS_TAB_SEARCH_DEBOUNCE_MS,
+  callsSearchParam,
+} from "./_lib/callsListQuery";
 
 const DEFAULT_AVATAR = "/assets/images/faces/1.jpg";
 
@@ -658,6 +665,14 @@ const Chat = () => {
   const router = useRouter();
   const pathname = usePathname();
   const listQuery = useMemo(() => parseConversationListQuery(searchParams), [searchParams]);
+  const callsListQuery = useMemo(() => parseCallsListQuery(searchParams), [searchParams]);
+  const replaceCallsQuery = useCallback(
+    (patch: Partial<ReturnType<typeof parseCallsListQuery>>) => {
+      const qs = buildCallsListSearch(searchParams, patch);
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
   const { user, permissions, permissionsLoaded } = useAuth();
   const rbacFlag = useFeatureFlag(DIRECTORY_RBAC_FLAG);
   const scope = useMemo(
@@ -718,7 +733,18 @@ const Chat = () => {
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [calls, setCalls] = useState<ChatCall[]>([]);
+  const [callSearchDraft, setCallSearchDraft] = useState(callsListQuery.callQ);
+  const {
+    calls,
+    totalPages: callsTotalPages,
+    loading: callsLoading,
+    error: callsError,
+    refresh: refreshCalls,
+  } = useCallsListPagination({
+    enabled: activeTab === "calls",
+    page: callsListQuery.callPage,
+    q: callsListQuery.callQ,
+  });
   const [showNewChat, setShowNewChat] = useState(false);
   const [searchDraft, setSearchDraft] = useState(listQuery.q);
   const [newChatMode, setNewChatMode] = useState<"direct" | "group">("direct");
@@ -997,15 +1023,6 @@ const Chat = () => {
     }
   }, [selectedConversation, loadingOlder, hasMoreMessages, messages]);
 
-  const fetchCalls = useCallback(async () => {
-    try {
-      const res = await listCalls({ page: 1, limit: 30 });
-      setCalls(res.results || []);
-    } catch {
-      setCalls([]);
-    }
-  }, []);
-
   const fetchActiveCallForConv = useCallback(async (convId: string | null) => {
     if (!convId) {
       setActiveCallForConv(null);
@@ -1279,10 +1296,18 @@ const Chat = () => {
     return unsub;
   }, [onMessagesRead, convId, myId]);
 
-  // Calls tab
   useEffect(() => {
-    if (activeTab === "calls") fetchCalls();
-  }, [activeTab, fetchCalls]);
+    setCallSearchDraft(callsListQuery.callQ);
+  }, [callsListQuery.callQ]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      const nextQ = callSearchDraft.trim();
+      if (nextQ === callsListQuery.callQ) return;
+      replaceCallsQuery({ callQ: nextQ, callPage: 1 });
+    }, CALLS_TAB_SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(t);
+  }, [callSearchDraft, callsListQuery.callQ, replaceCallsQuery]);
 
   // Active call for rejoin bar
   useEffect(() => {
@@ -1313,10 +1338,10 @@ const Chat = () => {
         setActiveCallForConv(null);
         fetchMessages(convId);
       }
-      fetchCalls();
+      refreshCalls();
     });
     return unsub;
-  }, [onCallEnded, convId, fetchCalls, fetchMessages]);
+  }, [onCallEnded, convId, refreshCalls, fetchMessages]);
 
   useEffect(() => {
     const unsub = onMessageReacted((data) => {
@@ -2168,9 +2193,27 @@ const Chat = () => {
             )}
             {activeTab === "calls" && (
               <div className="tab-pane fade show active !border-0 chat-calls-tab">
+                <div className="px-3 pt-2">
+                  <input
+                    type="search"
+                    className="form-control !text-sm"
+                    placeholder="Search calls by name or email"
+                    value={callSearchDraft}
+                    onChange={(e) => setCallSearchDraft(e.target.value)}
+                    aria-label="Search calls"
+                  />
+                </div>
                 <div className={chatStyles.listPane}>
-                {calls.length === 0 ? (
-                  <p className={chatStyles.emptyList}>No call history yet.</p>
+                {callsLoading ? (
+                  <p className={chatStyles.emptyList}>Loading calls…</p>
+                ) : callsError ? (
+                  <p className={chatStyles.emptyList}>Could not load calls.</p>
+                ) : calls.length === 0 ? (
+                  <p className={chatStyles.emptyList}>
+                    {callsSearchParam(callsListQuery.callQ)
+                      ? `No calls match “${callsListQuery.callQ}”.`
+                      : "No call history yet."}
+                  </p>
                 ) : (
                   <ul className="list-none mb-0" role="list">
                     {visibleCalls.map((call) => {
@@ -2242,6 +2285,20 @@ const Chat = () => {
                     })}
                   </ul>
                 )}
+                {callsTotalPages > 1 ? (
+                  <ListPagination
+                    page={callsListQuery.callPage}
+                    totalPages={callsTotalPages}
+                    totalResults={calls.length}
+                    pageSize={30}
+                    showPageSize={false}
+                    touchFriendly
+                    hideWhenSinglePage
+                    onPageChange={(next) => replaceCallsQuery({ callPage: next })}
+                    className="px-2 py-2"
+                    ariaLabel="Call history pages"
+                  />
+                ) : null}
                 </div>
               </div>
             )}

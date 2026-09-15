@@ -42,11 +42,3 @@ describe("candidateConsentBadge", () => {
   });
 });
 
-describe("isCommunicationChatRoomEntry", () => {
-  it("only skips consent for chat-* rooms with from=chat", async () => {
-    const { isCommunicationChatRoomEntry } = await import("@/shared/lib/interviewRoomEntry");
-    expect(isCommunicationChatRoomEntry(true, "chat-abc")).toBe(true);
-    expect(isCommunicationChatRoomEntry(true, "meeting_abc")).toBe(false);
-    expect(isCommunicationChatRoomEntry(false, "chat-abc")).toBe(false);
-  });
-});

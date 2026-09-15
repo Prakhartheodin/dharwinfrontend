@@ -467,8 +467,8 @@ export interface RecordingTranscriptResponse {
   meetingTitle: string;
   segments: TranscriptSegment[];
   totalSegments: number;
-  /** Which key found the segments: `recordingId` (preferred) or `meetingId` (legacy fallback). */
-  source: "recordingId" | "meetingId";
+  /** Which key found the segments: `recordingId` (preferred), `meetingId` (legacy), or `v2`. */
+  source: "recordingId" | "meetingId" | "v2";
 }
 
 /** Fetch transcript segments for a recording (sequenceNumber asc). */

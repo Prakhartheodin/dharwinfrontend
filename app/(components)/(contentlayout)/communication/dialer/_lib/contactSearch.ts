@@ -1,16 +1,16 @@
 import { useEffect, useState } from "react";
 
 export type ContactListView = "contacts" | "favorites";
-export type ContactParams = { q?: string; favorite?: true; limit: number };
+export type ContactParams = { q?: string; favorite?: true; limit: number; page?: number };
 
 export function normalizeQuery(q: string): string {
   return String(q ?? "").trim();
 }
 
-export function buildContactParams(view: ContactListView, q: string): ContactParams {
-  const params: ContactParams = { limit: 50 };
+export function buildContactParams(view: ContactListView, q: string, page = 1): ContactParams {
+  const params: ContactParams = { limit: 50, page };
   const term = normalizeQuery(q);
-  if (term) params.q = term;
+  if (term.length >= 2) params.q = term;
   if (view === "favorites") params.favorite = true;
   return params;
 }

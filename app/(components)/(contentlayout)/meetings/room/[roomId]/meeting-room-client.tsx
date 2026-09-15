@@ -14,12 +14,16 @@ import { ConnectionState, DisconnectReason, RoomEvent } from "livekit-client";
 import { MeetingRecordingHostControls } from "@/shared/components/livekit/meeting-recording-host-controls";
 import { LiveKitAiRecordingBanner } from "@/shared/components/livekit/recording-participant-banner";
 import InterviewJoinConsentPanel from "@/shared/components/meeting/InterviewJoinConsentPanel";
-import { isCommunicationChatRoomEntry } from "@/shared/lib/interviewRoomEntry";
+import InterviewHostResultOverlay from "@/shared/components/meeting/InterviewHostResultOverlay";
+import {
+  isCommunicationChatRoomEntry,
+  shouldShowInterviewJoinConsent,
+} from "@/shared/lib/interviewRoomEntry";
 import { MEETING_CONTROL_BAR_RESPONSIVE_CSS } from "@/shared/components/livekit/meeting-control-bar-responsive.css";
 import { WaitingRoom } from "@/shared/components/livekit/waiting-room";
 import { WaitingParticipantsPanel } from "@/shared/components/livekit/waiting-participants-panel";
 import * as livekitApi from "@/shared/lib/api/livekit";
-import { updateMeeting } from "@/shared/lib/api/meetings";
+import { getMeeting, updateMeeting, type Meeting } from "@/shared/lib/api/meetings";
 import { endCallByRoom, updateCall } from "@/shared/lib/api/chat";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { userCanRecordMeeting } from "@/shared/lib/permissions";
@@ -718,6 +722,7 @@ export default function MeetingRoomClient() {
   const [participantIdentity, setParticipantIdentity] = useState<string | null>(null);
   const [mediaFailureKind, setMediaFailureKind] = useState<string | null>(null);
   const [interviewConsentComplete, setInterviewConsentComplete] = useState(false);
+  const [hostPostInterview, setHostPostInterview] = useState<Meeting | null>(null);
 
   // Try to get user from auth context
   let user = null;
@@ -819,6 +824,11 @@ export default function MeetingRoomClient() {
     }
   }, [router, roomId, fromChat, returnConvId]);
 
+  const dismissHostPostInterview = useCallback(() => {
+    setHostPostInterview(null);
+    router.push("/meetings/pre-join/");
+  }, [router]);
+
   const handleEndForAll = useCallback(async () => {
     const roomName = decodeURIComponent(roomId);
     if (fromChat && roomName.startsWith("chat-")) {
@@ -829,9 +839,20 @@ export default function MeetingRoomClient() {
       router.push(returnUrl);
     } else {
       await updateMeeting(roomName, { status: "ended" }).catch(() => {});
+      if (isHost) {
+        try {
+          const meeting = await getMeeting(roomName);
+          if (meeting.candidate?.id || meeting.candidateId) {
+            setHostPostInterview(meeting);
+            return;
+          }
+        } catch {
+          /* fall through to lobby */
+        }
+      }
       router.push("/meetings/pre-join/");
     }
-  }, [router, roomId, fromChat, returnConvId]);
+  }, [router, roomId, fromChat, returnConvId, isHost]);
 
   const handleDisconnect = useCallback(() => {
     console.log("Disconnected from room - RoomContent will handle reconnection");
@@ -884,6 +905,16 @@ export default function MeetingRoomClient() {
     }
     setReconnectKey((prev) => prev + 1);
   }, [roomId, participantName, participantEmail]);
+
+  if (hostPostInterview && isHost) {
+    return (
+      <InterviewHostResultOverlay
+        meeting={hostPostInterview}
+        onDone={dismissHostPostInterview}
+        variant="obsidian"
+      />
+    );
+  }
 
   if (isLoading) {
     return (
@@ -987,7 +1018,13 @@ export default function MeetingRoomClient() {
     return null;
   }
 
-  if (!isChatCall && !interviewConsentComplete) {
+  if (
+    shouldShowInterviewJoinConsent({
+      isChatCall,
+      isHost,
+      interviewConsentComplete,
+    })
+  ) {
     return (
       <InterviewJoinConsentPanel
         roomName={roomName}

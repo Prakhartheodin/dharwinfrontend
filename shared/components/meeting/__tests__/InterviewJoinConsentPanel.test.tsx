@@ -29,22 +29,22 @@ describe("InterviewJoinConsentPanel", () => {
     cleanup();
   });
 
-  it("defaults interviewer recording off and omits AI choice", () => {
+  it("shows a short recording notice for participants", () => {
     render(
       <InterviewJoinConsentPanel
         roomName="meeting_test"
         liveKitToken="tok"
-        variant="interviewer"
+        variant="candidate"
         onComplete={() => {}}
       />
     );
-    const recording = screen.getByRole("checkbox", { name: /Recording of audio and video/i });
-    expect(recording).toBeDisabled();
-    expect(recording).not.toBeChecked();
-    expect(screen.queryByRole("checkbox", { name: /AI-assisted summary/i })).toBeNull();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /This meeting may be recorded/i })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByText(/Notice version/i)).toBeNull();
   });
 
-  it("submits candidate choices on continue", async () => {
+  it("submits consent and continues on primary action", async () => {
     const onComplete = vi.fn();
     render(
       <InterviewJoinConsentPanel
@@ -54,12 +54,33 @@ describe("InterviewJoinConsentPanel", () => {
         onComplete={onComplete}
       />
     );
-    await userEvent.click(screen.getByRole("button", { name: /Continue to meeting/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
     expect(meetingsApi.submitPublicMeetingConsent).toHaveBeenCalledWith(
       "meeting_test",
       "tok",
-      expect.objectContaining({ recording: true, transcription: true })
+      expect.objectContaining({
+        recording: true,
+        transcription: true,
+        aiEvaluation: true,
+      })
     );
     expect(onComplete).toHaveBeenCalled();
+  });
+
+  it("sets aiEvaluation false for guest variant", async () => {
+    render(
+      <InterviewJoinConsentPanel
+        roomName="meeting_test"
+        liveKitToken="tok"
+        variant="guest"
+        onComplete={() => {}}
+      />
+    );
+    await userEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
+    expect(meetingsApi.submitPublicMeetingConsent).toHaveBeenCalledWith(
+      "meeting_test",
+      "tok",
+      expect.objectContaining({ aiEvaluation: false })
+    );
   });
 });

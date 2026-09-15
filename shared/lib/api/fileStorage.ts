@@ -44,11 +44,14 @@ export interface DownloadUrlResponse {
 
 export async function listFiles(
   prefix?: string,
-  next?: string
+  next?: string,
+  search?: string
 ): Promise<ListFilesResponse["data"]> {
   const params = new URLSearchParams();
   if (prefix !== undefined && prefix !== "") params.append("prefix", prefix);
   if (next) params.append("next", next);
+  const term = (search ?? "").trim();
+  if (term.length >= 2) params.append("search", term);
   const query = params.toString();
   const url = query ? `${BASE}/list?${query}` : `${BASE}/list`;
   const { data } = await apiClient.get<ListFilesResponse>(url);
