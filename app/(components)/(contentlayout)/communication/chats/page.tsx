@@ -32,7 +32,7 @@ import {
   type Conversation,
   type Message,
 } from "@/shared/lib/api/chat";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useChatSocket } from "@/shared/contexts/ChatSocketContext";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { format, formatDistanceToNow } from "date-fns";
@@ -43,7 +43,6 @@ import {
   splitTextLinks,
   conversationPreviewText,
   conversationPreviewAfterDelete,
-  matchesSearchQuery,
   findMentionToken,
   insertMentionText,
 } from "./_utils/chatHelpers";
@@ -55,6 +54,14 @@ import {
 } from "@/shared/lib/communication/directoryScope";
 import { useFeatureFlag } from "@/shared/hooks/useFeatureFlag";
 import { useConversationListPagination } from "./_hooks/useConversationListPagination";
+import ListPagination from "@/shared/components/ListPagination";
+import {
+  CONVERSATION_LIST_PAGE_LIMIT,
+  CONVERSATION_SEARCH_DEBOUNCE_MS,
+  buildConversationListSearch,
+  conversationSearchParam,
+  parseConversationListQuery,
+} from "./_lib/conversationListQuery";
 
 const DEFAULT_AVATAR = "/assets/images/faces/1.jpg";
 
@@ -648,6 +655,9 @@ function GroupInfoPanel({
 
 const Chat = () => {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const listQuery = useMemo(() => parseConversationListQuery(searchParams), [searchParams]);
   const { user, permissions, permissionsLoaded } = useAuth();
   const rbacFlag = useFeatureFlag(DIRECTORY_RBAC_FLAG);
   const scope = useMemo(
@@ -675,25 +685,28 @@ const Chat = () => {
   } = useChatSocket();
 
   const [activeTab, setActiveTab] = useState<"recent" | "groups" | "calls">("recent");
-  const [groupsTabEnabled, setGroupsTabEnabled] = useState(false);
+  const replaceListQuery = useCallback(
+    (patch: Partial<{ q: string; page: number; conv: string | null }>) => {
+      const qs = buildConversationListSearch(searchParams, patch);
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
   const {
     conversations,
     setConversations,
     loading: conversationsLoading,
-    loadingMore: conversationsLoadingMore,
-    hasMore: conversationsHasMore,
-    loadMore: loadMoreConversations,
+    error: conversationsError,
+    page: conversationsPage,
+    totalPages: conversationsTotalPages,
+    total: conversationsTotal,
     refresh: refreshConversations,
-  } = useConversationListPagination();
-  const {
-    conversations: groupConversations,
-    setConversations: setGroupConversations,
-    loading: groupLoading,
-    loadingMore: groupLoadingMore,
-    hasMore: groupHasMore,
-    loadMore: loadMoreGroups,
-    refresh: refreshGroups,
-  } = useConversationListPagination("group", groupsTabEnabled);
+  } = useConversationListPagination({
+    type: activeTab === "groups" ? "group" : undefined,
+    page: listQuery.page,
+    q: listQuery.q,
+    enabled: activeTab !== "calls",
+  });
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [convCalls, setConvCalls] = useState<any[]>([]);
@@ -707,7 +720,7 @@ const Chat = () => {
   const [error, setError] = useState<string | null>(null);
   const [calls, setCalls] = useState<ChatCall[]>([]);
   const [showNewChat, setShowNewChat] = useState(false);
-  const [conversationSearch, setConversationSearch] = useState("");
+  const [searchDraft, setSearchDraft] = useState(listQuery.q);
   const [newChatMode, setNewChatMode] = useState<"direct" | "group">("direct");
   const [userSearch, setUserSearch] = useState("");
   const [searchResults, setSearchResults] = useState<{ id: string; name: string; email: string }[]>([]);
@@ -908,41 +921,28 @@ const Chat = () => {
   }, [selectedConversation, clearMentionState]);
 
   const fetchConversations = useCallback(async () => {
-    await Promise.all([
-      refreshConversations(),
-      groupsTabEnabled ? refreshGroups() : Promise.resolve(),
-    ]);
-  }, [refreshConversations, refreshGroups, groupsTabEnabled]);
+    await refreshConversations();
+  }, [refreshConversations]);
 
-  const handleConversationListScroll = useCallback(
-    (event: React.UIEvent<HTMLDivElement>) => {
-      const element = event.currentTarget;
-      const nearBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 80;
-      if (!nearBottom) return;
-      if (activeTab === "recent") {
-        if (conversationsHasMore && !conversationsLoadingMore && !conversationsLoading) {
-          void loadMoreConversations();
-        }
-        return;
-      }
-      if (activeTab === "groups") {
-        if (groupHasMore && !groupLoadingMore && !groupLoading) {
-          void loadMoreGroups();
-        }
-      }
-    },
-    [
-      activeTab,
-      conversationsHasMore,
-      conversationsLoading,
-      conversationsLoadingMore,
-      groupHasMore,
-      groupLoading,
-      groupLoadingMore,
-      loadMoreConversations,
-      loadMoreGroups,
-    ]
-  );
+  useEffect(() => {
+    setSearchDraft(listQuery.q);
+  }, [listQuery.q]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      const nextQ = searchDraft.trim();
+      if (nextQ === listQuery.q) return;
+      replaceListQuery({ q: nextQ, page: 1 });
+    }, CONVERSATION_SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(handle);
+  }, [searchDraft, listQuery.q, replaceListQuery]);
+
+  useEffect(() => {
+    if (conversationsLoading) return;
+    if (conversationsPage !== listQuery.page) {
+      replaceListQuery({ page: conversationsPage });
+    }
+  }, [conversationsLoading, conversationsPage, listQuery.page, replaceListQuery]);
 
   // ── Auto-scroll to bottom ──
   // Double rAF: the merged timeline (messages + call pills + date separators)
@@ -1032,30 +1032,35 @@ const Chat = () => {
 
   // ── Effects ──
   useEffect(() => {
-    if (activeTab === "groups") {
-      setGroupsTabEnabled(true);
-    }
-  }, [activeTab]);
-
-  useEffect(() => {
     setSelectedConversation((sel) => {
       if (!sel) return sel;
       const sid = getId(sel);
-      const found =
-        conversations.find((c) => getId(c) === sid) ||
-        groupConversations.find((c) => getId(c) === sid);
+      const found = conversations.find((c) => getId(c) === sid);
       return found ?? sel;
     });
-  }, [conversations, groupConversations]);
+  }, [conversations]);
 
-  // Select conversation from ?conv= when returning from meeting
+  // Select conversation from ?conv= — if it is not on this page, fetch it.
   useEffect(() => {
-    const convParam = searchParams.get("conv");
-    if (convParam && conversations.length > 0 && (!selectedConversation || getId(selectedConversation) !== convParam)) {
-      const c = conversations.find((x) => getId(x) === convParam);
-      if (c) setSelectedConversation(c);
+    const convParam = listQuery.conv;
+    if (!convParam) return;
+    if (selectedConversation && getId(selectedConversation) === convParam) return;
+    const found = conversations.find((x) => getId(x) === convParam);
+    if (found) {
+      setSelectedConversation(found);
+      return;
     }
-  }, [searchParams, conversations, selectedConversation]);
+    if (conversationsLoading) return;
+    let cancelled = false;
+    getConversation(convParam)
+      .then((c) => {
+        if (!cancelled && c) setSelectedConversation(c);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [listQuery.conv, conversations, conversationsLoading, selectedConversation]);
 
   const convId = getId(selectedConversation);
 
@@ -1164,7 +1169,7 @@ const Chat = () => {
   }, [convId, fetchMessages, joinConversation, leaveConversation]);
 
   useEffect(() => {
-    const userIds = [...conversations, ...groupConversations]
+    const userIds = conversations
       .flatMap((conversation) =>
         (conversation.participants || []).map((participant) =>
           String((participant.user as any)?.id || (participant.user as any)?._id || "").trim()
@@ -1174,7 +1179,7 @@ const Chat = () => {
     if (userIds.length > 0) {
       syncOnlineUsers(userIds);
     }
-  }, [conversations, groupConversations, syncOnlineUsers]);
+  }, [conversations, syncOnlineUsers]);
 
   // New message from socket
   useEffect(() => {
@@ -1205,11 +1210,6 @@ const Chat = () => {
             getId(c) === String(data.conversationId) ? { ...c, lastMessage } : c
           )
         );
-        setGroupConversations((prev) =>
-          prev.map((c) =>
-            getId(c) === String(data.conversationId) ? { ...c, lastMessage } : c
-          )
-        );
       } else {
         fetchConversations();
       }
@@ -1227,7 +1227,6 @@ const Chat = () => {
       const deletedId = data?.conversationId && String(data.conversationId);
       if (!deletedId) return;
       setConversations((prev) => prev.filter((c) => getId(c) !== deletedId));
-      setGroupConversations((prev) => prev.filter((c) => getId(c) !== deletedId));
       setSelectedConversation((prev) => {
         if (prev && getId(prev) === deletedId) {
           setIsOpen(false);
@@ -1669,23 +1668,10 @@ const Chat = () => {
   };
 
   const recentConvs = conversations;
-  const groupConvs = groupConversations;
-  const filteredRecentConvs = recentConvs.filter((c) =>
-    matchesSearchQuery(conversationSearch, [displayName(c), conversationPreviewText(c.lastMessage)])
-  );
-  const filteredGroupConvs = groupConvs.filter((c) =>
-    matchesSearchQuery(conversationSearch, [displayName(c), c.name, conversationPreviewText(c.lastMessage)])
-  );
-  const filteredCalls = calls.filter((call) =>
-    matchesSearchQuery(conversationSearch, [
-      callsTabHeadline(call),
-      call.peer?.name,
-      (call.caller as { name?: string } | undefined)?.name,
-      call.callType === "video" ? "Video call" : "Voice call",
-      callLogStatusLabel(call.status),
-      callJoinedParticipantsLine(call, myId) || "",
-    ])
-  );
+  const groupConvs = conversations;
+  // Conversation `q` is server-side on Recent/Groups only. Calls keeps its own
+  // unfiltered list — this URL search is not a call-log query.
+  const visibleCalls = calls;
 
   const toggleForwardTarget = (conversationId: string) => {
     setForwardTargets((prev) => {
@@ -1741,7 +1727,7 @@ const Chat = () => {
   const recentConvsByDate = React.useMemo(() => {
     const map = new Map<string, Conversation[]>();
     const order: string[] = [];
-    for (const c of filteredRecentConvs) {
+    for (const c of recentConvs) {
       const d = (c as any).lastMessageAt ? new Date((c as any).lastMessageAt) : new Date();
       const label = formatDateSeparatorForList(d);
       if (!map.has(label)) {
@@ -1751,7 +1737,7 @@ const Chat = () => {
       map.get(label)!.push(c);
     }
     return order.map((label) => ({ label, convs: map.get(label)! }));
-  }, [filteredRecentConvs]);
+  }, [recentConvs]);
 
   const getReplyPreviewText = (r: { content?: string; type?: string }) => {
     if (!r) return "";
@@ -2005,21 +1991,28 @@ const Chat = () => {
             </button>
           </div>
           <div className={chatStyles.railSearch}>
+            <label htmlFor="chat-conversation-search" className="form-label mb-1 text-sm">
+              Search conversations
+            </label>
             <div className={chatStyles.searchField}>
               <input
-                type="text"
+                id="chat-conversation-search"
+                type="search"
                 className={`form-control ${chatStyles.searchInput}`}
-                placeholder="Search conversations…"
-                value={conversationSearch}
-                onChange={(e) => setConversationSearch(e.target.value)}
+                placeholder="Name, email, or group…"
+                value={searchDraft}
+                onChange={(e) => setSearchDraft(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Escape") setConversationSearch("");
+                  if (e.key === "Escape") {
+                    setSearchDraft("");
+                    replaceListQuery({ q: "", page: 1 });
+                  }
                 }}
               />
               <button
                 type="button"
-                className={chatStyles.searchBtn}
-                onClick={() => setConversationSearch((prev) => prev.trim())}
+                className={`ti-btn ${chatStyles.searchBtn}`}
+                onClick={() => replaceListQuery({ q: searchDraft.trim(), page: 1 })}
                 aria-label="Search conversations"
               >
                 <i className="ri-search-line text-lg" />
@@ -2033,7 +2026,10 @@ const Chat = () => {
                 type="button"
                 role="tab"
                 aria-selected={activeTab === tab}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => {
+                  setActiveTab(tab);
+                  if (tab !== "calls" && listQuery.page !== 1) replaceListQuery({ page: 1 });
+                }}
                 className={`${chatStyles.tab} ${activeTab === tab ? chatStyles.tabActive : ""}`}
               >
                 <i className={`me-1 ${tab === "recent" ? "ri-history-line" : tab === "groups" ? "ri-group-2-line" : "ri-phone-line"}`} />
@@ -2045,19 +2041,20 @@ const Chat = () => {
           <div
             ref={conversationListScrollRef}
             className={`tab-content ${chatStyles.listScroll}`}
-            onScroll={handleConversationListScroll}
           >
             {activeTab === "recent" && (
               <div className="tab-pane fade show active !border-0 chat-users-tab">
                 <div className={chatStyles.listPane}>
                 {conversationsLoading ? (
                   <p className={chatStyles.emptyList}>Loading…</p>
-                ) : error ? (
-                  <p className="text-danger px-1">{error}</p>
+                ) : conversationsError ? (
+                  <p className={chatStyles.emptyList}>Couldn’t load conversations</p>
                 ) : recentConvs.length === 0 ? (
-                  <p className={chatStyles.emptyList}>No conversations yet. Use + to start a chat.</p>
-                ) : recentConvsByDate.length === 0 ? (
-                  <p className={chatStyles.emptyList}>No conversations match your search.</p>
+                  <p className={chatStyles.emptyList}>
+                    {conversationSearchParam(listQuery.q)
+                      ? `No conversations match “${listQuery.q}”.`
+                      : "No conversations yet. Use + to start a chat."}
+                  </p>
                 ) : (
                   <>
                   <ul className="list-none mb-0">
@@ -2104,13 +2101,18 @@ const Chat = () => {
                       </React.Fragment>
                     ))}
                   </ul>
-                  {/* ponytail: no "Showing X of Y" here — backend total is counted
-                      pre-dedup (chat.service.js listConversations) while dedup is
-                      page-local, so total overcounts distinct groups. Re-add once
-                      the count uses the same uniqueness as the returned list. */}
-                  {conversationsLoadingMore ? (
-                    <p className={`${chatStyles.emptyList} !py-2 text-xs`}>Loading more…</p>
-                  ) : null}
+                  <ListPagination
+                    page={conversationsPage}
+                    totalPages={conversationsTotalPages}
+                    totalResults={conversationsTotal}
+                    pageSize={CONVERSATION_LIST_PAGE_LIMIT}
+                    onPageChange={(next) => replaceListQuery({ page: next })}
+                    showPageSize={false}
+                    touchFriendly
+                    hideWhenSinglePage
+                    className="px-1 py-2"
+                    ariaLabel="Conversation pages"
+                  />
                   </>
                 )}
                 </div>
@@ -2119,16 +2121,20 @@ const Chat = () => {
             {activeTab === "groups" && (
               <div className="tab-pane fade show active !border-0 chat-groups-tab">
                 <div className={chatStyles.listPane}>
-                {groupLoading ? (
+                {conversationsLoading ? (
                   <p className={chatStyles.emptyList}>Loading…</p>
+                ) : conversationsError ? (
+                  <p className={chatStyles.emptyList}>Couldn’t load conversations</p>
                 ) : groupConvs.length === 0 ? (
-                  <p className={chatStyles.emptyList}>No groups yet. Create one with +</p>
-                ) : filteredGroupConvs.length === 0 ? (
-                  <p className={chatStyles.emptyList}>No groups match your search.</p>
+                  <p className={chatStyles.emptyList}>
+                    {conversationSearchParam(listQuery.q)
+                      ? `No groups match “${listQuery.q}”.`
+                      : "No groups yet. Create one with +"}
+                  </p>
                 ) : (
                   <>
                   <ul className="list-none mb-0">
-                    {filteredGroupConvs.map((c) => (
+                    {groupConvs.map((c) => (
                       <li
                         key={getId(c) || ""}
                         className={`${chatStyles.convItem} ${getId(selectedConversation) === getId(c) ? chatStyles.convItemActive : ""}`}
@@ -2143,11 +2149,18 @@ const Chat = () => {
                       </li>
                     ))}
                   </ul>
-                  {/* ponytail: total display omitted here too — see the same note
-                      in the recent-tab pane above. */}
-                  {groupLoadingMore ? (
-                    <p className={`${chatStyles.emptyList} !py-2 text-xs`}>Loading more…</p>
-                  ) : null}
+                  <ListPagination
+                    page={conversationsPage}
+                    totalPages={conversationsTotalPages}
+                    totalResults={conversationsTotal}
+                    pageSize={CONVERSATION_LIST_PAGE_LIMIT}
+                    onPageChange={(next) => replaceListQuery({ page: next })}
+                    showPageSize={false}
+                    touchFriendly
+                    hideWhenSinglePage
+                    className="px-1 py-2"
+                    ariaLabel="Group conversation pages"
+                  />
                   </>
                 )}
                 </div>
@@ -2158,11 +2171,9 @@ const Chat = () => {
                 <div className={chatStyles.listPane}>
                 {calls.length === 0 ? (
                   <p className={chatStyles.emptyList}>No call history yet.</p>
-                ) : filteredCalls.length === 0 ? (
-                  <p className={chatStyles.emptyList}>No calls match your search.</p>
                 ) : (
                   <ul className="list-none mb-0" role="list">
-                    {filteredCalls.map((call) => {
+                    {visibleCalls.map((call) => {
                       const peer = call.peer;
                       const peerAvatarName = peer?.name || (call.caller as { name?: string })?.name || "Unknown";
                       const title = callsTabHeadline(call);
