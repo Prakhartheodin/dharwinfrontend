@@ -33,51 +33,53 @@ describe("useConversationListPagination", () => {
     expect(result.current.conversations).toHaveLength(1);
   });
 
-  it("requests page 2 on load more and appends results", async () => {
-    listConversations
-      .mockResolvedValueOnce({
-        results: [makeConversation("c1")],
-        page: 1,
-        limit: 50,
-        total: 2,
-        totalPages: 2,
-      })
-      .mockResolvedValueOnce({
-        results: [makeConversation("c2")],
-        page: 2,
-        limit: 50,
-        total: 2,
-        totalPages: 2,
-      });
-
-    const { result } = renderHook(() => useConversationListPagination());
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    await act(async () => {
-      await result.current.loadMore();
+  it("fetches the URL page without appending previous pages", async () => {
+    listConversations.mockResolvedValue({
+      results: [makeConversation("c2")],
+      page: 2,
+      limit: 50,
+      total: 2,
+      totalPages: 2,
     });
 
-    expect(listConversations).toHaveBeenLastCalledWith({ page: 2, limit: 50 });
-    expect(result.current.conversations.map((c) => c.id)).toEqual(["c1", "c2"]);
+    const { result } = renderHook(() => useConversationListPagination(undefined, true, { page: 2 }));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(listConversations).toHaveBeenCalledWith({ page: 2, limit: 50 });
+    expect(result.current.conversations.map((c) => c.id)).toEqual(["c2"]);
+    expect(result.current.page).toBe(2);
   });
 
-  it("does not request another page after totalPages is reached", async () => {
+  it("sends q to the server and resets to the filtered page", async () => {
     listConversations.mockResolvedValue({
-      results: [makeConversation("c1")],
+      results: [makeConversation("g1", "group")],
       page: 1,
       limit: 50,
       total: 1,
       totalPages: 1,
     });
 
-    const { result } = renderHook(() => useConversationListPagination());
-    await waitFor(() => expect(result.current.loading).toBe(false));
+    const { result } = renderHook(() =>
+      useConversationListPagination(undefined, true, { page: 1, q: "  engineering  " })
+    );
 
-    await act(async () => {
-      await result.current.loadMore();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(listConversations).toHaveBeenCalledWith({ page: 1, limit: 50, q: "engineering" });
+    expect(result.current.conversations).toHaveLength(1);
+  });
+
+  it("omits empty q from the request", async () => {
+    listConversations.mockResolvedValue({
+      results: [],
+      page: 1,
+      limit: 50,
+      total: 0,
+      totalPages: 1,
     });
 
-    expect(listConversations).toHaveBeenCalledTimes(1);
+    renderHook(() => useConversationListPagination(undefined, true, { page: 1, q: "   " }));
+    await waitFor(() => expect(listConversations).toHaveBeenCalled());
+    expect(listConversations).toHaveBeenCalledWith({ page: 1, limit: 50 });
   });
 
   it("requests type=group for the groups dataset", async () => {
@@ -89,39 +91,11 @@ describe("useConversationListPagination", () => {
       totalPages: 1,
     });
 
-    const { result } = renderHook(() => useConversationListPagination("group", true));
+    const { result } = renderHook(() => useConversationListPagination("group", true, { page: 1, q: "eng" }));
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    expect(listConversations).toHaveBeenCalledWith({ page: 1, limit: 50, type: "group" });
+    expect(listConversations).toHaveBeenCalledWith({ page: 1, limit: 50, type: "group", q: "eng" });
     expect(result.current.conversations[0].type).toBe("group");
-  });
-
-  it("appends group page 2 results", async () => {
-    listConversations
-      .mockResolvedValueOnce({
-        results: [makeConversation("g1", "group")],
-        page: 1,
-        limit: 50,
-        total: 2,
-        totalPages: 2,
-      })
-      .mockResolvedValueOnce({
-        results: [makeConversation("g2", "group")],
-        page: 2,
-        limit: 50,
-        total: 2,
-        totalPages: 2,
-      });
-
-    const { result } = renderHook(() => useConversationListPagination("group", true));
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    await act(async () => {
-      await result.current.loadMore();
-    });
-
-    expect(listConversations).toHaveBeenLastCalledWith({ page: 2, limit: 50, type: "group" });
-    expect(result.current.conversations.map((c) => c.id)).toEqual(["g1", "g2"]);
   });
 
   it("keeps recent and group datasets separate", async () => {
@@ -151,15 +125,8 @@ describe("useConversationListPagination", () => {
     expect(groups.result.current.conversations.map((c) => c.id)).toEqual(["g1"]);
   });
 
-  it("resets to page 1 on refresh", async () => {
+  it("refetches the current URL page on refresh", async () => {
     listConversations
-      .mockResolvedValueOnce({
-        results: [makeConversation("c1")],
-        page: 1,
-        limit: 50,
-        total: 2,
-        totalPages: 2,
-      })
       .mockResolvedValueOnce({
         results: [makeConversation("c2")],
         page: 2,
@@ -168,166 +135,49 @@ describe("useConversationListPagination", () => {
         totalPages: 2,
       })
       .mockResolvedValueOnce({
-        results: [makeConversation("c3")],
-        page: 1,
-        limit: 50,
-        total: 1,
-        totalPages: 1,
-      });
-
-    const { result } = renderHook(() => useConversationListPagination());
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    await act(async () => {
-      await result.current.loadMore();
-    });
-    await act(async () => {
-      await result.current.refresh();
-    });
-
-    expect(listConversations).toHaveBeenLastCalledWith({ page: 1, limit: 50 });
-    expect(result.current.conversations.map((c) => c.id)).toEqual(["c3"]);
-  });
-
-  it("uses loadingMore for page 2 without toggling initial loading", async () => {
-    listConversations
-      .mockResolvedValueOnce({
-        results: [makeConversation("c1")],
-        page: 1,
-        limit: 50,
-        total: 2,
-        totalPages: 2,
-      })
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            setTimeout(
-              () =>
-                resolve({
-                  results: [makeConversation("c2")],
-                  page: 2,
-                  limit: 50,
-                  total: 2,
-                  totalPages: 2,
-                }),
-              30
-            );
-          })
-      );
-
-    const { result } = renderHook(() => useConversationListPagination());
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    let loadMorePromise: Promise<void> | undefined;
-    act(() => {
-      loadMorePromise = result.current.loadMore();
-    });
-
-    expect(result.current.loading).toBe(false);
-    expect(result.current.loadingMore).toBe(true);
-
-    await act(async () => {
-      await loadMorePromise;
-    });
-
-    expect(result.current.loadingMore).toBe(false);
-  });
-
-  it("clears loadingMore when refresh supersedes an in-flight loadMore", async () => {
-    let resolveMore: ((v: unknown) => void) | undefined;
-    listConversations
-      .mockResolvedValueOnce({
-        results: [makeConversation("c1")],
-        page: 1,
-        limit: 50,
-        total: 3,
-        totalPages: 2,
-      })
-      .mockImplementationOnce(() => new Promise((resolve) => { resolveMore = resolve; }))
-      .mockResolvedValueOnce({
-        results: [makeConversation("c1")],
-        page: 1,
+        results: [makeConversation("c2b")],
+        page: 2,
         limit: 50,
         total: 2,
         totalPages: 2,
       });
 
-    const { result } = renderHook(() => useConversationListPagination());
+    const { result } = renderHook(() => useConversationListPagination(undefined, true, { page: 2 }));
     await waitFor(() => expect(result.current.loading).toBe(false));
-
-    act(() => {
-      void result.current.loadMore();
-    });
-    await waitFor(() => expect(result.current.loadingMore).toBe(true));
 
     await act(async () => {
       await result.current.refresh();
     });
 
-    // refresh result is authoritative: back to the single page-1 conversation.
-    expect(result.current.conversations.map((c) => c.id)).toEqual(["c1"]);
-
-    await act(async () => {
-      resolveMore?.({ results: [makeConversation("c2")], page: 2, limit: 50, total: 3, totalPages: 2 });
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    // stale loadMore response must not have been applied on top of refresh's result.
-    expect(result.current.conversations.map((c) => c.id)).toEqual(["c1"]);
-    expect(result.current.loadingMore).toBe(false);
-
-    // loadMore must work again after the stale response resolved.
-    listConversations.mockResolvedValueOnce({
-      results: [makeConversation("c3")],
-      page: 2,
-      limit: 50,
-      total: 2,
-      totalPages: 2,
-    });
-    await act(async () => {
-      await result.current.loadMore();
-    });
     expect(listConversations).toHaveBeenLastCalledWith({ page: 2, limit: 50 });
+    expect(result.current.conversations.map((c) => c.id)).toEqual(["c2b"]);
   });
 
-  it("prevents duplicate load-more requests while one is in flight", async () => {
-    let resolveSecond: ((value: unknown) => void) | undefined;
+  it("refetches when the URL page changes and replaces the list", async () => {
     listConversations
       .mockResolvedValueOnce({
         results: [makeConversation("c1")],
         page: 1,
         limit: 50,
-        total: 3,
-        totalPages: 3,
+        total: 2,
+        totalPages: 2,
       })
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            resolveSecond = resolve;
-          })
-      );
-
-    const { result } = renderHook(() => useConversationListPagination());
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    let firstLoad: Promise<void> | undefined;
-    act(() => {
-      firstLoad = result.current.loadMore();
-      void result.current.loadMore();
-    });
-
-    expect(listConversations).toHaveBeenCalledTimes(2);
-
-    await act(async () => {
-      resolveSecond?.({
+      .mockResolvedValueOnce({
         results: [makeConversation("c2")],
         page: 2,
         limit: 50,
-        total: 3,
-        totalPages: 3,
+        total: 2,
+        totalPages: 2,
       });
-      await firstLoad;
-    });
+
+    const { result, rerender } = renderHook(
+      ({ page }: { page: number }) => useConversationListPagination(undefined, true, { page }),
+      { initialProps: { page: 1 } }
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    rerender({ page: 2 });
+    await waitFor(() => expect(result.current.conversations.map((c) => c.id)).toEqual(["c2"]));
+    expect(listConversations).toHaveBeenLastCalledWith({ page: 2, limit: 50 });
   });
 });

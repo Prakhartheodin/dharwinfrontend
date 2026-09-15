@@ -196,6 +196,7 @@
   border: none !important;
   background: transparent !important;
   padding: 0.5rem 0.75rem !important;
+  min-height: 44px;
   font-size: 0.875rem;
   color: var(--chat-ink);
 }
@@ -204,6 +205,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
   padding: 0 0.75rem;
   border: none;
   background: transparent;
@@ -211,7 +214,8 @@
   transition: color 0.15s ease, background 0.15s ease;
 }
 
-.searchBtn:hover {
+.searchBtn:hover,
+.searchBtn:focus-visible {
   color: var(--chat-accent);
   background: rgba(13, 148, 136, 0.06);
 }
@@ -231,6 +235,7 @@
   justify-content: center;
   gap: 0.35rem;
   padding: 0.5rem 0.35rem;
+  min-height: 44px;
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -260,6 +265,11 @@
 .listScroll {
   max-height: calc(100vh - 21rem);
   overflow-y: auto;
+}
+
+.listPager {
+  padding: 0.5rem 0.15rem 0.15rem;
+  overflow-x: auto;
 }
 
 .listPane {

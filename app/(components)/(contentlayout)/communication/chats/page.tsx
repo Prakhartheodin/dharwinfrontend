@@ -32,7 +32,7 @@ import {
   type Conversation,
   type Message,
 } from "@/shared/lib/api/chat";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useChatSocket } from "@/shared/contexts/ChatSocketContext";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { format, formatDistanceToNow } from "date-fns";
@@ -54,7 +54,15 @@ import {
   DIRECTORY_RBAC_FLAG,
 } from "@/shared/lib/communication/directoryScope";
 import { useFeatureFlag } from "@/shared/hooks/useFeatureFlag";
-import { useConversationListPagination } from "./_hooks/useConversationListPagination";
+import ListPagination from "@/shared/components/ListPagination";
+import { useDebouncedValue } from "@/app/(components)/(contentlayout)/communication/dialer/_lib/contactSearch";
+import { CONVERSATIONS_PAGE_LIMIT, useConversationListPagination } from "./_hooks/useConversationListPagination";
+import {
+  applyConversationListParams,
+  CONVERSATION_SEARCH_MAX_LEN,
+  parseConversationListPage,
+  parseConversationListQ,
+} from "./_lib/conversationListQuery";
 
 const DEFAULT_AVATAR = "/assets/images/faces/1.jpg";
 
@@ -648,6 +656,18 @@ function GroupInfoPanel({
 
 const Chat = () => {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const listPage = parseConversationListPage(searchParams.get("page"));
+  const listQ = parseConversationListQ(searchParams.get("q"));
+  const replaceListParams = useCallback(
+    (next: { page: number; q: string }) => {
+      const params = applyConversationListParams(searchParams, next);
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
   const { user, permissions, permissionsLoaded } = useAuth();
   const rbacFlag = useFeatureFlag(DIRECTORY_RBAC_FLAG);
   const scope = useMemo(
@@ -680,20 +700,18 @@ const Chat = () => {
     conversations,
     setConversations,
     loading: conversationsLoading,
-    loadingMore: conversationsLoadingMore,
-    hasMore: conversationsHasMore,
-    loadMore: loadMoreConversations,
+    total: conversationsTotal,
+    totalPages: conversationsTotalPages,
     refresh: refreshConversations,
-  } = useConversationListPagination();
+  } = useConversationListPagination(undefined, true, { page: listPage, q: listQ });
   const {
     conversations: groupConversations,
     setConversations: setGroupConversations,
     loading: groupLoading,
-    loadingMore: groupLoadingMore,
-    hasMore: groupHasMore,
-    loadMore: loadMoreGroups,
+    total: groupTotal,
+    totalPages: groupTotalPages,
     refresh: refreshGroups,
-  } = useConversationListPagination("group", groupsTabEnabled);
+  } = useConversationListPagination("group", groupsTabEnabled, { page: listPage, q: listQ });
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [convCalls, setConvCalls] = useState<any[]>([]);
@@ -707,7 +725,7 @@ const Chat = () => {
   const [error, setError] = useState<string | null>(null);
   const [calls, setCalls] = useState<ChatCall[]>([]);
   const [showNewChat, setShowNewChat] = useState(false);
-  const [conversationSearch, setConversationSearch] = useState("");
+  const [conversationSearch, setConversationSearch] = useState(listQ);
   const [newChatMode, setNewChatMode] = useState<"direct" | "group">("direct");
   const [userSearch, setUserSearch] = useState("");
   const [searchResults, setSearchResults] = useState<{ id: string; name: string; email: string }[]>([]);
@@ -874,6 +892,7 @@ const Chat = () => {
       doesn't yank the view back to the bottom (preserve the reader's position). */
   const skipAutoScrollRef = useRef(false);
   const conversationListScrollRef = useRef<HTMLDivElement | null>(null);
+  const skipSearchInputSyncRef = useRef(false);
 
   const myId = (user as any)?.id || (user as any)?._id?.toString?.();
   const mentionSuggestions = useMemo(() => {
@@ -914,35 +933,22 @@ const Chat = () => {
     ]);
   }, [refreshConversations, refreshGroups, groupsTabEnabled]);
 
-  const handleConversationListScroll = useCallback(
-    (event: React.UIEvent<HTMLDivElement>) => {
-      const element = event.currentTarget;
-      const nearBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 80;
-      if (!nearBottom) return;
-      if (activeTab === "recent") {
-        if (conversationsHasMore && !conversationsLoadingMore && !conversationsLoading) {
-          void loadMoreConversations();
-        }
-        return;
-      }
-      if (activeTab === "groups") {
-        if (groupHasMore && !groupLoadingMore && !groupLoading) {
-          void loadMoreGroups();
-        }
-      }
-    },
-    [
-      activeTab,
-      conversationsHasMore,
-      conversationsLoading,
-      conversationsLoadingMore,
-      groupHasMore,
-      groupLoading,
-      groupLoadingMore,
-      loadMoreConversations,
-      loadMoreGroups,
-    ]
-  );
+  const debouncedConversationSearch = useDebouncedValue(conversationSearch, 300);
+
+  useEffect(() => {
+    if (skipSearchInputSyncRef.current) {
+      skipSearchInputSyncRef.current = false;
+      return;
+    }
+    setConversationSearch(listQ);
+  }, [listQ]);
+
+  useEffect(() => {
+    const nextQ = parseConversationListQ(debouncedConversationSearch);
+    if (nextQ === listQ) return;
+    skipSearchInputSyncRef.current = true;
+    replaceListParams({ page: 1, q: nextQ });
+  }, [debouncedConversationSearch, listQ, replaceListParams]);
 
   // ── Auto-scroll to bottom ──
   // Double rAF: the merged timeline (messages + call pills + date separators)
@@ -1670,14 +1676,8 @@ const Chat = () => {
 
   const recentConvs = conversations;
   const groupConvs = groupConversations;
-  const filteredRecentConvs = recentConvs.filter((c) =>
-    matchesSearchQuery(conversationSearch, [displayName(c), conversationPreviewText(c.lastMessage)])
-  );
-  const filteredGroupConvs = groupConvs.filter((c) =>
-    matchesSearchQuery(conversationSearch, [displayName(c), c.name, conversationPreviewText(c.lastMessage)])
-  );
   const filteredCalls = calls.filter((call) =>
-    matchesSearchQuery(conversationSearch, [
+    matchesSearchQuery(listQ, [
       callsTabHeadline(call),
       call.peer?.name,
       (call.caller as { name?: string } | undefined)?.name,
@@ -1741,7 +1741,7 @@ const Chat = () => {
   const recentConvsByDate = React.useMemo(() => {
     const map = new Map<string, Conversation[]>();
     const order: string[] = [];
-    for (const c of filteredRecentConvs) {
+    for (const c of recentConvs) {
       const d = (c as any).lastMessageAt ? new Date((c as any).lastMessageAt) : new Date();
       const label = formatDateSeparatorForList(d);
       if (!map.has(label)) {
@@ -1751,7 +1751,7 @@ const Chat = () => {
       map.get(label)!.push(c);
     }
     return order.map((label) => ({ label, convs: map.get(label)! }));
-  }, [filteredRecentConvs]);
+  }, [recentConvs]);
 
   const getReplyPreviewText = (r: { content?: string; type?: string }) => {
     if (!r) return "";
@@ -2006,11 +2006,17 @@ const Chat = () => {
           </div>
           <div className={chatStyles.railSearch}>
             <div className={chatStyles.searchField}>
+              <label htmlFor="chat-conversation-search" className="sr-only">
+                Search conversations
+              </label>
               <input
-                type="text"
+                id="chat-conversation-search"
+                type="search"
                 className={`form-control ${chatStyles.searchInput}`}
                 placeholder="Search conversations…"
                 value={conversationSearch}
+                maxLength={CONVERSATION_SEARCH_MAX_LEN}
+                autoComplete="off"
                 onChange={(e) => setConversationSearch(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Escape") setConversationSearch("");
@@ -2019,11 +2025,21 @@ const Chat = () => {
               <button
                 type="button"
                 className={chatStyles.searchBtn}
-                onClick={() => setConversationSearch((prev) => prev.trim())}
+                onClick={() => {
+                  const nextQ = parseConversationListQ(conversationSearch);
+                  setConversationSearch(nextQ);
+                  skipSearchInputSyncRef.current = true;
+                  replaceListParams({ page: 1, q: nextQ });
+                }}
                 aria-label="Search conversations"
               >
                 <i className="ri-search-line text-lg" />
               </button>
+            </div>
+            <div className="sr-only" aria-live="polite">
+              {listQ
+                ? `${activeTab === "groups" ? groupTotal : conversationsTotal} conversations match ${listQ}`
+                : ""}
             </div>
           </div>
           <nav className={chatStyles.tabRow} role="tablist" aria-label="Conversation filters">
@@ -2033,7 +2049,10 @@ const Chat = () => {
                 type="button"
                 role="tab"
                 aria-selected={activeTab === tab}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => {
+                  setActiveTab(tab);
+                  if (listPage !== 1) replaceListParams({ page: 1, q: listQ });
+                }}
                 className={`${chatStyles.tab} ${activeTab === tab ? chatStyles.tabActive : ""}`}
               >
                 <i className={`me-1 ${tab === "recent" ? "ri-history-line" : tab === "groups" ? "ri-group-2-line" : "ri-phone-line"}`} />
@@ -2045,7 +2064,6 @@ const Chat = () => {
           <div
             ref={conversationListScrollRef}
             className={`tab-content ${chatStyles.listScroll}`}
-            onScroll={handleConversationListScroll}
           >
             {activeTab === "recent" && (
               <div className="tab-pane fade show active !border-0 chat-users-tab">
@@ -2055,9 +2073,11 @@ const Chat = () => {
                 ) : error ? (
                   <p className="text-danger px-1">{error}</p>
                 ) : recentConvs.length === 0 ? (
-                  <p className={chatStyles.emptyList}>No conversations yet. Use + to start a chat.</p>
-                ) : recentConvsByDate.length === 0 ? (
-                  <p className={chatStyles.emptyList}>No conversations match your search.</p>
+                  <p className={chatStyles.emptyList}>
+                    {listQ
+                      ? `No conversations match “${listQ}”.`
+                      : "No conversations yet. Use + to start a chat."}
+                  </p>
                 ) : (
                   <>
                   <ul className="list-none mb-0">
@@ -2104,13 +2124,19 @@ const Chat = () => {
                       </React.Fragment>
                     ))}
                   </ul>
-                  {/* ponytail: no "Showing X of Y" here — backend total is counted
-                      pre-dedup (chat.service.js listConversations) while dedup is
-                      page-local, so total overcounts distinct groups. Re-add once
-                      the count uses the same uniqueness as the returned list. */}
-                  {conversationsLoadingMore ? (
-                    <p className={`${chatStyles.emptyList} !py-2 text-xs`}>Loading more…</p>
-                  ) : null}
+                  <ListPagination
+                    page={listPage}
+                    totalPages={conversationsTotalPages}
+                    totalResults={conversationsTotal}
+                    pageSize={CONVERSATIONS_PAGE_LIMIT}
+                    onPageChange={(nextPage) => replaceListParams({ page: nextPage, q: listQ })}
+                    showPageSize={false}
+                    showSummary={false}
+                    hideWhenSinglePage
+                    touchFriendly
+                    ariaLabel="Conversation pages"
+                    className={chatStyles.listPager}
+                  />
                   </>
                 )}
                 </div>
@@ -2122,13 +2148,13 @@ const Chat = () => {
                 {groupLoading ? (
                   <p className={chatStyles.emptyList}>Loading…</p>
                 ) : groupConvs.length === 0 ? (
-                  <p className={chatStyles.emptyList}>No groups yet. Create one with +</p>
-                ) : filteredGroupConvs.length === 0 ? (
-                  <p className={chatStyles.emptyList}>No groups match your search.</p>
+                  <p className={chatStyles.emptyList}>
+                    {listQ ? `No groups match “${listQ}”.` : "No groups yet. Create one with +"}
+                  </p>
                 ) : (
                   <>
                   <ul className="list-none mb-0">
-                    {filteredGroupConvs.map((c) => (
+                    {groupConvs.map((c) => (
                       <li
                         key={getId(c) || ""}
                         className={`${chatStyles.convItem} ${getId(selectedConversation) === getId(c) ? chatStyles.convItemActive : ""}`}
@@ -2143,11 +2169,19 @@ const Chat = () => {
                       </li>
                     ))}
                   </ul>
-                  {/* ponytail: total display omitted here too — see the same note
-                      in the recent-tab pane above. */}
-                  {groupLoadingMore ? (
-                    <p className={`${chatStyles.emptyList} !py-2 text-xs`}>Loading more…</p>
-                  ) : null}
+                  <ListPagination
+                    page={listPage}
+                    totalPages={groupTotalPages}
+                    totalResults={groupTotal}
+                    pageSize={CONVERSATIONS_PAGE_LIMIT}
+                    onPageChange={(nextPage) => replaceListParams({ page: nextPage, q: listQ })}
+                    showPageSize={false}
+                    showSummary={false}
+                    hideWhenSinglePage
+                    touchFriendly
+                    ariaLabel="Group conversation pages"
+                    className={chatStyles.listPager}
+                  />
                   </>
                 )}
                 </div>

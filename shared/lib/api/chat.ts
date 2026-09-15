@@ -87,6 +87,7 @@ export async function listConversations(params?: {
   page?: number;
   limit?: number;
   type?: "direct" | "group";
+  q?: string;
 }): Promise<{
   results: Conversation[];
   page: number;
