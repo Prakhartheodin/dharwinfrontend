@@ -468,3 +468,102 @@ export async function getRecordingTranscript(
   );
   return data;
 }
+
+export interface MeetingTranscriptUtterance {
+  utteranceId?: string;
+  displayName?: string | null;
+  speakerRole?: string;
+  roleAssurance?: string | null;
+  participantIdentity?: string | null;
+  text: string;
+  recordingOffsetMs?: number | null;
+  startedAtEpochMs?: number | null;
+  endedAtEpochMs?: number | null;
+  confidence?: number | null;
+}
+
+export interface MeetingTranscriptResponse {
+  meetingId: string;
+  interviewId: string;
+  version: number;
+  schemaVersion?: number;
+  evidenceGrade?: string | null;
+  partialReasons?: string[];
+  quality?: {
+    maxGapMs?: number | null;
+    lowConfidenceShare?: number | null;
+    coverageRatio?: number | null;
+  } | null;
+  utteranceCount: number;
+  interviewLanguage?: string;
+  transcriptVersionId?: string;
+  utterances: MeetingTranscriptUtterance[];
+}
+
+export async function getMeetingTranscript(
+  meetingId: string,
+  params?: { version?: number }
+): Promise<MeetingTranscriptResponse> {
+  const { data } = await apiClient.get<MeetingTranscriptResponse>(`/meetings/${meetingId}/transcript`, {
+    params,
+  });
+  return data;
+}
+
+export interface MeetingSummaryResponse {
+  meetingId: string;
+  interviewId: string;
+  version: number;
+  partial?: boolean;
+  executiveSummary: string;
+  bulletSummary: string[];
+  actionItems: Array<{ text: string; owner?: string | null; dueHint?: string | null; timestampMs?: number | null }>;
+  decisions: Array<{ text: string; timestampMs?: number | null }>;
+  blockers: string[];
+  nextSteps: string[];
+  participantsActive: Array<{ identity?: string | null; name?: string | null; speakingMs?: number }>;
+  durationMs?: number | null;
+  generatedAt?: string | null;
+  summaryId?: string;
+}
+
+export async function getMeetingSummary(
+  meetingId: string,
+  params?: { version?: number }
+): Promise<MeetingSummaryResponse> {
+  const { data } = await apiClient.get<MeetingSummaryResponse>(`/meetings/${meetingId}/summary`, { params });
+  return data;
+}
+
+export const INTERVIEW_NOTICE_VERSION = "draft-2026-09-v1";
+
+export interface SubmitInterviewConsentPayload {
+  noticeVersion: string;
+  recording: boolean;
+  transcription: boolean;
+  aiEvaluation: boolean;
+}
+
+export interface SubmitInterviewConsentResponse {
+  meetingId: string;
+  identity: string;
+  noticeVersion: string;
+  recording: boolean;
+  transcription: boolean;
+  aiEvaluation: boolean;
+  acceptedAt: string;
+}
+
+/** Public join consent — Authorization: Bearer LiveKit access token. */
+export async function submitPublicMeetingConsent(
+  roomName: string,
+  liveKitToken: string,
+  payload: SubmitInterviewConsentPayload
+): Promise<SubmitInterviewConsentResponse> {
+  const { data } = await apiClient.post<SubmitInterviewConsentResponse>(
+    `/public/meetings/${encodeURIComponent(roomName)}/consent`,
+    payload,
+    { headers: { Authorization: `Bearer ${liveKitToken}` } }
+  );
+  return data;
+}

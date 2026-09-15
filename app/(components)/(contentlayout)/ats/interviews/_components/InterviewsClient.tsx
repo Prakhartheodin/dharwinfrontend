@@ -2,6 +2,7 @@
 import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useMemo, useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/shared/contexts/auth-context'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
@@ -1900,6 +1901,21 @@ export default function InterviewsClient() {
                 </button>
               </div>
             )}
+            <div className="hs-tooltip ti-main-tooltip">
+              <Link
+                href={`/ats/interviews/${row.original.id}`}
+                className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-primary"
+                title="View details"
+                aria-label="View interview details"
+              >
+                <i className="ri-eye-line"></i>
+                <span
+                  className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
+                  role="tooltip">
+                  View details
+                </span>
+              </Link>
+            </div>
             {canEdit && (
             <div className="hs-tooltip ti-main-tooltip">
               <button

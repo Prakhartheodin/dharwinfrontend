@@ -44,6 +44,15 @@ export const ACTION_PERMISSIONS: Record<string, ActionRule> = Object.freeze({
   update_job: { prefixes: ["ats.jobs"], anyOf: ["edit"] },
   delete_job: { prefixes: ["ats.jobs"], anyOf: ["delete"] },
 
+  view_interview_transcript: {
+    prefixes: ["ats.interviews.transcript"],
+    anyOf: ["view", "create", "edit", "delete"],
+  },
+  view_interview_summary: {
+    prefixes: ["ats.interviews.summary"],
+    anyOf: ["view", "create", "edit", "delete"],
+  },
+
   // ATS Candidates (legacy pipeline / referral)
   view_candidates: { prefixes: ["ats.candidates"], anyOf: ["view", "create", "edit", "delete"] },
   manage_candidates: { prefixes: ["ats.candidates"], anyOf: ["create", "edit", "delete"] },
