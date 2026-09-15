@@ -873,6 +873,7 @@ export interface ImportExcelResult {
     candidateId: string;
     fullName: string;
     email: string;
+    action?: "created" | "updated";
   }>;
   failed: Array<{
     row: number;
@@ -884,7 +885,10 @@ export interface ImportExcelResult {
     total: number;
     successful: number;
     failed: number;
+    created?: number;
+    updated?: number;
   };
+  errorWorkbookBase64?: string;
 }
 
 export async function importCandidatesFromExcel(file: File): Promise<ImportExcelResult> {

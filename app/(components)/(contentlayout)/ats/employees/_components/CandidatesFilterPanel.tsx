@@ -299,7 +299,7 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
           <div className="flex min-w-0 flex-col gap-1">
             <span className="inline-flex items-center gap-1.5 text-[0.7rem] font-medium text-gray-500 dark:text-gray-400">
               <i className="ri-file-excel-2-line text-emerald-600 dark:text-emerald-400" aria-hidden />
-              Export respects the filters set above
+              Exports the current filtered list
             </span>
             {exportError ? (
               <p className="text-[0.7rem] font-medium text-danger flex items-center gap-1" role="alert">
@@ -313,14 +313,14 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
               <>
                 <button
                   type="button"
-                  className="ti-btn ti-btn-light !py-1.5 !px-3 !text-[0.75rem]"
+                  className="ti-btn ti-btn-light !min-h-11 !px-3"
                   onClick={onImport}
                 >
                   <i className="ri-upload-2-line me-1 align-middle" aria-hidden />Import
                 </button>
                 <button
                   type="button"
-                  className="ti-btn ti-btn-light !py-1.5 !px-3 !text-[0.75rem]"
+                  className="ti-btn ti-btn-light !min-h-11 !px-3"
                   onClick={onDownloadTemplate}
                 >
                   <i className="ri-download-line me-1 align-middle" aria-hidden />Template
@@ -330,7 +330,7 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
             {canExport && (
               <button
                 type="button"
-                className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-[0.75rem]"
+                className="ti-btn ti-btn-primary !min-h-11 !px-3"
                 onClick={onExport}
                 disabled={exportLoading}
                 aria-busy={exportLoading}
@@ -342,7 +342,7 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
                   </>
                 ) : (
                   <>
-                    <i className="ri-file-excel-2-line me-1 align-middle" aria-hidden />Export to Excel
+                    <i className="ri-file-excel-2-line me-1 align-middle" aria-hidden />Export
                   </>
                 )}
               </button>

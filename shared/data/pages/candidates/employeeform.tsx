@@ -9,6 +9,7 @@ import {
   updateMyCandidate,
   uploadDocuments,
   importCandidatesFromExcel,
+  type ImportExcelResult,
   getCandidateDocuments,
 } from "@/shared/lib/api/candidates";
 import { inferDocumentVersionSlot } from "@/shared/components/candidates/VersionedDocumentSlot";
@@ -853,6 +854,7 @@ export const EmployeeForm = ({
     errors: string[];
   }>({ total: 0, processed: 0, successful: 0, failed: 0, errors: [] });
   const [excelImportLoading, setExcelImportLoading] = useState(false);
+  const [excelImportResult, setExcelImportResult] = useState<ImportExcelResult | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // ------------------------------- Validation State -------------------------------
@@ -1249,14 +1251,14 @@ export const EmployeeForm = ({
       await Swal.fire({
         icon: "success",
         title: "Template Downloaded!",
-        text: "Excel template has been downloaded (split across tabs: contact, visa, supervisor, address, then skills, etc.).",
+        text: "Excel template downloaded. Required sheet: Employee Details. Nested sheets are optional. Dates use YYYY-MM-DD. Nested rows join by Email.",
         confirmButtonText: "OK",
       });
     } catch {
       await Swal.fire({
         icon: "error",
         title: "Download Failed",
-        text: "Failed to download template. Please install xlsx library: npm install xlsx",
+        text: "Failed to download the Excel template. Try again, or use the Import button on the employees list.",
         confirmButtonText: "OK",
       });
     }
@@ -1776,92 +1778,106 @@ export const EmployeeForm = ({
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!file.name.match(/\.(xlsx|xls|csv)$/i)) {
+    if (!file.name.match(/\.xlsx$/i)) {
       await Swal.fire({
         icon: 'error',
         title: 'Invalid File Type',
-        text: 'Please upload an Excel (.xlsx, .xls) or CSV (.csv) file.',
+        text: 'Please upload an Excel workbook (.xlsx) only.',
         confirmButtonText: 'OK'
       });
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
     setExcelFile(file);
+    setExcelImportResult(null);
+  };
+
+  const downloadErrorWorkbook = (base64: string) => {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Employee_Import_Errors_${new Date().toISOString().split('T')[0]}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
+
+  const confirmDiscardSelectedFile = async (title: string, text: string) => {
+    if (!excelFile) return true;
+    const result = await Swal.fire({
+      icon: 'warning',
+      title,
+      text,
+      showCancelButton: true,
+      confirmButtonText: 'Discard file',
+      cancelButtonText: 'Stay',
+    });
+    return result.isConfirmed;
   };
 
   const handleExcelImport = async () => {
     if (!excelFile) {
       await Swal.fire({
-        icon: 'error',
-        title: 'No File',
-        text: 'Please upload an Excel file first.',
+        icon: 'info',
+        title: 'No file selected',
+        text: 'Download the template first, fill it in, then upload the .xlsx file.',
         confirmButtonText: 'OK'
       });
       return;
     }
 
+    const confirmed = await Swal.fire({
+      icon: 'question',
+      title: 'Import employees?',
+      html: 'New email addresses will create login accounts. Existing emails will be updated. Passwords are required only for new employees (8 characters, 1 capital letter, 1 number). Passwords are never exported.',
+      showCancelButton: true,
+      confirmButtonText: 'Import',
+      cancelButtonText: 'Cancel',
+    });
+    if (!confirmed.isConfirmed) return;
+
     setExcelImportLoading(true);
+    setExcelImportResult(null);
     setExcelImportProgress({ total: 0, processed: 0, successful: 0, failed: 0, errors: [] });
 
     try {
       const result = await importCandidatesFromExcel(excelFile);
-      
+      setExcelImportResult(result);
       setExcelImportProgress({
         total: result.summary.total,
         processed: result.summary.total,
         successful: result.summary.successful,
         failed: result.summary.failed,
-        errors: result.failed.map(f => `Row ${f.row} (${f.fullName}): ${f.error}`)
+        errors: (result.failed || []).map((f) => `Row ${f.row} (${f.fullName}): ${f.error}`),
       });
-
-      if (result.summary.failed === 0) {
-        await Swal.fire({
-          icon: 'success',
-          title: 'Import Successful',
-          text: `Successfully imported ${result.summary.successful} employees.`,
-          confirmButtonText: 'OK'
-        });
-        router.push("/ats/employees");
-      } else if (result.summary.successful === 0) {
-        await Swal.fire({
-          icon: 'error',
-          title: 'Import Failed',
-          html: `All ${result.summary.failed} employees failed to import.<br><br>Errors:<br>${result.failed.slice(0, 5).map(f => `Row ${f.row}: ${f.error}`).join('<br>')}${result.failed.length > 5 ? '<br>... and more' : ''}`,
-          confirmButtonText: 'OK'
+    } catch (error: any) {
+      const data = error.response?.data;
+      if (data?.summary || data?.failed) {
+        setExcelImportResult(data);
+        setExcelImportProgress({
+          total: data.summary?.total ?? data.failed?.length ?? 0,
+          processed: data.summary?.total ?? data.failed?.length ?? 0,
+          successful: data.summary?.successful ?? 0,
+          failed: data.summary?.failed ?? data.failed?.length ?? 0,
+          errors: (data.failed || []).map((f: { row: number; fullName?: string; error: string }) => `Row ${f.row} (${f.fullName || 'Unknown'}): ${f.error}`),
         });
       } else {
-        await Swal.fire({
-          icon: 'warning',
-          title: 'Partial Import',
-          html: `Imported ${result.summary.successful} employees successfully.<br>${result.summary.failed} employees failed.<br><br>First few errors:<br>${result.failed.slice(0, 5).map(f => `Row ${f.row}: ${f.error}`).join('<br>')}${result.failed.length > 5 ? '<br>... and more' : ''}`,
-          confirmButtonText: 'OK'
+        const errorMessage = data?.message || data?.error || error.message || 'Failed to import employees from Excel.';
+        setExcelImportResult({
+          message: errorMessage,
+          successful: [],
+          failed: [{ row: 0, fullName: 'Unknown', email: 'Unknown', error: errorMessage }],
+          summary: { total: 0, successful: 0, failed: 1 },
         });
-        router.push("/ats/employees");
       }
-
-      // Reset
-      setExcelFile(null);
-      setExcelData([]);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    } catch (error: any) {
-      console.error('Excel import error:', error);
-      const errorMessage = error.response?.data?.message 
-        || error.response?.data?.error
-        || error.message 
-        || 'Failed to import employees from Excel.';
-      
-      const errorDetails = error.response?.data?.failed 
-        ? `<br><br>Errors:<br>${error.response.data.failed.slice(0, 5).map((f: any) => `Row ${f.row}: ${f.error}`).join('<br>')}`
-        : '';
-      
-      await Swal.fire({
-        icon: 'error',
-        title: 'Import Error',
-        html: errorMessage + errorDetails,
-        confirmButtonText: 'OK'
-      });
     } finally {
       setExcelImportLoading(false);
     }
@@ -2380,124 +2396,156 @@ export const EmployeeForm = ({
     return (
       <div className="p-6">
         <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <h3 className="text-lg font-semibold">Excel Import Employees</h3>
             <button
-              onClick={() =>
-                returnToCandidatesOnBack
-                  ? router.push("/ats/employees")
-                  : setExcelImportMode(false)
-              }
-              className="ti-btn ti-btn-secondary"
+              type="button"
+              onClick={async () => {
+                const ok = await confirmDiscardSelectedFile('Leave import?', 'The selected file will not be imported.');
+                if (!ok) return;
+                if (returnToCandidatesOnBack) router.push("/ats/employees");
+                else setExcelImportMode(false);
+              }}
+              className="ti-btn ti-btn-secondary !min-h-11"
             >
               {returnToCandidatesOnBack ? "Back to Employees" : "Back to Manual Entry"}
             </button>
           </div>
           
           <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
-            <h4 className="font-semibold text-blue-800 dark:text-blue-200 mb-2">File Format Requirements:</h4>
-            <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
-              <li>â€¢ <strong>Excel Files (.xlsx/.xls):</strong> 5 Required Sheets - Personal Info, Social Links, Skills, Qualification, Work Experience</li>
-              <li>â€¢ <strong>CSV Files (.csv):</strong> Single sheet with all data in columns</li>
-              <li>â€¢ <strong>Required Columns:</strong> FullName, Email, PhoneNumber, Password</li>
-              <li>â€¢ <strong>Optional Columns:</strong> ProfilePicture, ShortBio, SevisId, Ead, Degree, SupervisorName, SupervisorContact, SalaryRange</li>
-              <li>â€¢ <strong>Array Fields (CSV):</strong> Qualifications, Experiences, Skills, SocialLinks (use semicolon to separate entries, pipe to separate fields)</li>
-              <li>â€¢ <em>Note: Excel files require xlsx library: npm install xlsx</em></li>
+            <h4 className="font-semibold text-blue-800 dark:text-blue-200 mb-2">Workbook contract</h4>
+            <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1 list-disc ps-5">
+              <li>Excel files only (.xlsx). CSV is not supported.</li>
+              <li>Required sheet: <strong>Employee Details</strong>. Optional sheets: Qualifications, Experience, Skills, Social Links, Documents, Salary Slips.</li>
+              <li>Required columns on Employee Details: Full Name, Email, Phone Number. Password is required for new emails (8 characters, 1 capital letter, 1 number) and optional when updating an existing email.</li>
+              <li>Nested rows join by <strong>Email</strong> (then Employee ID). Dates use YYYY-MM-DD. Currently Working uses Yes / No.</li>
+              <li>Documents and salary slips import metadata only. Files are not included.</li>
             </ul>
           </div>
         </div>
 
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
-            <div className="flex gap-4 mb-4">
-              {/* <button
-                onClick={downloadCSVTemplate}
-                className="ti-btn ti-btn-success text-white"
-              >
-                <i className="ri-file-text-line me-2"></i>
-                Download CSV Template
-              </button> */}
+            <div className="flex flex-wrap gap-3 mb-4">
               <button
+                type="button"
                 onClick={downloadExcelTemplate}
-                className="ti-btn ti-btn-primary text-white"
+                className="ti-btn ti-btn-primary text-white !min-h-11"
               >
-                <i className="ri-file-excel-line me-2"></i>
+                <i className="ri-file-excel-line me-2" aria-hidden></i>
                 Download Excel Template
               </button>
             </div>
           </div>
 
           <div className="col-span-12">
-            <label className="form-label">Upload File</label>
+            <label className="form-label" htmlFor="employee-excel-upload">Upload Excel workbook</label>
             <input
+              id="employee-excel-upload"
               ref={fileInputRef}
               type="file"
-              accept=".xlsx,.xls,.csv"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={handleExcelFileUpload}
-              className="form-control w-full !rounded-md"
+              className="form-control w-full !rounded-md !min-h-11"
             />
-            <small className="text-gray-500 text-xs mt-1">Supported formats: .csv, .xlsx, .xls</small>
+            <small className="text-gray-500 text-xs mt-1 block">.xlsx only. Download the template first if you do not have a file yet.</small>
           </div>
 
-          {excelFile && (
+          {!excelFile ? (
+            <div className="col-span-12">
+              <div className="rounded-lg border border-dashed border-defaultborder p-6 text-center">
+                <p className="mb-3 text-sm text-gray-600 dark:text-gray-400">No file selected. Download the template, fill in Employee Details, then upload the .xlsx file.</p>
+                <button
+                  type="button"
+                  onClick={downloadExcelTemplate}
+                  className="ti-btn ti-btn-light !min-h-11"
+                >
+                  <i className="ri-download-line me-1" aria-hidden />Download template
+                </button>
+              </div>
+            </div>
+          ) : (
             <div className="col-span-12">
               <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
-                <h5 className="font-semibold mb-2">Selected File:</h5>
+                <h5 className="font-semibold mb-2">Selected file</h5>
                 <p className="text-sm text-gray-600 dark:text-gray-400">{excelFile.name}</p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Size: {(excelFile.size / 1024).toFixed(2)} KB</p>
               </div>
             </div>
           )}
 
-          {excelFile && (
-            <div className="col-span-12">
-              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                <h5 className="font-semibold text-blue-800 dark:text-blue-200 mb-2">File Ready:</h5>
-                <p className="text-sm text-blue-700 dark:text-blue-300">
-                  {excelFile.name} ({(excelFile.size / 1024).toFixed(2)} KB) is ready for import.
-                </p>
-                <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
-                  Click "Import Excel Data" below to process and import all employees from this file.
-                </p>
-              </div>
-            </div>
-          )}
-
           {excelImportLoading && (
-            <div className="col-span-12">
+            <div className="col-span-12" role="status" aria-live="polite">
               <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                <h5 className="font-semibold text-blue-800 dark:text-blue-200 mb-2">Import Progress:</h5>
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-2">
-                  <div 
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${(excelImportProgress.processed / excelImportProgress.total) * 100}%` }}
-                  ></div>
+                <h5 className="font-semibold text-blue-800 dark:text-blue-200 mb-2">Importing…</h5>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-2 overflow-hidden">
+                  <div className="bg-blue-600 h-2 w-1/3 rounded-full motion-safe:animate-pulse" />
                 </div>
-                <p className="text-sm text-blue-700 dark:text-blue-300">
-                  Processed: {excelImportProgress.processed} / {excelImportProgress.total} | 
-                  Successful: {excelImportProgress.successful} | 
-                  Failed: {excelImportProgress.failed}
-                </p>
+                <p className="text-sm text-blue-700 dark:text-blue-300">Processing workbook. This can take a minute for large files.</p>
               </div>
             </div>
           )}
 
-          <div className="col-span-12 flex gap-4">
+          {excelImportResult && !excelImportLoading && (
+            <div
+              className="col-span-12"
+              role="status"
+              aria-live="polite"
+            >
+              <div className={`rounded-lg border p-4 ${excelImportResult.summary.failed ? 'border-danger/30 bg-danger/5' : 'border-success/30 bg-success/5'}`}>
+                <h5 className="font-semibold mb-2">Import results</h5>
+                <p className="text-sm mb-2">
+                  Created {excelImportResult.summary.created ?? excelImportResult.successful?.filter((s) => s.action !== 'updated').length ?? 0}
+                  {' · '}Updated {excelImportResult.summary.updated ?? excelImportResult.successful?.filter((s) => s.action === 'updated').length ?? 0}
+                  {' · '}Failed {excelImportResult.summary.failed}
+                </p>
+                {excelImportResult.failed?.length ? (
+                  <div className="max-h-64 overflow-auto rounded border border-defaultborder/60 bg-white dark:bg-black/20 p-3 text-sm">
+                    <ul className="space-y-1">
+                      {excelImportResult.failed.map((f, idx) => (
+                        <li key={`${f.row}-${idx}`}>Row {f.row} ({f.fullName || f.email}): {f.error}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <p className="text-sm">All rows processed successfully. New emails created logins; existing emails were updated.</p>
+                )}
+                {excelImportResult.errorWorkbookBase64 ? (
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-light mt-3 !min-h-11"
+                    onClick={() => downloadErrorWorkbook(excelImportResult.errorWorkbookBase64 as string)}
+                  >
+                    <i className="ri-download-line me-1" aria-hidden />Download error workbook
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          )}
+
+          <div className="col-span-12 flex flex-wrap gap-3">
             <button
+              type="button"
               onClick={handleExcelImport}
               disabled={!excelFile || excelImportLoading}
-              className="ti-btn ti-btn-primary-full text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              className="ti-btn ti-btn-primary-full text-white disabled:opacity-50 disabled:cursor-not-allowed !min-h-11"
+              aria-busy={excelImportLoading}
             >
-              {excelImportLoading ? 'Importing...' : 'Import Excel Data'}
+              {excelImportLoading ? 'Importing…' : 'Import Excel Data'}
             </button>
             
             <button
-              onClick={() => {
+              type="button"
+              onClick={async () => {
+                const ok = await confirmDiscardSelectedFile('Clear selected file?', 'The selected workbook will be removed from this page.');
+                if (!ok) return;
                 setExcelFile(null);
                 setExcelData([]);
+                setExcelImportResult(null);
                 setExcelImportProgress({ total: 0, processed: 0, successful: 0, failed: 0, errors: [] });
+                if (fileInputRef.current) fileInputRef.current.value = '';
               }}
-              className="ti-btn ti-btn-secondary"
+              className="ti-btn ti-btn-secondary !min-h-11"
             >
               Clear Data
             </button>

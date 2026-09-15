@@ -63,6 +63,7 @@ import CandidateAttendanceOverlay from './_components/CandidateAttendanceOverlay
 import { canEditCandidateJoiningDate, canEditCandidateResignDate, canImpersonateUser } from '@/shared/lib/candidate-permissions'
 import { hasPermission } from '@/shared/lib/permissions'
 import { ROUTES } from '@/shared/lib/constants'
+import { downloadCandidateExcelTemplate } from '@/shared/lib/candidate-excel-template'
 import { recommendSkillsByRole } from '@/shared/lib/api/auth'
 import {
   getAlreadyAssignedMessage,
@@ -2533,7 +2534,12 @@ const Candidates = () => {
               handleRemoveFilter={handleRemoveFilter}
               handleResetFilters={handleResetFilters}
               canExport={canViewEmployees}
+              canImport={canCreateEmployee}
               onExport={handleFilterPanelExport}
+              onImport={() => router.push('/ats/employees/import')}
+              onDownloadTemplate={() => {
+                void downloadCandidateExcelTemplate()
+              }}
               exportLoading={exportAllSubmitting}
               exportError={actionError}
             />
