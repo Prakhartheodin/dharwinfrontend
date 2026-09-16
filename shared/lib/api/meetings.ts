@@ -187,10 +187,6 @@ export interface Meeting {
   createdAt?: string;
   updatedAt?: string;
   publicMeetingUrl?: string;
-  /** Set when interviewResult=selected but createPlacementFromInterview failed (PATCH response only). */
-  moveToPreboardingError?: string;
-  /** Stable code for moveToPreboardingError, e.g. `interview_not_linked` (PATCH response only). */
-  moveToPreboardingErrorCode?: string;
   /** Result saved but its application side effect was skipped: the interview has no application (PATCH response only). */
   linkageWarning?: 'interview_not_linked';
   applicationId?: string | null;
@@ -260,6 +256,8 @@ export async function getMyInterviews(params?: {
   page?: number;
   limit?: number;
   sortBy?: string;
+  applicationId?: string;
+  includePast?: boolean;
 }): Promise<MeetingsListResponse> {
   const { data } = await apiClient.get<MeetingsListResponse>("/meetings/my-interviews", { params });
   return data;

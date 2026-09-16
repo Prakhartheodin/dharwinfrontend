@@ -3,6 +3,10 @@ import {
   canJoinMeeting,
   meetingEndsAtMs,
 } from "@/shared/lib/dashboard/employeeDashboard";
+
+/** Join window opens this many minutes before scheduledAt (must match canJoinMeeting). */
+export const MEETING_JOIN_LEAD_MINUTES = 10;
+export const MEETING_JOIN_LEAD_MS = MEETING_JOIN_LEAD_MINUTES * 60 * 1000;
 import {
   appendJoinIdentityToUrl,
   resolveMeetingShareUrl,
@@ -15,6 +19,84 @@ export type CandidateInterviewRow = Meeting & {
   jobTitle?: string;
   companyName?: string;
 };
+
+export type CandidateInterviewMeeting = Pick<
+  Meeting,
+  | "scheduledAt"
+  | "durationMinutes"
+  | "timezone"
+  | "status"
+  | "meetingId"
+  | "publicMeetingUrl"
+  | "interviewType"
+  | "requireApproval"
+  | "round"
+  | "interviewCompletedAt"
+  | "notes"
+  | "title"
+  | "interviewResult"
+> & { id?: string };
+
+export type InterviewPanelState =
+  | { kind: "no_schedule" }
+  | { kind: "cancelled"; meeting: CandidateInterviewMeeting }
+  | { kind: "link_pending"; meeting: CandidateInterviewMeeting }
+  | { kind: "scheduled"; meeting: CandidateInterviewMeeting; joinHref?: string }
+  | { kind: "live"; meeting: CandidateInterviewMeeting; joinHref: string }
+  | { kind: "completed"; meeting: CandidateInterviewMeeting }
+  | { kind: "missed"; meeting: CandidateInterviewMeeting };
+
+function pickPrimaryInterview(meetings: CandidateInterviewMeeting[]): CandidateInterviewMeeting | null {
+  if (!meetings.length) return null;
+  const nonCancelled = meetings.filter((m) => (m.status || "").toLowerCase() !== "cancelled");
+  const pool = nonCancelled.length ? nonCancelled : meetings;
+  return [...pool].sort(
+    (a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime(),
+  )[0];
+}
+
+/** Derive panel UI state for the primary interview on an application. */
+export function resolveInterviewPanelState(
+  meetings: CandidateInterviewMeeting[] | null | undefined,
+  now: Date = new Date(),
+  user?: { name?: string | null; email?: string | null } | null,
+): InterviewPanelState {
+  const primary = pickPrimaryInterview(meetings || []);
+  if (!primary) return { kind: "no_schedule" };
+
+  const status = (primary.status || "").toLowerCase();
+  if (status === "cancelled") return { kind: "cancelled", meeting: primary };
+
+  const start = new Date(primary.scheduledAt).getTime();
+  const end = meetingEndsAtMs(primary.scheduledAt, primary.durationMinutes);
+  const t = now.getTime();
+  const hasUrl = Boolean(primary.publicMeetingUrl?.trim() || primary.meetingId?.trim());
+
+  if (status === "ended" || primary.interviewCompletedAt) {
+    return { kind: "completed", meeting: primary };
+  }
+
+  if (!Number.isNaN(end) && t > end) {
+    return { kind: "missed", meeting: primary };
+  }
+
+  const row = primary as CandidateInterviewRow;
+  const joinHref = resolveInterviewJoinHref(row, user, now);
+  const inLiveWindow = !Number.isNaN(start) && !Number.isNaN(end) && t >= start && t <= end;
+
+  if (inLiveWindow) {
+    if (!hasUrl) return { kind: "link_pending", meeting: primary };
+    return { kind: "live", meeting: primary, joinHref: joinHref || "" };
+  }
+
+  if (!hasUrl) return { kind: "link_pending", meeting: primary };
+
+  if (canJoinInterview(primary, now) && joinHref) {
+    return { kind: "scheduled", meeting: primary, joinHref };
+  }
+
+  return { kind: "scheduled", meeting: primary };
+}
 
 /** Exclude completed, cancelled, rejected, and meetings whose window has ended. */
 export function filterUpcomingInterviews(

@@ -9,6 +9,7 @@ import {
   formatInterviewTime,
   resolveInterviewDetailHref,
   resolveInterviewJoinHref,
+  resolveInterviewPanelState,
   sortUpcomingInterviews,
 } from "@/shared/lib/dashboard/candidateInterviews";
 
@@ -153,6 +154,38 @@ describe("candidateInterviews", () => {
       expect(resolveInterviewDetailHref(meeting)).toContain("meeting_test_1");
       expect(canJoinInterview(meeting, now)).toBe(false);
       expect(resolveInterviewJoinHref(meeting, undefined, now)).toBe("");
+    });
+  });
+
+  describe("resolveInterviewPanelState", () => {
+    it("returns no_schedule when interviews array is empty", () => {
+      expect(resolveInterviewPanelState([], NOW).kind).toBe("no_schedule");
+    });
+
+    it("returns link_pending when scheduled but no meeting URL", () => {
+      const state = resolveInterviewPanelState(
+        [baseMeeting({ publicMeetingUrl: "", meetingId: "" })],
+        NOW,
+      );
+      expect(state.kind).toBe("link_pending");
+    });
+
+    it("returns missed after the meeting window ends", () => {
+      const past = baseMeeting({
+        scheduledAt: "2026-08-17T09:00:00.000Z",
+        durationMinutes: 30,
+        status: "scheduled",
+      });
+      const state = resolveInterviewPanelState([past], new Date("2026-08-17T11:00:00.000Z"));
+      expect(state.kind).toBe("missed");
+    });
+
+    it("returns cancelled for cancelled meetings", () => {
+      const state = resolveInterviewPanelState(
+        [baseMeeting({ status: "cancelled" })],
+        NOW,
+      );
+      expect(state.kind).toBe("cancelled");
     });
   });
 });

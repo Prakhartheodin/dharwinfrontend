@@ -97,6 +97,10 @@ type PublicApplyResumeUploadFieldProps = {
   resumeInputRef: React.RefObject<HTMLInputElement | null>;
   onResumeSelected: (file: File) => void;
   inputId?: string;
+  /** When false, omit native `required` (e.g. saved-version picker validates in JS). */
+  required?: boolean;
+  /** Overrides default label helper when upload is optional alongside another resume source. */
+  optionalHint?: string;
 };
 
 export function PublicApplyResumeUploadField({
@@ -104,6 +108,8 @@ export function PublicApplyResumeUploadField({
   resumeInputRef,
   onResumeSelected,
   inputId = "public-apply-resume",
+  required = true,
+  optionalHint,
 }: PublicApplyResumeUploadFieldProps) {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -118,9 +124,11 @@ export function PublicApplyResumeUploadField({
   return (
     <div>
       <label htmlFor={inputId} className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-        Resume <span className="text-red-500">*</span> (PDF or DOCX only, max 10MB)
+        Resume {required ? <span className="text-red-500">*</span> : null} (PDF or DOCX only, max 10MB)
       </label>
-      <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">{PUBLIC_RESUME_FORMAT_MESSAGE}</p>
+      <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
+        {optionalHint ?? PUBLIC_RESUME_FORMAT_MESSAGE}
+      </p>
       <input
         id={inputId}
         ref={resumeInputRef}
@@ -128,7 +136,7 @@ export function PublicApplyResumeUploadField({
         accept={PUBLIC_RESUME_ACCEPT}
         onChange={handleFileChange}
         className="w-full rounded-lg border border-gray-300 px-4 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-        required
+        required={required}
       />
       {resume ? (
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">

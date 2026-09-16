@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, cleanup, fireEvent } from "@testing-library/react";
 import type { JobApplication } from "@/shared/lib/api/jobApplications";
@@ -31,6 +31,10 @@ vi.mock("@/shared/components/ui/useConfirm", () => ({
 
 vi.mock("./_components/DocumentsActionCard", () => ({
   default: () => null,
+}));
+
+vi.mock("@/shared/hooks/useNow", () => ({
+  useNow: () => new Date("2026-08-18T10:00:00.000Z"),
 }));
 
 vi.mock("next/link", () => ({
@@ -84,7 +88,7 @@ describe("MyApplicationsPage congratulations banner", () => {
     expect(screen.queryByTestId("congratulations-banner")).toBeNull();
   });
 
-  it("hides banner when API returns pending interviewResult (selected→pending)", async () => {
+  it("hides banner when API returns pending interviewResult (selectedâ†’pending)", async () => {
     vi.spyOn(jobApplicationsApi, "getMyApplications").mockResolvedValue({
       results: [selectedApp({ interviewResult: "pending", status: "Interview", candidateVisibleStatus: "Interview" })],
     });
@@ -141,7 +145,7 @@ describe("MyApplicationsPage congratulations banner", () => {
     expect(jobApplicationsApi.getMyApplications).toHaveBeenCalledTimes(2);
   });
 
-  it("shows banner after rejected→selected when API updates", async () => {
+  it("shows banner after rejectedâ†’selected when API updates", async () => {
     vi.spyOn(jobApplicationsApi, "getMyApplications").mockResolvedValue({
       results: [selectedApp({ interviewResult: "selected", status: "Offered" })],
     });
@@ -200,7 +204,7 @@ describe("MyApplicationsPage status badge", () => {
     expect(article).not.toHaveTextContent("Pending");
   });
 
-  it("shows Interview badge after selected→pending even when stale offer fields remain", async () => {
+  it("shows Interview badge after selectedâ†’pending even when stale offer fields remain", async () => {
     vi.spyOn(jobApplicationsApi, "getMyApplications").mockResolvedValue({
       results: [
         selectedApp({
@@ -321,7 +325,7 @@ describe("MyApplicationsPage stage-aware badges", () => {
     // the pill must not carry it or it renders as a border hugging the text.
     expect(badge.className).not.toContain("max-w-full");
     expect(badge.className).not.toMatch(/\bw-\d/);
-    // Full stage text stays readable — no truncation of the rejection stage.
+    // Full stage text stays readable â€” no truncation of the rejection stage.
     expect(badge).toHaveTextContent("Rejected \u00b7 Pre-boarding");
   });
 
@@ -343,6 +347,107 @@ describe("MyApplicationsPage stage-aware badges", () => {
   });
 });
 
+describe("MyApplicationsPage interview panel", () => {
+  it("shows empty interview state when API returns no interviews", async () => {
+    vi.spyOn(jobApplicationsApi, "getMyApplications").mockResolvedValue({
+      results: [
+        selectedApp({
+          interviewResult: "pending",
+          status: "Interview",
+          candidateVisibleStatus: "Interview",
+          interviews: [],
+        }),
+      ],
+    });
+    render(<MyApplicationsPage />);
+    expect(await screen.findByTestId("interview-panel")).toHaveTextContent(
+      "No interview scheduled yet",
+    );
+  });
+
+  it("shows scheduled interview details when API returns interviews", async () => {
+    vi.spyOn(jobApplicationsApi, "getMyApplications").mockResolvedValue({
+      results: [
+        selectedApp({
+          interviewResult: "pending",
+          status: "Interview",
+          candidateVisibleStatus: "Interview",
+          interviews: [
+            {
+              id: "m1",
+              meetingId: "meeting_panel_1",
+              title: "Technical interview",
+              scheduledAt: "2026-08-20T11:00:00.000Z",
+              timezone: "Asia/Kolkata",
+              durationMinutes: 60,
+              status: "scheduled",
+              interviewResult: "pending",
+              interviewType: "Video",
+              publicMeetingUrl: "https://example.com/join/room?room=meeting_panel_1",
+            },
+          ],
+        }),
+      ],
+    });
+    render(<MyApplicationsPage />);
+    const panel = await screen.findByTestId("interview-panel");
+    expect(panel).toHaveTextContent("Technical interview");
+    expect(panel).toHaveTextContent("Join opens");
+  });
+
+  it("hides Application ID in interview instructions", async () => {
+    vi.spyOn(jobApplicationsApi, "getMyApplications").mockResolvedValue({
+      results: [
+        selectedApp({
+          interviewResult: "pending",
+          status: "Interview",
+          candidateVisibleStatus: "Interview",
+          interviews: [
+            {
+              id: "m2",
+              meetingId: "meeting_panel_2",
+              title: "Screening call",
+              scheduledAt: "2026-08-20T11:00:00.000Z",
+              timezone: "Asia/Kolkata",
+              durationMinutes: 30,
+              status: "scheduled",
+              interviewResult: "pending",
+              interviewType: "Video",
+              publicMeetingUrl: "https://example.com/join/room?room=meeting_panel_2",
+              notes: "Application ID: 507f1f77bcf86cd799439011\nCurrent stage: Interview\nJob: Data Analyst",
+            },
+          ],
+        }),
+      ],
+    });
+    render(<MyApplicationsPage />);
+    const panel = await screen.findByTestId("interview-panel");
+    expect(panel).toHaveTextContent("Current stage: Interview");
+    expect(panel).toHaveTextContent("Job: Data Analyst");
+    expect(panel).not.toHaveTextContent("507f1f77bcf86cd799439011");
+    expect(panel).not.toHaveTextContent(/Application ID/i);
+  });
+
+  it("refetches when a meeting notification arrives", async () => {
+    const spy = vi.spyOn(jobApplicationsApi, "getMyApplications").mockResolvedValue({
+      results: [selectedApp({ interviews: [] })],
+    });
+    const { rerender } = render(<MyApplicationsPage />);
+    await screen.findByTestId("interview-panel");
+
+    notificationState.latest = {
+      _id: "notif-meeting",
+      type: "meeting",
+      title: "Interview scheduled",
+      message: "You have an interview",
+      read: false,
+    } as Notification;
+    rerender(<MyApplicationsPage />);
+
+    await waitFor(() => expect(spy.mock.calls.length).toBeGreaterThanOrEqual(2));
+  });
+});
+
 describe("MyApplicationsPage status filter", () => {
   function row(overrides: Partial<JobApplication> & Record<string, unknown>): JobApplication {
     return {
@@ -357,7 +462,7 @@ describe("MyApplicationsPage status filter", () => {
   /**
    * Regression: the filter used to hit the server on `JobApplication.status`, while the badge is
    * derived from Offer/Placement after the query. An offer-stage rejection keeps status "Offered",
-   * so filtering "Rejected" could not return the row whose badge reads "Rejected · Offer".
+   * so filtering "Rejected" could not return the row whose badge reads "Rejected Â· Offer".
    */
   it("filters on the badge the candidate can actually see, not the raw application status", async () => {
     vi.spyOn(jobApplicationsApi, "getMyApplications").mockResolvedValue({
@@ -367,7 +472,7 @@ describe("MyApplicationsPage status filter", () => {
           status: "Offered",
           candidateLifecycleStage: "rejected",
           rejectionStage: "offer",
-          candidateVisibleStatus: "Rejected · Offer",
+          candidateVisibleStatus: "Rejected Â· Offer",
           job: { _id: "j1", title: "Rejected Role", organisation: { name: "Co A" } },
         }),
         row({

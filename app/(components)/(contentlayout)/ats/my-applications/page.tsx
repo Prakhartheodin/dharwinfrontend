@@ -17,6 +17,8 @@ import CongratulationsBanner from "./_components/CongratulationsBanner";
 import ApplicationStatusBadge, { splitBadgeLabel } from "./_components/ApplicationStatusBadge";
 import { useConfirm } from "@/shared/components/ui/useConfirm";
 import { usePmRefetchOnFocus } from "@/shared/hooks/usePmRefetchOnFocus";
+import { useNow } from "@/shared/hooks/useNow";
+import InterviewPanel from "./_components/InterviewPanel";
 
 const WITHDRAWABLE_STATUSES: JobApplicationStatus[] = ["Applied", "Screening"];
 
@@ -66,7 +68,9 @@ export default function MyApplicationsPage() {
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
+  const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
   const pageSize = 10;
+  const now = useNow(30_000);
 
   const load = useCallback((opts?: { background?: boolean }) => {
     if (!opts?.background) setLoading(true);
@@ -100,9 +104,11 @@ export default function MyApplicationsPage() {
     void load({ background: true });
   }, [user, load]);
 
-  // SSE: selected/rejected transitions emit job_application notifications.
+  // SSE: application and interview schedule updates.
   useEffect(() => {
-    if (!user || latestNotification?.type !== "job_application") return;
+    if (!user || !latestNotification?.type) return;
+    const t = latestNotification.type;
+    if (t !== "job_application" && t !== "meeting" && t !== "meeting_reminder") return;
     void load({ background: true });
   }, [user, latestNotification?._id, latestNotification?.type, load]);
 
@@ -174,6 +180,25 @@ export default function MyApplicationsPage() {
   const safePage = Math.min(page, Math.max(0, totalPages - 1));
   const pagedData = visibleApplications.slice(safePage * pageSize, (safePage + 1) * pageSize);
   const truncated = totalOnServer > applications.length;
+
+  const selectedApplication = useMemo(() => {
+    if (!pagedData.length) return null;
+    const match = selectedApplicationId
+      ? pagedData.find((a) => (a._id ?? a.id) === selectedApplicationId)
+      : null;
+    return match ?? pagedData[0];
+  }, [pagedData, selectedApplicationId]);
+
+  useEffect(() => {
+    if (!pagedData.length) {
+      setSelectedApplicationId(null);
+      return;
+    }
+    const ids = new Set(pagedData.map((a) => a._id ?? a.id));
+    if (!selectedApplicationId || !ids.has(selectedApplicationId)) {
+      setSelectedApplicationId(pagedData[0]._id ?? pagedData[0].id ?? null);
+    }
+  }, [pagedData, selectedApplicationId]);
 
   if (!user) {
     return (
@@ -291,7 +316,9 @@ export default function MyApplicationsPage() {
           </div>
         ) : (
           <>
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(280px,320px)_minmax(0,1fr)] lg:items-start">
+              <InterviewPanel application={selectedApplication} user={user} now={now} />
+              <div className="space-y-4 min-w-0">
               {pagedData.map((app) => {
                 const id = app._id ?? app.id;
                 const job = app.job as { _id?: string; id?: string; title?: string; organisation?: { name?: string } } | undefined;
@@ -302,11 +329,26 @@ export default function MyApplicationsPage() {
                 const isWithdrawing = withdrawingId === id;
                 const lifecycle = resolveCandidateLifecycle(app);
                 const visibleStatus = lifecycle.badge;
+                const isSelected = (selectedApplication?._id ?? selectedApplication?.id) === id;
 
                 return (
                   <article
                     key={id}
-                    className="group relative rounded-xl border border-defaultborder/50 dark:border-white/10 bg-white dark:bg-bodybg shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden"
+                    tabIndex={0}
+                    aria-current={isSelected ? "true" : undefined}
+                    aria-label={`${jobTitle} at ${company}. ${isSelected ? "Interview details shown in panel." : "Select to show interview details."}`}
+                    onClick={() => id && setSelectedApplicationId(id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        if (id) setSelectedApplicationId(id);
+                      }
+                    }}
+                    className={`group relative rounded-xl border bg-white dark:bg-bodybg shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                      isSelected
+                        ? "border-primary/50 ring-2 ring-primary/20"
+                        : "border-defaultborder/50 dark:border-white/10"
+                    }`}
                   >
                     <div className="flex flex-wrap sm:flex-nowrap items-start gap-4 p-5">
                       <div className="flex-1 min-w-0">
@@ -315,6 +357,7 @@ export default function MyApplicationsPage() {
                             <Link
                               href={`/ats/browse-jobs/${jobId}`}
                               className="hover:text-primary transition-colors"
+                              onClick={(e) => e.stopPropagation()}
                             >
                               {jobTitle}
                             </Link>
@@ -340,6 +383,7 @@ export default function MyApplicationsPage() {
                           <Link
                             href={`/ats/browse-jobs/${jobId}`}
                             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-primary text-white shadow-sm hover:bg-primary/90 hover:shadow transition-colors"
+                            onClick={(e) => e.stopPropagation()}
                           >
                             <i className="ri-eye-line text-[1rem]" />
                             View
@@ -349,7 +393,10 @@ export default function MyApplicationsPage() {
                           <button
                             type="button"
                             disabled={isWithdrawing}
-                            onClick={() => handleWithdraw(app)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleWithdraw(app);
+                            }}
                             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-rose-500/30 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                           >
                             {isWithdrawing ? (
@@ -365,6 +412,7 @@ export default function MyApplicationsPage() {
                   </article>
                 );
               })}
+              </div>
             </div>
 
             {/* Pagination */}

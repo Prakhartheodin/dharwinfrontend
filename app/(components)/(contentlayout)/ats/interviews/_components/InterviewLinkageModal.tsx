@@ -33,7 +33,7 @@ export interface InterviewLinkageTarget {
 
 const REASON_COPY: Record<NonNullable<InterviewLinkageTarget['reason']>, string> = {
   placement:
-    'Offer & placement needs this interview linked to a job application. After linking, use “Re-trigger offer & placement” again.',
+    'Move to Offer needs this interview linked to a job application. After linking, use “Move to Offer” again.',
   transfer: 'Internal transfer needs this interview linked to a job application. After linking, run Internal transfer again.',
   result:
     "The result was saved, but the application's stage was not updated because this interview isn't linked. Link it to keep the pipeline in sync.",

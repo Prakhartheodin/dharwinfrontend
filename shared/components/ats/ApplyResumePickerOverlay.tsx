@@ -3,15 +3,18 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import {
+  addCandidateDocumentVersion,
   getMyCandidate,
   getCandidateListItemId,
   getDocumentVersionDownloadUrl,
   listCandidateDocumentVersions,
+  uploadDocument,
   type CandidateDocumentVersion,
 } from "@/shared/lib/api/employees";
 import { browseApplyToJob } from "@/shared/lib/api/jobs";
 import { PublicApplyResumeUploadField } from "@/shared/components/ats/PublicApplyResumeSection";
 import { isPublicResumeFile, PUBLIC_RESUME_FORMAT_MESSAGE } from "@/shared/lib/publicApplyResume";
+import { canSubmitBrowseJobApplyResume } from "@/shared/lib/applyResumePickerSubmit";
 import { pdfViewerSrc, resolveDocumentPreviewMode } from "@/shared/lib/documentVersionPreview";
 
 export type ApplyResumePickerOverlayProps = {
@@ -30,6 +33,30 @@ type InlinePreviewState = {
   title: string;
   revokeOnClose?: boolean;
 };
+
+const RESUME_UPLOAD_LABEL = "CV/Resume";
+
+function getResumeUploadErrorMessage(error: unknown): string {
+  if (isAxiosError(error) && error.response?.data) {
+    const data = error.response.data as { message?: string };
+    if (typeof data.message === "string" && data.message.trim()) {
+      return data.message.trim();
+    }
+    if (error.response.status === 401) {
+      return "Your session has expired. Sign in again and retry.";
+    }
+    if (error.response.status === 403) {
+      return "You do not have permission to save this resume.";
+    }
+    if (error.response.status === 413) {
+      return "That file is too large. Try a smaller PDF, DOC, or DOCX.";
+    }
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+  return "Upload failed. Check the file and try again.";
+}
 
 function formatVersionDate(value?: string): string {
   if (!value) return "Upload date unavailable";
@@ -83,6 +110,8 @@ export function ApplyResumePickerOverlay({
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingResume, setUploadingResume] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [candidateId, setCandidateId] = useState<string | null>(null);
   const [inlinePreview, setInlinePreview] = useState<InlinePreviewState | null>(null);
@@ -165,8 +194,10 @@ export function ApplyResumePickerOverlay({
   useEffect(() => {
     if (!open) return;
     setFormError(null);
+    setUploadError(null);
     setPreviewError(null);
     setResumeFile(null);
+    setUploadingResume(false);
     closeInlinePreview();
     void loadResumeVersions();
   }, [open, loadResumeVersions, closeInlinePreview]);
@@ -177,7 +208,7 @@ export function ApplyResumePickerOverlay({
     closeButtonRef.current?.focus();
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || submitting) return;
+      if (e.key !== "Escape" || submitting || uploadingResume) return;
       e.preventDefault();
       if (inlinePreview) {
         closeInlinePreview();
@@ -190,7 +221,7 @@ export function ApplyResumePickerOverlay({
       document.removeEventListener("keydown", onKeyDown);
       previous?.focus?.();
     };
-  }, [open, onClose, submitting, inlinePreview, closeInlinePreview]);
+  }, [open, onClose, submitting, uploadingResume, inlinePreview, closeInlinePreview]);
 
   const handlePreviewVersion = async (
     version: CandidateDocumentVersion,
@@ -232,23 +263,67 @@ export function ApplyResumePickerOverlay({
       return;
     }
     setFormError(null);
+    setUploadError(null);
     setResumeFile(file);
     setSelectionMode("upload");
     setSelectedVersion(null);
   };
 
-  const canSubmit =
-    selectionMode === "upload"
-      ? Boolean(resumeFile)
-      : selectedVersion != null && versions.some((v) => v.version === selectedVersion);
+  const handleUploadResume = async () => {
+    if (!resumeFile || uploadingResume || submitting) return;
+    if (!candidateId) {
+      setUploadError("No candidate profile is linked yet. Submit your application to upload this resume.");
+      return;
+    }
+    setUploadingResume(true);
+    setUploadError(null);
+    setFormError(null);
+    try {
+      const uploaded = await uploadDocument(resumeFile, RESUME_UPLOAD_LABEL);
+      const result = await addCandidateDocumentVersion(candidateId, "resume", {
+        type: "CV/Resume",
+        label: RESUME_UPLOAD_LABEL,
+        documentUrl: uploaded.url,
+        key: uploaded.key,
+        originalName: uploaded.originalName,
+        size: uploaded.size,
+        mimeType: uploaded.mimeType,
+      });
+      const data = await listCandidateDocumentVersions(candidateId, "resume");
+      setVersions(data.versions ?? []);
+      setCurrentVersion(data.currentVersion);
+      const newVersion = result.version?.version ?? data.currentVersion ?? null;
+      setSelectedVersion(newVersion);
+      setSelectionMode("version");
+      setResumeFile(null);
+      if (resumeInputRef.current) {
+        resumeInputRef.current.value = "";
+      }
+    } catch (err) {
+      setUploadError(getResumeUploadErrorMessage(err));
+    } finally {
+      setUploadingResume(false);
+    }
+  };
+
+  const canSubmit = canSubmitBrowseJobApplyResume({
+    selectionMode,
+    selectedVersion,
+    versions,
+    resumeFile,
+    candidateId,
+    uploadingResume,
+  });
+
+  const uploadRequired = !loading && versions.length === 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canSubmit || submitting) return;
+    if (!canSubmit || submitting || uploadingResume) return;
     setSubmitting(true);
     setFormError(null);
     try {
-      if (selectionMode === "upload" && resumeFile) {
+      if (selectionMode === "upload" && resumeFile && !candidateId) {
         await browseApplyToJob(jobId, {
           ref: referralRef ?? undefined,
           resumeFile,
@@ -277,7 +352,7 @@ export function ApplyResumePickerOverlay({
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
       onClick={(e) => {
-        if (e.target === e.currentTarget && !submitting) onClose();
+        if (e.target === e.currentTarget && !submitting && !uploadingResume) onClose();
       }}
     >
       <div
@@ -294,16 +369,16 @@ export function ApplyResumePickerOverlay({
           <button
             ref={closeButtonRef}
             type="button"
-            onClick={() => !submitting && onClose()}
+            onClick={() => !submitting && !uploadingResume && onClose()}
             className="flex h-11 w-11 items-center justify-center rounded-lg text-2xl text-gray-400 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 dark:hover:text-gray-200"
             aria-label="Close"
-            disabled={submitting}
+            disabled={submitting || uploadingResume}
           >
             ×
           </button>
         </div>
 
-        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4 p-6">
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4 p-6" noValidate>
           <p className="text-sm text-stone-600 dark:text-stone-400">
             Select which resume recruiters should receive with this application. You can pick a saved version or upload a
             new file.
@@ -333,6 +408,15 @@ export function ApplyResumePickerOverlay({
               className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300"
             >
               {previewError}
+            </div>
+          ) : null}
+
+          {uploadError ? (
+            <div
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300"
+            >
+              {uploadError}
             </div>
           ) : null}
 
@@ -374,8 +458,9 @@ export function ApplyResumePickerOverlay({
                             setSelectedVersion(v.version);
                             setResumeFile(null);
                             setFormError(null);
+                            setUploadError(null);
                           }}
-                          disabled={submitting}
+                          disabled={submitting || uploadingResume}
                         />
                         <span className="min-w-0 flex-1">
                           <span className="block text-sm font-medium text-gray-900 dark:text-white">{label}</span>
@@ -391,7 +476,7 @@ export function ApplyResumePickerOverlay({
                         type="button"
                         className="my-2 mr-2 flex min-h-[44px] shrink-0 items-center justify-center rounded-lg border border-gray-300 px-4 text-sm font-medium text-primary transition hover:bg-primary/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:hover:bg-primary/10"
                         onClick={(e) => void handlePreviewVersion(v, label, e)}
-                        disabled={submitting || previewBusy || !candidateId}
+                        disabled={submitting || uploadingResume || previewBusy || !candidateId}
                         aria-label={`Preview ${label}`}
                       >
                         {previewBusy ? "Opening…" : "View"}
@@ -414,33 +499,64 @@ export function ApplyResumePickerOverlay({
               resumeInputRef={resumeInputRef}
               onResumeSelected={handleResumeSelected}
               inputId="apply-resume-picker-upload"
+              required={uploadRequired}
+              optionalHint={
+                candidateId
+                  ? versions.length > 0
+                    ? `Choose a file, then use Upload resume to save it before applying. ${PUBLIC_RESUME_FORMAT_MESSAGE}`
+                    : `Choose a file, then use Upload resume to save it to your profile. ${PUBLIC_RESUME_FORMAT_MESSAGE}`
+                  : versions.length > 0
+                    ? `Optional when a saved version is selected above. ${PUBLIC_RESUME_FORMAT_MESSAGE}`
+                    : undefined
+              }
             />
             {resumeFile ? (
-              <button
-                type="button"
-                className="mt-3 flex min-h-[44px] items-center justify-center rounded-lg border border-gray-300 px-4 text-sm font-medium text-primary transition hover:bg-primary/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 dark:border-gray-600 dark:hover:bg-primary/10"
-                onClick={handlePreviewUpload}
-                disabled={submitting}
-                aria-label={`Preview ${resumeFile.name}`}
-              >
-                Preview uploaded file
-              </button>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                <button
+                  type="button"
+                  className="flex min-h-[44px] flex-1 items-center justify-center rounded-lg border border-gray-300 px-4 text-sm font-medium text-primary transition hover:bg-primary/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:hover:bg-primary/10"
+                  onClick={handlePreviewUpload}
+                  disabled={submitting || uploadingResume}
+                  aria-label={`Preview ${resumeFile.name}`}
+                >
+                  Preview selected file
+                </button>
+                {candidateId ? (
+                  <button
+                    type="button"
+                    className="flex min-h-[44px] flex-1 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-white transition hover:bg-primary/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => void handleUploadResume()}
+                    disabled={submitting || uploadingResume}
+                  >
+                    {uploadingResume ? "Uploading…" : "Upload resume"}
+                  </button>
+                ) : (
+                  <p className="text-sm text-stone-600 dark:text-stone-400 sm:flex sm:flex-1 sm:items-center">
+                    This file will be uploaded when you submit your application.
+                  </p>
+                )}
+              </div>
+            ) : null}
+            {resumeFile && candidateId ? (
+              <p className="mt-2 text-xs text-stone-500 dark:text-stone-400">
+                Save the file as a version before submitting so it appears under Saved versions.
+              </p>
             ) : null}
           </div>
 
           <div className="flex gap-3 pt-2">
             <button
               type="button"
-              onClick={() => !submitting && onClose()}
+              onClick={() => !submitting && !uploadingResume && onClose()}
               className="flex-1 rounded-lg border border-gray-300 px-6 py-3 text-gray-700 transition hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-              disabled={submitting}
+              disabled={submitting || uploadingResume}
             >
               Cancel
             </button>
             <button
               type="submit"
               className="flex-1 rounded-lg bg-primary px-6 py-3 text-white transition hover:bg-primary/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={submitting || !canSubmit}
+              disabled={submitting || uploadingResume || !canSubmit}
             >
               {submitting ? "Submitting…" : "Submit application"}
             </button>

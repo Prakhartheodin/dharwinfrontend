@@ -76,6 +76,27 @@ export interface JobApplication {
    * when the backend joins the latest interview for the job application.
    */
   interviewResult?: "pending" | "selected" | "rejected";
+  /** Candidate-safe interview rows for this application (GET /my-applications). */
+  interviews?: CandidateApplicationInterview[];
+}
+
+/** Serialized meeting row on my-applications (no staff-only fields). */
+export interface CandidateApplicationInterview {
+  id: string;
+  meetingId: string;
+  title?: string;
+  scheduledAt: string;
+  timezone?: string;
+  durationMinutes: number;
+  status: string;
+  interviewResult?: "pending" | "selected" | "rejected" | null;
+  interviewType?: string;
+  requireApproval?: boolean;
+  round?: { index?: number; type?: string; label?: string | null } | null;
+  notes?: string;
+  interviewCompletedAt?: string | null;
+  applicationId?: string | null;
+  publicMeetingUrl?: string;
 }
 
 export interface JobApplicationsListParams {
@@ -164,6 +185,23 @@ export async function updateJobApplicationStatus(id: string, payload: UpdateJobA
 
 export async function deleteJobApplication(id: string): Promise<void> {
   await apiClient.delete(`/job-applications/${id}`);
+}
+
+export interface MoveToOfferResult {
+  /** False when the application already had an offer — the call is a no-op, not a failure. */
+  moved: boolean;
+  offerId: string;
+  offerStatus: string;
+  message: string;
+}
+
+/**
+ * Advance an application from Interview to Offer. Explicit recruiter decision: marking an
+ * interview round "selected" records the round only and never creates an offer.
+ */
+export async function moveApplicationToOffer(applicationId: string): Promise<MoveToOfferResult> {
+  const { data } = await apiClient.post<MoveToOfferResult>(`/job-applications/${applicationId}/move-to-offer`);
+  return data;
 }
 
 export interface MyApplicationsListParams {

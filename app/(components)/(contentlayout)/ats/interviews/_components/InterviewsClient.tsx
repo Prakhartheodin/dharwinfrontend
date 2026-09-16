@@ -19,7 +19,7 @@ import ParticipantInvitesField, { type ParticipantUser } from '@/shared/componen
 import MeetingReadOnlyView from '@/shared/components/meeting/MeetingReadOnlyView'
 import { useConfirm } from '@/shared/components/ui/useConfirm'
 import { getCandidateFilterAgents, type AgentOption } from '@/shared/lib/api/employees'
-import { getJobApplicationById, listJobApplications, type JobApplication } from '@/shared/lib/api/jobApplications'
+import { getJobApplicationById, listJobApplications, moveApplicationToOffer, type JobApplication } from '@/shared/lib/api/jobApplications'
 import { isPublicEmail, pickPublicEmail } from '@/shared/lib/ats/applicant-email'
 import {
   getInterviewSchedulingBlockReason,
@@ -311,6 +311,8 @@ interface FilterState {
 export default function InterviewsClient() {
   const { user: authUser, permissionsLoaded } = useAuth()
   const { canView, canCreate, canEdit, canDelete } = useFeaturePermissions('ats.interviews')
+  // Move to Offer creates an offer, so it is gated on the offers capability, not on interview editing.
+  const { canCreate: canCreateOffers } = useFeaturePermissions('ats.offers')
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -1071,57 +1073,9 @@ export default function InterviewsClient() {
       const updated = await updateMeeting(interview.id, payload)
       await refreshMeetingsList()
       closeResultModal()
-      if (resultModalSelected === 'selected' && updated.moveToPreboardingError) {
-        const errMsg = updated.moveToPreboardingError
-        if (updated.moveToPreboardingErrorCode === 'interview_not_linked') {
-          await promptLinkInterview(interview, 'placement')
-        } else if (/internal transfer/i.test(errMsg)) {
-          // The candidate is already an employee → offer the correct action inline instead of a dead-end.
-          const go = await confirm({
-            title: 'Candidate is already an employee',
-            message: (
-              <>
-                Internal moves don&apos;t create a new offer or placement. Transfer{' '}
-                <strong>{interview.candidate?.name || 'them'}</strong> into the interviewed role instead —
-                their existing employee record is updated and their employee ID stays the same.
-              </>
-            ),
-            confirmLabel: 'Transfer employee',
-            cancelLabel: 'Not now',
-          })
-          if (go) await doInternalTransfer(interview)
-        } else if (updated.moveToPreboardingErrorCode === 'JOB_VACANCIES_FILLED') {
-          await confirm({
-            title: 'All vacancies are filled',
-            message: (
-              <>
-                {errMsg}
-                <span className="mt-2 block text-xs text-defaulttextcolor/60 dark:text-white/50">
-                  The interview result was saved. Raise the vacancy count on the job, then use
-                  &ldquo;Re-trigger offer &amp; placement&rdquo; on this row.
-                </span>
-              </>
-            ),
-            confirmLabel: 'Got it',
-            hideCancel: true,
-          })
-        } else {
-          await confirm({
-            title: 'Marked Selected — next step needs attention',
-            message: (
-              <>
-                {errMsg}
-                <span className="mt-2 block text-xs text-defaulttextcolor/60 dark:text-white/50">
-                  Fix the issue above, then use the row action “Re-trigger offer &amp; placement”.
-                </span>
-              </>
-            ),
-            confirmLabel: 'Got it',
-            tone: 'danger',
-            hideCancel: true,
-          })
-        }
-      } else if (updated.linkageWarning === 'interview_not_linked') {
+      // Saving a round records the round only. Creating the offer is the separate "Move to Offer"
+      // row action, so there is no offer outcome to report here.
+      if (updated.linkageWarning === 'interview_not_linked') {
         await promptLinkInterview(interview, 'result')
       }
     } catch (err: any) {
@@ -1135,7 +1089,67 @@ export default function InterviewsClient() {
     } finally {
       setResultUpdating(false)
     }
-  }, [resultModalInterview, resultModalSelected, resultModalRatings, resultModalComment, refreshMeetingsList, closeResultModal, confirm, doInternalTransfer, promptLinkInterview])
+  }, [resultModalInterview, resultModalSelected, resultModalRatings, resultModalComment, refreshMeetingsList, closeResultModal, confirm, promptLinkInterview])
+
+  /**
+   * Explicit Interview → Offer step. Application-scoped, so an interview with no linked application
+   * has to be linked first; the backend reports the same for a round that was never marked selected.
+   */
+  const handleMoveToOffer = useCallback(async (row: InterviewTableRow) => {
+    if (!row.applicationId) {
+      await promptLinkInterview(row, 'placement')
+      return
+    }
+    const ok = await confirm({
+      title: 'Move to Offer?',
+      message: (
+        <>
+          Create a draft offer for <strong>{row.candidate?.name || 'this candidate'}</strong> and move the
+          application to Offer stage. You complete the offer in Offers &amp; placement.
+        </>
+      ),
+      confirmLabel: 'Move to Offer',
+      cancelLabel: 'Cancel',
+    })
+    if (!ok) return
+    try {
+      const result = await moveApplicationToOffer(row.applicationId)
+      await refreshMeetingsList()
+      await confirm({
+        title: result.moved ? 'Moved to Offer' : 'Already at Offer',
+        message: result.message,
+        confirmLabel: 'Done',
+        tone: result.moved ? 'success' : undefined,
+        hideCancel: true,
+      })
+    } catch (err: any) {
+      const message = err?.response?.data?.message || err?.message || 'Could not move this application to Offer.'
+      // Already an employee → the correct action is an internal transfer, not an offer.
+      if (/internal transfer/i.test(message)) {
+        const go = await confirm({
+          title: 'Candidate is already an employee',
+          message: (
+            <>
+              Internal moves don&apos;t create a new offer or placement. Transfer{' '}
+              <strong>{row.candidate?.name || 'them'}</strong> into the interviewed role instead —
+              their existing employee record is updated and their employee ID stays the same.
+            </>
+          ),
+          confirmLabel: 'Transfer employee',
+          cancelLabel: 'Not now',
+        })
+        if (go) await doInternalTransfer(row)
+        return
+      }
+      await confirm({
+        title: 'Could not move to Offer',
+        message,
+        confirmLabel: 'Close',
+        tone: 'danger',
+        hideCancel: true,
+      })
+    }
+  }, [confirm, refreshMeetingsList, promptLinkInterview, doInternalTransfer])
 
   const handleCancelMeeting = useCallback(async (row: InterviewTableRow) => {
     if (!row.id) return
@@ -1863,20 +1877,38 @@ export default function InterviewsClient() {
                 </button>
               </div>
             )}
-            {/* Show "Set result" for ended interviews OR to re-trigger a stuck selected interview */}
+            {/* Round result stays editable after selection — it records the round, nothing downstream. */}
             {canEdit && (row.original.status?.toLowerCase() === 'ended' || row.original.interviewResult === 'selected') && (
               <div className="hs-tooltip ti-main-tooltip">
                 <button
                   type="button"
                   className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-primary"
-                  title={row.original.interviewResult === 'selected' ? 'Re-trigger offer & placement' : 'Set interview result'}
+                  title="Set interview result"
                   onClick={() => openResultModal(row.original)}
                 >
                   <i className="ri-checkbox-circle-line"></i>
                   <span
                     className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
                     role="tooltip">
-                    {row.original.interviewResult === 'selected' ? 'Re-trigger offer & placement' : 'Set result'}
+                    Set result
+                  </span>
+                </button>
+              </div>
+            )}
+            {/* Explicit Interview → Offer step for a passed round. */}
+            {canCreateOffers && row.original.interviewResult === 'selected' && (
+              <div className="hs-tooltip ti-main-tooltip">
+                <button
+                  type="button"
+                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
+                  title="Move to Offer"
+                  onClick={() => handleMoveToOffer(row.original)}
+                >
+                  <i className="ri-file-paper-2-line"></i>
+                  <span
+                    className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
+                    role="tooltip">
+                    Move to Offer
                   </span>
                 </button>
               </div>
@@ -1977,6 +2009,8 @@ export default function InterviewsClient() {
       openEditModal,
       handleCancelMeeting,
       canEdit,
+      canCreateOffers,
+      handleMoveToOffer,
       openLinkageModal,
     ]
   )
@@ -2494,11 +2528,22 @@ export default function InterviewsClient() {
                                 <button
                                   type="button"
                                   className="ti-btn ti-btn-icon ti-btn-sm ti-btn-primary"
-                                  title={interview.interviewResult === 'selected' ? 'Re-trigger offer & placement' : 'Set interview result'}
+                                  title="Set interview result"
                                   aria-label="Set interview result"
                                   onClick={() => openResultModal(interview)}
                                 >
                                   <i className="ri-checkbox-circle-line"></i>
+                                </button>
+                              )}
+                              {canCreateOffers && interview.interviewResult === 'selected' && (
+                                <button
+                                  type="button"
+                                  className="ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
+                                  title="Move to Offer"
+                                  aria-label="Move to Offer"
+                                  onClick={() => handleMoveToOffer(interview)}
+                                >
+                                  <i className="ri-file-paper-2-line"></i>
                                 </button>
                               )}
                               {canEdit && interview.interviewResult === 'selected' && (
@@ -2698,11 +2743,22 @@ export default function InterviewsClient() {
                           <button
                             type="button"
                             className="ti-btn ti-btn-icon ti-btn-sm ti-btn-primary"
-                            title={interview.interviewResult === 'selected' ? 'Re-trigger offer & placement' : 'Set interview result'}
+                            title="Set interview result"
                             aria-label="Set interview result"
                             onClick={() => openResultModal(interview)}
                           >
                             <i className="ri-checkbox-circle-line" />
+                          </button>
+                        )}
+                        {canCreateOffers && interview.interviewResult === 'selected' && (
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
+                            title="Move to Offer"
+                            aria-label="Move to Offer"
+                            onClick={() => handleMoveToOffer(interview)}
+                          >
+                            <i className="ri-file-paper-2-line" />
                           </button>
                         )}
                         {canEdit && interview.interviewResult === 'selected' && (

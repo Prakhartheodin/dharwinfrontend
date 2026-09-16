@@ -9,7 +9,9 @@ import {
   type RubricCriterionId,
   type UpdateMeetingPayload,
 } from "@/shared/lib/api/meetings";
+import { moveApplicationToOffer } from "@/shared/lib/api/jobApplications";
 import { useConfirm } from "@/shared/components/ui/useConfirm";
+import { useFeaturePermissions } from "@/shared/hooks/use-feature-permissions";
 import { linkageActions, parseInterviewLinkageError } from "../../_components/interviewLinkage";
 import type { InterviewLinkageTarget } from "../../_components/InterviewLinkageModal";
 
@@ -58,6 +60,8 @@ export default function InterviewDetailResultPanel({
   onRequestLink: (reason: NonNullable<InterviewLinkageTarget["reason"]>) => void;
 }) {
   const { confirm, confirmDialog } = useConfirm();
+  // Move to Offer creates an offer, so it is gated on the offers capability, not interview editing.
+  const { canCreate: canMoveToOffer } = useFeaturePermissions("ats.offers");
   const recordId = String(meeting.id ?? meeting._id ?? meetingId);
 
   const [selected, setSelected] = useState<"pending" | "selected" | "rejected">(
@@ -66,6 +70,7 @@ export default function InterviewDetailResultPanel({
   const [ratings, setRatings] = useState<RubricRatingMap>(() => scorecardToRatingMap(meeting.interviewScorecard));
   const [comment, setComment] = useState(meeting.interviewScorecard?.comment || "");
   const [busy, setBusy] = useState(false);
+  const [movingToOffer, setMovingToOffer] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -149,6 +154,71 @@ export default function InterviewDetailResultPanel({
     }
   }, [confirm, meeting.candidate?.name, onSaved, promptLinkInterview, recordId]);
 
+  /**
+   * Explicit Interview → Offer step. Application-scoped, so an unlinked interview is sent to the
+   * link flow first rather than failing with a stage error.
+   */
+  const handleMoveToOffer = async () => {
+    if (movingToOffer) return;
+    if (!meeting.applicationId) {
+      await promptLinkInterview("placement");
+      return;
+    }
+    const ok = await confirm({
+      title: "Move to Offer?",
+      message: (
+        <>
+          Create a draft offer for <strong>{meeting.candidate?.name || "this candidate"}</strong> and move
+          the application to Offer stage. You complete the offer in Offers and placement.
+        </>
+      ),
+      confirmLabel: "Move to Offer",
+      cancelLabel: "Cancel",
+    });
+    if (!ok) return;
+    setMovingToOffer(true);
+    try {
+      const result = await moveApplicationToOffer(String(meeting.applicationId));
+      await onSaved();
+      await confirm({
+        title: result.moved ? "Moved to Offer" : "Already at Offer",
+        message: result.message,
+        confirmLabel: "Done",
+        tone: result.moved ? "success" : undefined,
+        hideCancel: true,
+      });
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+        (err as Error)?.message ||
+        "Could not move this application to Offer.";
+      if (/internal transfer/i.test(msg)) {
+        const go = await confirm({
+          title: "Candidate is already an employee",
+          message: (
+            <>
+              Internal moves do not create a new offer or placement. Transfer{" "}
+              <strong>{meeting.candidate?.name || "them"}</strong> into the interviewed role instead.
+            </>
+          ),
+          confirmLabel: "Transfer employee",
+          cancelLabel: "Not now",
+        });
+        if (go) await doInternalTransfer();
+        return;
+      }
+      await confirm({
+        title: "Could not move to Offer",
+        message: msg,
+        confirmLabel: "Close",
+        tone: "danger",
+        hideCancel: true,
+      });
+    } finally {
+      setMovingToOffer(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!recordId || busy) return;
     setBusy(true);
@@ -168,40 +238,8 @@ export default function InterviewDetailResultPanel({
       const updated = await updateMeeting(recordId, payload);
       await onSaved();
 
-      if (selected === "selected" && updated.moveToPreboardingError) {
-        const errMsg = updated.moveToPreboardingError;
-        if (updated.moveToPreboardingErrorCode === "interview_not_linked") {
-          await promptLinkInterview("placement");
-        } else if (/internal transfer/i.test(errMsg)) {
-          const go = await confirm({
-            title: "Candidate is already an employee",
-            message: (
-              <>
-                Internal moves do not create a new offer or placement. Transfer{" "}
-                <strong>{meeting.candidate?.name || "them"}</strong> into the interviewed role instead.
-              </>
-            ),
-            confirmLabel: "Transfer employee",
-            cancelLabel: "Not now",
-          });
-          if (go) await doInternalTransfer();
-        } else if (updated.moveToPreboardingErrorCode === "JOB_VACANCIES_FILLED") {
-          await confirm({
-            title: "All vacancies are filled",
-            message: `${errMsg} The interview result was saved — raise the vacancy count on the job, then save this result again.`,
-            confirmLabel: "Got it",
-            hideCancel: true,
-          });
-        } else {
-          await confirm({
-            title: "Marked selected — next step needs attention",
-            message: errMsg,
-            confirmLabel: "Got it",
-            tone: "danger",
-            hideCancel: true,
-          });
-        }
-      } else if (updated.linkageWarning === "interview_not_linked") {
+      // Saving records this round only — advancing to Offer is the separate Move to Offer action.
+      if (updated.linkageWarning === "interview_not_linked") {
         await promptLinkInterview("result");
       }
     } catch (err: unknown) {
@@ -337,6 +375,16 @@ export default function InterviewDetailResultPanel({
       )}
 
       <div className="flex flex-wrap justify-end gap-2 border-t border-defaultborder pt-4 dark:border-defaultborder/10">
+        {canMoveToOffer && meeting.interviewResult === "selected" && (
+          <button
+            type="button"
+            className="ti-btn ti-btn-success min-h-[2.75rem] !px-5 !py-2 !text-sm"
+            onClick={() => void handleMoveToOffer()}
+            disabled={movingToOffer}
+          >
+            {movingToOffer ? "Moving…" : "Move to Offer"}
+          </button>
+        )}
         <button
           type="button"
           className="ti-btn ti-btn-primary min-h-[2.75rem] !px-5 !py-2 !text-sm"

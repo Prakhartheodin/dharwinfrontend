@@ -148,6 +148,9 @@ const MAILS_ORDER = [
   "notes",
 ];
 
+/** Sidebar shows grey totals only for these folders — unread green pills are misleading here. */
+const MAIL_NAV_FOLDERS_WITHOUT_UNREAD_BADGE = new Set(["SPAM", "IMPORTANT"]);
+
 function getLabelIcon(labelId: string): string {
   return LABEL_ICONS[labelId] || "ri-price-tag-line";
 }
@@ -3268,7 +3271,11 @@ const Mailapp = () => {
                                   {/* Read off the label, not the lookup: Gmail's Archive entry is
                                       synthesized in navLabels and is not in `labels`. */}
                                   <MailNavCountBadge
-                                    unread={label.unread ?? 0}
+                                    unread={
+                                      MAIL_NAV_FOLDERS_WITHOUT_UNREAD_BADGE.has(label.id)
+                                        ? 0
+                                        : (label.unread ?? 0)
+                                    }
                                     total={label.total}
                                     capped={label.id === ARCHIVE_LABEL_ID && gmailFolderCounts?.archive?.capped}
                                   />
