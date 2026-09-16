@@ -29,12 +29,7 @@ import {
   updateTeamGroup,
   deleteTeamGroup,
 } from "@/shared/lib/api/projectTeams";
-import {
-  listCandidates,
-  uploadDocument,
-  updateCandidate,
-  type CandidateListItem,
-} from "@/shared/lib/api/candidates";
+import { listCandidates, type CandidateListItem } from "@/shared/lib/api/candidates";
 
 import styles from "./teams.module.css";
 import { useAuth } from "@/shared/contexts/auth-context";
@@ -589,11 +584,12 @@ interface TeamMemberFormModalProps {
   form: TeamMemberFormState;
   teamOptions: { value: string; label: string }[];
   candidates: { id: string; name: string; email: string; profilePictureUrl?: string }[];
+  /** ATS photo by normalized email, same map the roster cards read. The dialog only displays it. */
+  candidateAvatarByEmail: ReadonlyMap<string, string>;
   onChange: (updates: Partial<TeamMemberFormState>) => void;
   onClose: () => void;
   onSubmit: () => void;
   submitting: boolean;
-  onRefreshCandidates: () => Promise<void>;
 }
 
 function findCandidateByFormEmail(
@@ -605,25 +601,17 @@ function findCandidateByFormEmail(
   return candidates.find((c) => normalizeMemberEmail(c.email) === key);
 }
 
-function teamMemberPhotoApiMessage(err: unknown): string {
-  if (err && typeof err === "object" && "response" in err) {
-    const data = (err as { response?: { data?: { message?: string } } }).response?.data;
-    if (data?.message) return String(data.message);
-  }
-  return "";
-}
-
 function TeamMemberFormModal({
   open,
   isEdit,
   form,
   teamOptions,
   candidates,
+  candidateAvatarByEmail,
   onChange,
   onClose,
   onSubmit,
   submitting,
-  onRefreshCandidates,
 }: TeamMemberFormModalProps) {
   const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } =
     usePmReactSelectStyles();
@@ -673,105 +661,18 @@ function TeamMemberFormModal({
     return form.email.trim() ? findCandidateByFormEmail(allCandidates, form.email) : undefined;
   }, [allCandidates, form.email, form.employeeId]);
 
-  const [avatarUploading, setAvatarUploading] = useState(false);
-  const [avatarRemoving, setAvatarRemoving] = useState(false);
-  const [photoHint, setPhotoHint] = useState<string | null>(null);
-  const avatarFileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    setPhotoHint(null);
-  }, [open, form.email]);
-
-  const handleAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    if (!matchedCandidate?.id) {
-      await Swal.fire(
-        "Select a candidate",
-        "Pick a candidate from the list so we can attach the photo to their ATS profile.",
-        "info"
-      );
-      return;
-    }
-    const allowed = ["image/jpeg", "image/jpg", "image/png"];
-    if (!allowed.includes(file.type)) {
-      await Swal.fire("Invalid file", "Please upload a JPEG or PNG (max 5MB).", "warning");
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      await Swal.fire("File too large", "Image must be smaller than 5MB.", "warning");
-      return;
-    }
-    setPhotoHint(null);
-    setAvatarUploading(true);
-    try {
-      const result = await uploadDocument(file);
-      const profilePicture = {
-        url: result.url,
-        key: result.key,
-        originalName: result.originalName,
-        size: result.size,
-        mimeType: result.mimeType,
-      };
-      await updateCandidate(matchedCandidate.id, { profilePicture });
-      onChange({ avatarImageUrl: "" });
-      const nextUrl = resolvePublicImageUrl(profilePicture.url, "") || undefined;
-      setSearchedCandidates((prev) =>
-        prev.map((c) => (c.id === matchedCandidate.id ? { ...c, profilePictureUrl: nextUrl } : c))
-      );
-      await onRefreshCandidates();
-      setPhotoHint("Photo saved to ATS and the candidate’s linked user profile.");
-    } catch (err: unknown) {
-      await Swal.fire(
-        "Upload failed",
-        teamMemberPhotoApiMessage(err) || "Could not update profile photo.",
-        "error"
-      );
-    } finally {
-      setAvatarUploading(false);
-    }
-  };
-
-  const handleAvatarRemove = async () => {
-    if (!matchedCandidate?.id) return;
-    const confirm = await Swal.fire({
-      title: "Remove profile photo?",
-      text: "Clears the photo on the candidate ATS record and the linked user profile.",
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonText: "Remove",
-      cancelButtonText: "Cancel",
-    });
-    if (!confirm.isConfirmed) return;
-    setPhotoHint(null);
-    setAvatarRemoving(true);
-    try {
-      await updateCandidate(matchedCandidate.id, { profilePicture: null });
-      onChange({ avatarImageUrl: "" });
-      setSearchedCandidates((prev) =>
-        prev.map((c) => (c.id === matchedCandidate.id ? { ...c, profilePictureUrl: undefined } : c))
-      );
-      await onRefreshCandidates();
-      setPhotoHint("Profile photo removed from ATS and linked user.");
-    } catch (err: unknown) {
-      await Swal.fire(
-        "Remove failed",
-        teamMemberPhotoApiMessage(err) || "Could not remove profile photo.",
-        "error"
-      );
-    } finally {
-      setAvatarRemoving(false);
-    }
-  };
+  /** ATS photo for the linked candidate, read-only. The roster map is keyed by email and is the
+   *  same source the team cards use; the matched candidate record covers a member the capped
+   *  roster map has not loaded. The dialog never writes the photo — it is managed on the
+   *  candidate's own profile. */
+  const candidatePhotoUrl =
+    candidateAvatarByEmail.get(normalizeMemberEmail(form.email))?.trim() ||
+    matchedCandidate?.profilePictureUrl?.trim() ||
+    "";
 
   if (!open) return null;
 
   const modalTitleId = "team-member-modal-title";
-  const candidateId = matchedCandidate?.id;
-  const canManagePhoto = !!candidateId;
-  const showRemovePhoto =
-    canManagePhoto && !!(matchedCandidate?.profilePictureUrl?.trim() || form.avatarImageUrl.trim());
 
   return (
     <div
@@ -794,8 +695,8 @@ function TeamMemberFormModal({
               {isEdit ? "Edit team member" : "Add team member"}
             </h6>
             <p className="mb-0 mt-1 text-[0.75rem] text-muted leading-snug dark:text-white/45">
-              Link an ATS candidate, adjust roster labels, and manage their profile photo (same flow as
-              personal settings).
+              Link an ATS candidate and adjust roster labels. The profile photo is managed on the
+              candidate&rsquo;s own profile.
             </p>
           </div>
           <button
@@ -818,10 +719,35 @@ function TeamMemberFormModal({
                 {isEdit ? (
                   <div>
                     <span className="form-label">Candidate (ATS)</span>
-                    <p className="mb-0 text-[0.8125rem] text-defaulttextcolor dark:text-white/85">
-                      {form.name || "—"}
-                    </p>
-                    <p className="mb-0 text-[0.72rem] text-muted dark:text-white/45">{form.email || "—"}</p>
+                    <div className="flex items-center gap-3">
+                      <span className="avatar avatar-md avatar-rounded shrink-0 overflow-hidden !bg-defaultbackground ring-1 ring-black/5 dark:ring-white/10">
+                        {candidatePhotoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={candidatePhotoUrl}
+                            alt=""
+                            className="h-full w-full object-cover"
+                            onError={(e) => {
+                              // A presigned ATS URL can expire between the roster load and this
+                              // dialog opening. Drop the broken image and let the initial show.
+                              e.currentTarget.style.display = "none";
+                            }}
+                          />
+                        ) : (
+                          <span className="text-[0.8125rem] font-semibold text-primary">
+                            {(form.name || form.email || "?").trim().charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="mb-0 text-[0.8125rem] text-defaulttextcolor dark:text-white/85">
+                          {form.name || "—"}
+                        </p>
+                        <p className="mb-0 text-[0.72rem] text-muted dark:text-white/45 truncate">
+                          {form.email || "—"}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 ) : (
                 <>
@@ -963,97 +889,13 @@ function TeamMemberFormModal({
               ) : null}
             </div>
           </div>
-
-          <div className={styles.memberModalSection}>
-            <h3 className={styles.memberModalSectionTitle}>Profile photo</h3>
-            <div className="grid grid-cols-12 gap-x-4 gap-y-3">
-              <div className="xl:col-span-12 col-span-12">
-                <label className="form-label">Candidate photo (ATS)</label>
-                <p className="mb-2 text-[0.72rem] text-muted dark:text-white/45">
-                  JPEG or PNG, max 5MB. Updates the candidate’s ATS profile picture and the linked user
-                  account.
-                </p>
-                <input
-                  ref={avatarFileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/jpg,image/png"
-                  className="hidden"
-                  onChange={handleAvatarFile}
-                />
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    className="ti-btn ti-btn-primary-full ti-btn-wave min-h-[2.5rem] px-4"
-                    disabled={!canManagePhoto || avatarUploading || avatarRemoving}
-                    onClick={() => avatarFileInputRef.current?.click()}
-                  >
-                    {avatarUploading ? (
-                      <>
-                        <span
-                          className="spinner-border spinner-border-sm me-2 align-middle"
-                          role="status"
-                          aria-hidden
-                        />
-                        Uploading…
-                      </>
-                    ) : (
-                      "Upload photo"
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className="ti-btn ti-btn-light min-h-[2.5rem] px-4"
-                    disabled={!showRemovePhoto || avatarUploading || avatarRemoving}
-                    onClick={handleAvatarRemove}
-                  >
-                    {avatarRemoving ? (
-                      <>
-                        <span
-                          className="spinner-border spinner-border-sm me-2 align-middle"
-                          role="status"
-                          aria-hidden
-                        />
-                        Removing…
-                      </>
-                    ) : (
-                      "Remove photo"
-                    )}
-                  </button>
-                </div>
-                {!canManagePhoto && (
-                  <p className="mb-0 mt-2 text-[0.72rem] text-muted dark:text-white/45">
-                    Select a candidate above to enable upload and remove.
-                  </p>
-                )}
-                {form.avatarImageUrl.trim() && (
-                  <div className="mt-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2">
-                    <p className="mb-2 text-[0.72rem] text-warning">
-                      This member has a legacy roster avatar URL. Clear it to rely on the ATS photo only,
-                      then save roster changes.
-                    </p>
-                    <button
-                      type="button"
-                      className="ti-btn ti-btn-warning ti-btn-sm min-h-[2rem] px-3"
-                      disabled={submitting}
-                      onClick={() => onChange({ avatarImageUrl: "" })}
-                    >
-                      Clear legacy URL from form
-                    </button>
-                  </div>
-                )}
-                {photoHint && (
-                  <p className="mb-0 mt-2 text-[0.72rem] text-success dark:text-success/90">{photoHint}</p>
-                )}
-              </div>
-            </div>
-          </div>
         </div>
 
         <div className="ti-modal-footer flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2 px-4 py-3.5 sm:px-5 border-t border-defaultborder/80 bg-bodybg/95 dark:bg-bodybg">
           <p className="mb-0 text-[0.7rem] text-muted dark:text-white/40 sm:max-w-[55%]">
             {submitting
               ? "Saving changes…"
-              : "Roster fields apply to this team list only. Profile photo changes update ATS and the linked user."}
+              : "Roster fields apply to this team list only. The profile photo comes from the candidate's ATS profile."}
           </p>
           <div className="flex items-center justify-end gap-2 shrink-0">
             <button
@@ -2015,6 +1857,7 @@ const TeamsPage = () => {
         form={formState}
         teamOptions={teamOptions}
         candidates={candidates}
+        candidateAvatarByEmail={candidateAvatarByEmail}
         onChange={handleFormChange}
         onClose={() => {
           if (submitting) return;
@@ -2024,7 +1867,6 @@ const TeamsPage = () => {
         }}
         onSubmit={handleFormSubmit}
         submitting={submitting}
-        onRefreshCandidates={refreshCandidates}
       />
 
       {createTeamOpen && (
