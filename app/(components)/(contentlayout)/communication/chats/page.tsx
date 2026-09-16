@@ -16,7 +16,6 @@ import {
   setParticipantRole,
   updateGroupName,
   uploadGroupAvatar,
-  listCalls,
   initiateCall,
   endCallByRoom,
   getActiveCallForConversation,
@@ -43,7 +42,6 @@ import {
   splitTextLinks,
   conversationPreviewText,
   conversationPreviewAfterDelete,
-  matchesSearchQuery,
   findMentionToken,
   insertMentionText,
 } from "./_utils/chatHelpers";
@@ -57,12 +55,19 @@ import { useFeatureFlag } from "@/shared/hooks/useFeatureFlag";
 import ListPagination from "@/shared/components/ListPagination";
 import { useDebouncedValue } from "@/app/(components)/(contentlayout)/communication/dialer/_lib/contactSearch";
 import { CONVERSATIONS_PAGE_LIMIT, useConversationListPagination } from "./_hooks/useConversationListPagination";
+import { useCallsListPagination } from "./_hooks/useCallsListPagination";
 import {
   applyConversationListParams,
   CONVERSATION_SEARCH_MAX_LEN,
   parseConversationListPage,
   parseConversationListQ,
 } from "./_lib/conversationListQuery";
+import {
+  buildCallsListSearch,
+  parseCallsListQuery,
+  CALLS_TAB_SEARCH_DEBOUNCE_MS,
+  callsSearchParam,
+} from "./_lib/callsListQuery";
 
 const DEFAULT_AVATAR = "/assets/images/faces/1.jpg";
 
@@ -668,6 +673,14 @@ const Chat = () => {
     },
     [pathname, router, searchParams]
   );
+  const callsListQuery = useMemo(() => parseCallsListQuery(searchParams), [searchParams]);
+  const replaceCallsQuery = useCallback(
+    (patch: Partial<ReturnType<typeof parseCallsListQuery>>) => {
+      const qs = buildCallsListSearch(searchParams, patch);
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
   const { user, permissions, permissionsLoaded } = useAuth();
   const rbacFlag = useFeatureFlag(DIRECTORY_RBAC_FLAG);
   const scope = useMemo(
@@ -723,7 +736,19 @@ const Chat = () => {
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [calls, setCalls] = useState<ChatCall[]>([]);
+  const [callSearchDraft, setCallSearchDraft] = useState(callsListQuery.callQ);
+  const {
+    calls,
+    totalPages: callsTotalPages,
+    total: callsTotal,
+    loading: callsLoading,
+    error: callsError,
+    refresh: refreshCalls,
+  } = useCallsListPagination({
+    enabled: activeTab === "calls",
+    page: callsListQuery.callPage,
+    q: callsListQuery.callQ,
+  });
   const [showNewChat, setShowNewChat] = useState(false);
   const [conversationSearch, setConversationSearch] = useState(listQ);
   const [newChatMode, setNewChatMode] = useState<"direct" | "group">("direct");
@@ -950,6 +975,19 @@ const Chat = () => {
     replaceListParams({ page: 1, q: nextQ });
   }, [debouncedConversationSearch, listQ, replaceListParams]);
 
+  useEffect(() => {
+    setCallSearchDraft(callsListQuery.callQ);
+  }, [callsListQuery.callQ]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      const nextQ = callSearchDraft.trim();
+      if (nextQ === callsListQuery.callQ) return;
+      replaceCallsQuery({ callQ: nextQ, callPage: 1 });
+    }, CALLS_TAB_SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(t);
+  }, [callSearchDraft, callsListQuery.callQ, replaceCallsQuery]);
+
   // ── Auto-scroll to bottom ──
   // Double rAF: the merged timeline (messages + call pills + date separators)
   // and PerfectScrollbar settle layout across two frames, so a single rAF can
@@ -1002,15 +1040,6 @@ const Chat = () => {
       setLoadingOlder(false);
     }
   }, [selectedConversation, loadingOlder, hasMoreMessages, messages]);
-
-  const fetchCalls = useCallback(async () => {
-    try {
-      const res = await listCalls({ page: 1, limit: 30 });
-      setCalls(res.results || []);
-    } catch {
-      setCalls([]);
-    }
-  }, []);
 
   const fetchActiveCallForConv = useCallback(async (convId: string | null) => {
     if (!convId) {
@@ -1286,11 +1315,6 @@ const Chat = () => {
     return unsub;
   }, [onMessagesRead, convId, myId]);
 
-  // Calls tab
-  useEffect(() => {
-    if (activeTab === "calls") fetchCalls();
-  }, [activeTab, fetchCalls]);
-
   // Active call for rejoin bar
   useEffect(() => {
     fetchActiveCallForConv(convId);
@@ -1320,10 +1344,10 @@ const Chat = () => {
         setActiveCallForConv(null);
         fetchMessages(convId);
       }
-      fetchCalls();
+      refreshCalls();
     });
     return unsub;
-  }, [onCallEnded, convId, fetchCalls, fetchMessages]);
+  }, [onCallEnded, convId, refreshCalls, fetchMessages]);
 
   useEffect(() => {
     const unsub = onMessageReacted((data) => {
@@ -1676,16 +1700,7 @@ const Chat = () => {
 
   const recentConvs = conversations;
   const groupConvs = groupConversations;
-  const filteredCalls = calls.filter((call) =>
-    matchesSearchQuery(listQ, [
-      callsTabHeadline(call),
-      call.peer?.name,
-      (call.caller as { name?: string } | undefined)?.name,
-      call.callType === "video" ? "Video call" : "Voice call",
-      callLogStatusLabel(call.status),
-      callJoinedParticipantsLine(call, myId) || "",
-    ])
-  );
+  const visibleCalls = calls;
 
   const toggleForwardTarget = (conversationId: string) => {
     setForwardTargets((prev) => {
@@ -2189,14 +2204,30 @@ const Chat = () => {
             )}
             {activeTab === "calls" && (
               <div className="tab-pane fade show active !border-0 chat-calls-tab">
+                <div className="px-3 pt-2">
+                  <input
+                    type="search"
+                    className="form-control !text-sm"
+                    placeholder="Search calls by name or email"
+                    value={callSearchDraft}
+                    onChange={(e) => setCallSearchDraft(e.target.value)}
+                    aria-label="Search calls"
+                  />
+                </div>
                 <div className={chatStyles.listPane}>
-                {calls.length === 0 ? (
-                  <p className={chatStyles.emptyList}>No call history yet.</p>
-                ) : filteredCalls.length === 0 ? (
-                  <p className={chatStyles.emptyList}>No calls match your search.</p>
+                {callsLoading ? (
+                  <p className={chatStyles.emptyList}>Loading calls…</p>
+                ) : callsError ? (
+                  <p className={chatStyles.emptyList}>Could not load calls.</p>
+                ) : calls.length === 0 ? (
+                  <p className={chatStyles.emptyList}>
+                    {callsSearchParam(callsListQuery.callQ)
+                      ? `No calls match “${callsListQuery.callQ}”.`
+                      : "No call history yet."}
+                  </p>
                 ) : (
                   <ul className="list-none mb-0" role="list">
-                    {filteredCalls.map((call) => {
+                    {visibleCalls.map((call) => {
                       const peer = call.peer;
                       const peerAvatarName = peer?.name || (call.caller as { name?: string })?.name || "Unknown";
                       const title = callsTabHeadline(call);
@@ -2265,6 +2296,20 @@ const Chat = () => {
                     })}
                   </ul>
                 )}
+                {callsTotalPages > 1 ? (
+                  <ListPagination
+                    page={callsListQuery.callPage}
+                    totalPages={callsTotalPages}
+                    totalResults={callsTotal}
+                    pageSize={30}
+                    showPageSize={false}
+                    touchFriendly
+                    hideWhenSinglePage
+                    onPageChange={(next) => replaceCallsQuery({ callPage: next })}
+                    className="px-2 py-2"
+                    ariaLabel="Call history pages"
+                  />
+                ) : null}
                 </div>
               </div>
             )}

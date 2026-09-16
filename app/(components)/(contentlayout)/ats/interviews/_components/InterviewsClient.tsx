@@ -2,6 +2,7 @@
 import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useMemo, useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/shared/contexts/auth-context'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
@@ -29,6 +30,8 @@ import CreateInterviewModal, { type SchedulePrefill } from './CreateInterviewMod
 import RecordingsModal from './RecordingsModal'
 import InterviewsFilterPanel from './InterviewsFilterPanel'
 import { detectOverlap } from './interviewOverlap'
+import InterviewLinkageModal, { InterviewLinkageBadge, type InterviewLinkageTarget } from './InterviewLinkageModal'
+import { buildScheduleLinkageFields, linkageActions, offersLinkAction, parseInterviewLinkageError } from './interviewLinkage'
 
 /** When scheduling, store job id on `Meeting.jobPosition` if known — backend matches Job / JobApplication by ObjectId; title-only strings often fail exact regex match. */
 function isMongoObjectIdString(value: string | undefined): boolean {
@@ -36,7 +39,7 @@ function isMongoObjectIdString(value: string | undefined): boolean {
 }
 
 /** Same default as Onboarding / Jobs / Students / Recruiters / Meetings. */
-const LIST_PAGE_SIZE = 10
+const LIST_PAGE_SIZE = 100
 /** GET /meetings Joi max. Week view walks pages within the 7-day window. */
 const WEEK_LIST_LIMIT = 100
 
@@ -90,6 +93,10 @@ interface InterviewTableRow {
   /** Public join URL for the interview (copy link) */
   publicMeetingUrl: string
   meetingId: string
+  /** Raw Meeting.jobPosition (24-hex job id, or a title on legacy rows). */
+  jobPosition: string
+  applicationId?: string
+  linkageStatus?: string
 }
 
 
@@ -267,6 +274,30 @@ function meetingToTableRow(m: Meeting, viewerTz?: string): InterviewTableRow {
     interviewScorecard: m.interviewScorecard,
     publicMeetingUrl: m.publicMeetingUrl || (typeof window !== 'undefined' ? `${window.location.origin}/join/room?room=${encodeURIComponent(m.meetingId || '')}` : ''),
     meetingId: m.meetingId || '',
+    jobPosition: m.jobPosition || '',
+    applicationId: m.applicationId ? String(m.applicationId) : undefined,
+    linkageStatus: m.linkageStatus,
+  }
+}
+
+function rowOffersLinkAction(row: InterviewTableRow): boolean {
+  return offersLinkAction({
+    linkageStatus: row.linkageStatus,
+    candidateId: row.candidate.id,
+    jobPosition: row.jobPosition,
+    applicationId: row.applicationId,
+  })
+}
+
+function linkageTargetFromRow(row: InterviewTableRow, reason?: InterviewLinkageTarget['reason']): InterviewLinkageTarget {
+  return {
+    meetingId: row.id,
+    candidateId: row.candidate.id,
+    candidateName: row.candidate.name,
+    position: row.position,
+    jobPosition: row.jobPosition,
+    linkageStatus: row.linkageStatus,
+    reason,
   }
 }
 
@@ -895,6 +926,38 @@ export default function InterviewsClient() {
     })
   }, [])
 
+  /** Link-application dialog target; `linkageDialogNonce` remounts it per open so no stale response crosses interviews. */
+  const [linkageTarget, setLinkageTarget] = useState<InterviewLinkageTarget | null>(null)
+  const [linkageDialogNonce, setLinkageDialogNonce] = useState(0)
+  const openLinkageModal = useCallback((row: InterviewTableRow, reason?: InterviewLinkageTarget['reason']) => {
+    setLinkageDialogNonce((n) => n + 1)
+    setLinkageTarget(linkageTargetFromRow(row, reason))
+  }, [])
+
+  /** The API answered `interview_not_linked` (placement / transfer / result side effect): offer the link actions. */
+  const promptLinkInterview = useCallback(
+    async (row: InterviewTableRow, reason: NonNullable<InterviewLinkageTarget['reason']>) => {
+      const canLink = linkageActions({ candidateId: row.candidate?.id }).canLink
+      const title =
+        reason === 'result' ? 'Result saved — application not updated' : 'Interview is not linked to an application'
+      const message =
+        reason === 'placement'
+          ? 'Offer & placement needs this interview linked to the candidate’s job application.'
+          : reason === 'transfer'
+            ? 'Internal transfer needs this interview linked to the candidate’s job application.'
+            : 'This interview isn’t linked to a job application, so the application’s stage was not changed.'
+      const go = await confirm({
+        title,
+        message: canLink ? `${message} Link an existing application or create one for this interview.` : message,
+        confirmLabel: canLink ? 'Link application' : 'Close',
+        cancelLabel: 'Not now',
+        hideCancel: !canLink,
+      })
+      if (go && canLink) openLinkageModal(row, reason)
+    },
+    [confirm, openLinkageModal]
+  )
+
   // Internal mobility: move a self-applied EXISTING employee into the new role (no offer/placement).
   // Backend authoritatively decides eligibility — it rejects non-employees and resigned employees.
   // doInternalTransfer = the API call + result dialogs (no leading confirm), so it can be invoked both
@@ -917,6 +980,10 @@ export default function InterviewsClient() {
         hideCancel: true,
       })
     } catch (err: any) {
+      if (parseInterviewLinkageError(err)?.errorCode === 'interview_not_linked') {
+        await promptLinkInterview(row, 'transfer')
+        return
+      }
       await confirm({
         title: 'Transfer failed',
         message: err?.response?.data?.message || err?.message || 'Could not transfer the employee. Please try again.',
@@ -925,7 +992,7 @@ export default function InterviewsClient() {
         hideCancel: true,
       })
     }
-  }, [confirm, refreshMeetingsList])
+  }, [confirm, refreshMeetingsList, promptLinkInterview])
 
   const handleInternalTransfer = useCallback(async (row: InterviewTableRow) => {
     if (!row.id) return
@@ -1006,8 +1073,10 @@ export default function InterviewsClient() {
       closeResultModal()
       if (resultModalSelected === 'selected' && updated.moveToPreboardingError) {
         const errMsg = updated.moveToPreboardingError
-        // The candidate is already an employee → offer the correct action inline instead of a dead-end.
-        if (/internal transfer/i.test(errMsg)) {
+        if (updated.moveToPreboardingErrorCode === 'interview_not_linked') {
+          await promptLinkInterview(interview, 'placement')
+        } else if (/internal transfer/i.test(errMsg)) {
+          // The candidate is already an employee → offer the correct action inline instead of a dead-end.
           const go = await confirm({
             title: 'Candidate is already an employee',
             message: (
@@ -1037,6 +1106,8 @@ export default function InterviewsClient() {
             hideCancel: true,
           })
         }
+      } else if (updated.linkageWarning === 'interview_not_linked') {
+        await promptLinkInterview(interview, 'result')
       }
     } catch (err: any) {
       await confirm({
@@ -1049,7 +1120,7 @@ export default function InterviewsClient() {
     } finally {
       setResultUpdating(false)
     }
-  }, [resultModalInterview, resultModalSelected, resultModalRatings, resultModalComment, refreshMeetingsList, closeResultModal, confirm, doInternalTransfer])
+  }, [resultModalInterview, resultModalSelected, resultModalRatings, resultModalComment, refreshMeetingsList, closeResultModal, confirm, doInternalTransfer, promptLinkInterview])
 
   const handleCancelMeeting = useCallback(async (row: InterviewTableRow) => {
     if (!row.id) return
@@ -1529,6 +1600,14 @@ export default function InterviewsClient() {
           ? { id: authUser.id, name: authUser.name ?? '', email: authUser.email ?? '' }
           : undefined,
       notes: notes || undefined,
+      // applicationId only with a candidate; round/language only with values the create schema accepts.
+      ...buildScheduleLinkageFields({
+        candidateId: candidateOption?.value,
+        applicationId: getVal('schedule-application-id'),
+        roundType: getVal('schedule-round-type'),
+        roundLabel: getVal('schedule-round-label'),
+        interviewLanguage: getVal('schedule-interview-language'),
+      }),
     }
     const runCreate = async () => {
       setFormLoading(true)
@@ -1605,6 +1684,7 @@ export default function InterviewsClient() {
                   <i className="ri-vidicon-line text-success"></i>
                   {interview.type}
                 </span>
+                <InterviewLinkageBadge status={interview.linkageStatus} />
               </div>
             </div>
           )
@@ -1804,6 +1884,38 @@ export default function InterviewsClient() {
                 </button>
               </div>
             )}
+            {canEdit && rowOffersLinkAction(row.original) && (
+              <div className="hs-tooltip ti-main-tooltip">
+                <button
+                  type="button"
+                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-warning"
+                  title="Link application"
+                  onClick={() => openLinkageModal(row.original)}
+                >
+                  <i className="ri-link-m"></i>
+                  <span
+                    className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
+                    role="tooltip">
+                    Link application
+                  </span>
+                </button>
+              </div>
+            )}
+            <div className="hs-tooltip ti-main-tooltip">
+              <Link
+                href={`/ats/interviews/${row.original.id}`}
+                className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-primary"
+                title="View details"
+                aria-label="View interview details"
+              >
+                <i className="ri-eye-line"></i>
+                <span
+                  className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
+                  role="tooltip">
+                  View details
+                </span>
+              </Link>
+            </div>
             {canEdit && (
             <div className="hs-tooltip ti-main-tooltip">
               <button
@@ -1849,6 +1961,8 @@ export default function InterviewsClient() {
       copiedLinkId,
       openEditModal,
       handleCancelMeeting,
+      canEdit,
+      openLinkageModal,
     ]
   )
 
@@ -2332,6 +2446,7 @@ export default function InterviewsClient() {
                             }`}>
                               {interview.status || 'Scheduled'}
                             </span>
+                            <InterviewLinkageBadge status={interview.linkageStatus} className="mt-1 ms-1" />
                             <div className="flex flex-wrap gap-1 mt-2">
                               <button
                                 type="button"
@@ -2380,6 +2495,17 @@ export default function InterviewsClient() {
                                   onClick={() => handleInternalTransfer(interview)}
                                 >
                                   <i className="ri-user-shared-line"></i>
+                                </button>
+                              )}
+                              {canEdit && rowOffersLinkAction(interview) && (
+                                <button
+                                  type="button"
+                                  className="ti-btn ti-btn-icon ti-btn-sm ti-btn-warning"
+                                  title="Link application"
+                                  aria-label="Link application"
+                                  onClick={() => openLinkageModal(interview)}
+                                >
+                                  <i className="ri-link-m"></i>
                                 </button>
                               )}
                               {canEdit && (
@@ -2523,6 +2649,7 @@ export default function InterviewsClient() {
                         <span className={`${INTERVIEW_BADGE_BASE_CLASS} text-[0.65rem] ${result.className}`}>
                           {result.label}
                         </span>
+                        <InterviewLinkageBadge status={interview.linkageStatus} />
                       </div>
                       <div className="mt-3 flex flex-wrap items-center gap-1.5">
                         <button
@@ -2572,6 +2699,17 @@ export default function InterviewsClient() {
                             onClick={() => handleInternalTransfer(interview)}
                           >
                             <i className="ri-user-shared-line" />
+                          </button>
+                        )}
+                        {canEdit && rowOffersLinkAction(interview) && (
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-icon ti-btn-sm ti-btn-warning"
+                            title="Link application"
+                            aria-label="Link application"
+                            onClick={() => openLinkageModal(interview)}
+                          >
+                            <i className="ri-link-m" />
                           </button>
                         )}
                         {canEdit && (
@@ -2731,6 +2869,15 @@ export default function InterviewsClient() {
         recordingsList={recordingsList}
         onClose={() => setRecordingsModalMeetingId(null)}
       />
+
+      {linkageTarget && (
+        <InterviewLinkageModal
+          key={`${linkageTarget.meetingId}-${linkageDialogNonce}`}
+          target={linkageTarget}
+          onClose={() => setLinkageTarget(null)}
+          onLinked={refreshMeetingsList}
+        />
+      )}
 
       {/* Interview result modal */}
       <div

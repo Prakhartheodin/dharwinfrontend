@@ -83,19 +83,36 @@ export interface ChatCall {
 
 const BASE = "/chats";
 
-export async function listConversations(params?: {
-  page?: number;
-  limit?: number;
-  type?: "direct" | "group";
-  q?: string;
-}): Promise<{
+export async function listConversations(
+  params?: {
+    page?: number;
+    limit?: number;
+    type?: "direct" | "group";
+    q?: string;
+  },
+  options?: { signal?: AbortSignal }
+): Promise<{
   results: Conversation[];
   page: number;
   limit: number;
   total: number;
   totalPages: number;
 }> {
-  const { data } = await apiClient.get(`${BASE}/conversations`, { params });
+  const query: {
+    page?: number;
+    limit?: number;
+    type?: "direct" | "group";
+    q?: string;
+  } = {};
+  if (params?.page != null) query.page = params.page;
+  if (params?.limit != null) query.limit = params.limit;
+  if (params?.type) query.type = params.type;
+  const term = params?.q?.trim();
+  if (term && term.length >= 2) query.q = term;
+  const { data } = await apiClient.get(`${BASE}/conversations`, {
+    params: query,
+    signal: options?.signal,
+  });
   return data;
 }
 
@@ -233,11 +250,22 @@ export async function initiateCall(
   return data;
 }
 
-export async function listCalls(params?: {
-  page?: number;
-  limit?: number;
-}): Promise<{ results: ChatCall[]; page: number; limit: number; totalPages: number }> {
-  const { data } = await apiClient.get(`${BASE}/calls`, { params });
+export async function listCalls(
+  params?: {
+    page?: number;
+    limit?: number;
+    q?: string;
+    status?: string;
+  },
+  options?: { signal?: AbortSignal }
+): Promise<{
+  results: ChatCall[];
+  page: number;
+  limit: number;
+  total?: number;
+  totalPages: number;
+}> {
+  const { data } = await apiClient.get(`${BASE}/calls`, { params, signal: options?.signal });
   return data;
 }
 

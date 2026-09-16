@@ -103,11 +103,17 @@ const Filemanager = () => {
     toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
   }, []);
 
-  const fetchList = useCallback(async (prefix: string, next?: string, append = false) => {
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => window.clearTimeout(t);
+  }, [searchQuery]);
+
+  const fetchList = useCallback(async (prefix: string, next?: string, append = false, search?: string) => {
     if (!append) setLoading(true);
     setListError(null);
     try {
-      const result = await listFiles(prefix || undefined, next);
+      const result = await listFiles(prefix || undefined, next, search);
       if (append) {
         setFolders((prev) => [...prev, ...result.folders]);
         setFiles((prev) => [...prev, ...result.files]);
@@ -153,8 +159,9 @@ const Filemanager = () => {
   }, []);
 
   useEffect(() => {
-    fetchList(currentPrefix);
-  }, [currentPrefix, fetchList]);
+    const search = debouncedSearch.length >= 2 ? debouncedSearch : undefined;
+    fetchList(currentPrefix, undefined, false, search);
+  }, [currentPrefix, debouncedSearch, fetchList]);
 
   useEffect(() => {
     fetchAllFilesForCounts();
@@ -164,18 +171,15 @@ const Filemanager = () => {
     return allFiles.reduce((acc, f) => acc + (f.size || 0), 0);
   }, [allFiles]);
 
+  const serverSearchActive = debouncedSearch.length >= 2;
+
   const filteredFolders = useMemo(() => {
-    if (!searchQuery.trim()) return folders;
-    const q = searchQuery.toLowerCase();
-    return folders.filter((f) => f.name.toLowerCase().includes(q));
-  }, [folders, searchQuery]);
+    if (serverSearchActive) return folders;
+    return folders;
+  }, [folders, serverSearchActive]);
 
   const filteredFiles = useMemo(() => {
     let result = files;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter((f) => f.name.toLowerCase().includes(q));
-    }
     if (sidebarView === "recent") {
       result = [...result].sort((a, b) => {
         const da = a.lastModified ? new Date(a.lastModified).getTime() : 0;

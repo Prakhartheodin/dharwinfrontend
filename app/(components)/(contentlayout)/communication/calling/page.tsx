@@ -1,8 +1,17 @@
 "use client";
 
 import Seo from "@/shared/layout-components/seo/seo";
-import React, { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import ListPagination from "@/shared/components/ListPagination";
+import {
+  buildCallingListSearch,
+  callingSearchParam,
+  parseCallingListQuery,
+  CALLING_SEARCH_DEBOUNCE_MS,
+  type CallingSourceFilter,
+} from "./_lib/callingListQuery";
 import {
   deleteBolnaCallRecord,
   getBolnaCallRecords,
@@ -27,7 +36,7 @@ import { normalizeCallTs } from "@/shared/lib/call-record-order";
  * both CallRecord rows told apart by the backend's `callSource` — never by
  * provider or phone number here. in_app rows come from the chat-calls API.
  */
-type SourceFilter = "all" | "ai_agent" | "telephony" | "in_app";
+type SourceFilter = CallingSourceFilter;
 /** Categories served by GET /bolna/call-records (as opposed to the chat-calls API). */
 const CALL_RECORD_SOURCES: SourceFilter[] = ["ai_agent", "telephony"];
 type PurposeFilter = "all" | "job_recruiter" | "student_candidate";
@@ -204,6 +213,18 @@ function visiblePageIndices(current: number, total: number): (number | "gap")[] 
 }
 
 const Calling = () => {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const listQuery = useMemo(() => parseCallingListQuery(searchParams), [searchParams]);
+  const replaceListQuery = useCallback(
+    (patch: Partial<ReturnType<typeof parseCallingListQuery>>) => {
+      const qs = buildCallingListSearch(searchParams, patch);
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
+
   const { isAdministrator: authIsAdministrator, isPlatformSuperUser, permissions } = useAuth();
   const authSubject = { permissions, isPlatformSuperUser, isAdministrator: authIsAdministrator };
   const canCreateCalls = hasPermission(authSubject, "create_call");
@@ -214,17 +235,21 @@ const Calling = () => {
   const canManageAi = hasPermission(authSubject, "manage_call_ai");
   const isAdministrator = isPlatformSuperUser || authIsAdministrator;
 
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
+  const sourceFilter = listQuery.source;
+  const statusFilter = listQuery.status;
+  const page = listQuery.page;
   const [purposeFilter, setPurposeFilter] = useState<PurposeFilter>("all");
   const [telephonyRecords, setTelephonyRecords] = useState<CallRecord[]>([]);
   const [chatCalls, setChatCalls] = useState<ChatCall[]>([]);
+  const [telephonyTotal, setTelephonyTotal] = useState(0);
+  const [chatTotal, setChatTotal] = useState(0);
+  const [totalPagesMerged, setTotalPagesMerged] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [searchSubmitted, setSearchSubmitted] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [pageSize, setPageSize] = useState(25);
-  const [page, setPage] = useState(1);
+  const [searchDraft, setSearchDraft] = useState(listQuery.q);
+  const [pageSize, setPageSize] = useState(100);
+  const fetchSeqRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
   const [settingUpExtractions, setSettingUpExtractions] = useState(false);
@@ -311,58 +336,75 @@ const Calling = () => {
     clearPendingRecordingPlay();
   }, [pendingRecordingPlayId, selectedCall, detailsPanelOpen, clearPendingRecordingPlay]);
 
-  // Fetch every telephony page: the table merges telephony + in-app rows and paginates
-  // that merged list client-side, so pulling only the current server page double-paginated
-  // and scrambled the date order past page 1.
-  const fetchTelephony = useCallback(async () => {
-    const records: CallRecord[] = [];
-    let total = 0;
-    let p = 1;
-    for (;;) {
-      const data = await getBolnaCallRecords({
-        page: p,
-        limit: 500,
-        search: searchSubmitted || undefined,
-        status: statusFilter !== "all" ? statusFilter : undefined,
-        sortBy: "createdAt",
-        order: "desc",
-      });
-      const batch = data.records || [];
-      records.push(...batch);
-      total = data.total ?? records.length;
-      if (p >= (data.totalPages ?? 1) || !batch.length) break;
-      p += 1;
-    }
-    return { records, total, totalPages: 1 };
-  }, [searchSubmitted, statusFilter]);
+  useEffect(() => {
+    setSearchDraft(listQuery.q);
+  }, [listQuery.q]);
 
-  const fetchChatCalls = useCallback(async () => {
-    const data = await listChatCalls({ page: 1, limit: 500 });
-    return {
-      results: data.results || [],
-      total: (data.results || []).length,
-      totalPages: data.totalPages ?? 1,
-    };
-  }, []);
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      const nextQ = searchDraft.trim();
+      if (nextQ === listQuery.q) return;
+      replaceListQuery({ q: nextQ, page: 1 });
+    }, CALLING_SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(t);
+  }, [searchDraft, listQuery.q, replaceListQuery]);
 
   const fetchRecords = useCallback(async () => {
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    const seq = ++fetchSeqRef.current;
     setLoading(true);
     setError(null);
+    const searchQ = callingSearchParam(listQuery.q);
+    const statusApi = statusFilter !== "all" ? statusFilter : undefined;
     try {
-      // AI Agent and Telephony are the same endpoint — split client-side by
-      // callSource, so one fetch serves both and their counts stay consistent.
       const fetchTelephonyNeeded = sourceFilter !== "in_app";
       const fetchChatNeeded = sourceFilter === "all" || sourceFilter === "in_app";
 
       const [telephonyRes, chatRes] = await Promise.all([
-        fetchTelephonyNeeded ? fetchTelephony() : Promise.resolve(null),
-        fetchChatNeeded ? fetchChatCalls() : Promise.resolve(null),
+        fetchTelephonyNeeded
+          ? getBolnaCallRecords({
+              page,
+              limit: pageSize,
+              search: searchQ,
+              status: statusApi,
+              callSource:
+                sourceFilter === "ai_agent" || sourceFilter === "telephony" ? sourceFilter : undefined,
+              sortBy: "createdAt",
+              order: "desc",
+            })
+          : Promise.resolve(null),
+        fetchChatNeeded
+          ? listChatCalls(
+              { page, limit: pageSize, q: searchQ, status: statusApi },
+              { signal: ac.signal }
+            )
+          : Promise.resolve(null),
       ]);
+      if (seq !== fetchSeqRef.current) return;
 
-      // Counts/pages come off the merged list now (totalMerged), so only the rows matter.
-      setTelephonyRecords(telephonyRes?.records || []);
-      setChatCalls(chatRes?.results || []);
+      const telRecords = telephonyRes?.records || [];
+      const chatResults = chatRes?.results || [];
+      const telTotal = telephonyRes?.total ?? telRecords.length;
+      const chatTot = chatRes?.total ?? chatResults.length;
+
+      setTelephonyRecords(telRecords);
+      setChatCalls(chatResults);
+      setTelephonyTotal(telTotal);
+      setChatTotal(chatTot);
+
+      if (sourceFilter === "in_app") {
+        setTotalPagesMerged((chatRes?.totalPages ?? Math.ceil(chatTot / pageSize)) || 1);
+      } else if (sourceFilter === "ai_agent" || sourceFilter === "telephony") {
+        setTotalPagesMerged((telephonyRes?.totalPages ?? Math.ceil(telTotal / pageSize)) || 1);
+      } else {
+        const combined = telTotal + chatTot;
+        setTotalPagesMerged(Math.ceil(combined / pageSize) || 1);
+      }
     } catch (e) {
+      if ((e as { name?: string })?.name === "CanceledError" || ac.signal.aborted) return;
+      if (seq !== fetchSeqRef.current) return;
       const msg =
         e && typeof e === "object" && "response" in e
           ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
@@ -370,13 +412,17 @@ const Calling = () => {
       setError(msg || (e instanceof Error ? e.message : "Failed to load call records"));
       setTelephonyRecords([]);
       setChatCalls([]);
+      setTelephonyTotal(0);
+      setChatTotal(0);
+      setTotalPagesMerged(1);
     } finally {
-      setLoading(false);
+      if (seq === fetchSeqRef.current) setLoading(false);
     }
-  }, [sourceFilter, fetchTelephony, fetchChatCalls]);
+  }, [sourceFilter, statusFilter, listQuery.q, page, pageSize]);
 
   useEffect(() => {
-    fetchRecords();
+    void fetchRecords();
+    return () => abortRef.current?.abort();
   }, [fetchRecords]);
 
   // Live updates from backend callSync.service.js. Admin sees every call:update;
@@ -435,12 +481,6 @@ const Calling = () => {
       );
     }
     let filtered = list;
-    if (statusFilter !== "all") {
-      filtered = filtered.filter((u) => {
-        const s = (getUnifiedStatus(u) || "").toLowerCase();
-        return s === statusFilter.toLowerCase().replace(/-/g, "_");
-      });
-    }
     if (isAdministrator && purposeFilter !== "all" && (sourceFilter === "all" || CALL_RECORD_SOURCES.includes(sourceFilter))) {
       filtered = filtered.filter((u) => {
         if (u.source === "in_app") return true;
@@ -450,22 +490,22 @@ const Calling = () => {
       });
     }
     filtered.sort((a, b) => b.ts - a.ts);
+    if (sourceFilter === "all") {
+      return filtered.slice(0, pageSize);
+    }
     return filtered;
-  }, [sourceFilter, telephonyRecords, chatCalls, statusFilter, isAdministrator, purposeFilter]);
+  }, [sourceFilter, telephonyRecords, chatCalls, isAdministrator, purposeFilter, pageSize]);
 
-  const paginatedCalls = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return mergedCalls.slice(start, start + pageSize);
-  }, [mergedCalls, page, pageSize]);
-
-  const totalMerged = mergedCalls.length;
-  const totalPagesMerged = Math.ceil(totalMerged / pageSize) || 1;
+  const paginatedCalls = mergedCalls;
+  const totalMerged =
+    sourceFilter === "in_app"
+      ? chatTotal
+      : sourceFilter === "ai_agent" || sourceFilter === "telephony"
+        ? telephonyTotal
+        : telephonyTotal + chatTotal;
   const rangeStart = totalMerged === 0 ? 0 : (page - 1) * pageSize + 1;
   const rangeEnd = Math.min(page * pageSize, totalMerged);
-  const pageItems = useMemo(
-    () => visiblePageIndices(page, totalPagesMerged),
-    [page, totalPagesMerged]
-  );
+  const hasSearch = Boolean(callingSearchParam(listQuery.q));
 
   const formatTs = (ms: number) => {
     if (!ms) return "–";
@@ -541,31 +581,15 @@ const Calling = () => {
     }
   };
 
-  const sourceCounts = useMemo(() => {
-    let aiAgent = 0;
-    let telephony = 0;
-    let unclassified = 0;
-    for (const r of telephonyRecords) {
-      if (
-        purposeFilter === "all" ||
-        !isAdministrator ||
-        categoryMatchesPurposeFilter(getTelephonyCategoryLabel(r), purposeFilter)
-      ) {
-        if (r.callSource === "ai_agent") aiAgent += 1;
-        else if (r.callSource === "telephony") telephony += 1;
-        // Legacy rows the backend could not classify: counted in All Calls only,
-        // matching the row filter above, so every chip count equals its own list.
-        else unclassified += 1;
-      }
-    }
-    const inApp = chatCalls.length;
-    return {
-      all: aiAgent + telephony + unclassified + inApp,
-      ai_agent: aiAgent,
-      telephony,
-      in_app: inApp,
-    };
-  }, [telephonyRecords, chatCalls, purposeFilter, isAdministrator]);
+  const sourceCounts = useMemo(
+    () => ({
+      all: telephonyTotal + chatTotal,
+      ai_agent: sourceFilter === "ai_agent" ? telephonyTotal : undefined,
+      telephony: sourceFilter === "telephony" ? telephonyTotal : undefined,
+      in_app: sourceFilter === "in_app" ? chatTotal : chatTotal,
+    }),
+    [telephonyTotal, chatTotal, sourceFilter]
+  );
 
   return (
     <Fragment>
@@ -594,14 +618,9 @@ const Calling = () => {
                     type="text"
                     placeholder="Search phone or business…"
                     className="form-control !py-1 !pl-8 !pr-3 !text-[0.75rem] !w-[14rem]"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        setPage(1);
-                        setSearchSubmitted(search);
-                      }
-                    }}
+                    value={searchDraft}
+                    onChange={(e) => setSearchDraft(e.target.value)}
+                    aria-label="Search call records"
                   />
                 </div>
                 <div className="relative">
@@ -612,7 +631,7 @@ const Calling = () => {
                     className="rounded-md border border-defaultborder bg-white dark:bg-black/20 dark:border-white/10 !py-1 !pl-7 !pr-7 !text-[0.75rem] font-medium text-defaulttextcolor focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 hover:border-primary/40 transition-colors cursor-pointer"
                     value={pageSize}
                     onChange={(e) => {
-                      setPage(1);
+                      replaceListQuery({ page: 1 });
                       setPageSize(Number(e.target.value));
                     }}
                   >
@@ -709,15 +728,17 @@ const Calling = () => {
                       : o.value === "in_app"
                         ? "bg-sky-500/10 text-sky-600 border-sky-500/30"
                         : "bg-primary/10 text-primary border-primary/30";
-                const count = sourceCounts[o.value] ?? 0;
+                const count =
+                  o.value === "all"
+                    ? sourceCounts.all
+                    : sourceFilter === o.value
+                      ? totalMerged
+                      : 0;
                 return (
                   <button
                     key={o.value}
                     type="button"
-                    onClick={() => {
-                      setSourceFilter(o.value);
-                      setPage(1);
-                    }}
+                    onClick={() => replaceListQuery({ source: o.value, page: 1 })}
                     className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[0.7rem] font-medium transition-colors ${
                       active
                         ? tone
@@ -744,10 +765,7 @@ const Calling = () => {
                     style={{ appearance: "none", WebkitAppearance: "none", MozAppearance: "none", backgroundImage: "none" }}
                     className="rounded-md border border-defaultborder bg-white dark:bg-black/20 dark:border-white/10 !py-1 !pl-7 !pr-7 !text-[0.7rem] font-medium text-defaulttextcolor focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 hover:border-primary/40 transition-colors cursor-pointer"
                     value={statusFilter}
-                    onChange={(e) => {
-                      setPage(1);
-                      setStatusFilter(e.target.value);
-                    }}
+                    onChange={(e) => replaceListQuery({ status: e.target.value, page: 1 })}
                   >
                     {STATUS_OPTIONS.map((o) => (
                       <option key={o.value} value={o.value}>{o.label}</option>
@@ -764,7 +782,7 @@ const Calling = () => {
                       className="rounded-md border border-defaultborder bg-white dark:bg-black/20 dark:border-white/10 !py-1 !pl-7 !pr-7 !text-[0.7rem] font-medium text-defaulttextcolor focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 hover:border-primary/40 transition-colors cursor-pointer"
                       value={purposeFilter}
                       onChange={(e) => {
-                        setPage(1);
+                        replaceListQuery({ page: 1 });
                         setPurposeFilter(e.target.value as PurposeFilter);
                       }}
                     >
@@ -802,20 +820,21 @@ const Calling = () => {
                   <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
                     <i className="ri-phone-line text-3xl text-primary" />
                   </div>
-                  <h4 className="text-base font-semibold mb-1">No call records found</h4>
+                  <h4 className="text-base font-semibold mb-1">
+                    {hasSearch ? "No calls match your search" : "No call records found"}
+                  </h4>
                   <p className="text-sm text-defaulttextcolor/60 mb-4 max-w-sm">
-                    Try a different status, source, or clear the search box to see all calls.
+                    {hasSearch
+                      ? "Try a different term (at least 2 characters) or clear search."
+                      : "Try a different status, source, or clear filters to see all calls."}
                   </p>
                   <button
                     type="button"
-                    className="ti-btn ti-btn-light !py-2 !px-4 !text-sm"
+                    className="ti-btn ti-btn-light !py-2 !px-4 !text-sm min-h-[44px]"
                     onClick={() => {
-                      setSourceFilter("all");
-                      setStatusFilter("all");
                       setPurposeFilter("all");
-                      setSearch("");
-                      setSearchSubmitted("");
-                      setPage(1);
+                      setSearchDraft("");
+                      replaceListQuery({ source: "all", status: "all", q: "", page: 1 });
                     }}
                   >
                     Clear filters
@@ -1076,59 +1095,16 @@ const Calling = () => {
                           </span>
                         )}
                       </span>
-                      {totalPagesMerged > 1 && (
-                        <nav aria-label="Call records pagination" className="shrink-0">
-                          <div className="m-0 inline-flex flex-nowrap items-center gap-1 rounded-lg border border-defaultborder/70 bg-white p-1 shadow-sm dark:border-defaultborder/20 dark:bg-black/20">
-                            <button
-                              type="button"
-                              className="inline-flex min-w-[2.25rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-medium text-defaulttextcolor transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-white/80 dark:hover:bg-white/10"
-                              disabled={loading || page <= 1}
-                              onClick={() => setPage((p) => Math.max(1, p - 1))}
-                              aria-label="Previous page"
-                            >
-                              <i className="ri-arrow-left-s-line align-middle me-0.5" />
-                              Prev
-                            </button>
-                            {pageItems.map((item, idx) =>
-                              item === "gap" ? (
-                                <span
-                                  key={`gap-${idx}`}
-                                  className="inline-flex min-w-[1.5rem] items-center justify-center px-1 text-xs text-defaulttextcolor/45"
-                                  aria-hidden
-                                >
-                                  …
-                                </span>
-                              ) : (
-                                <button
-                                  key={item}
-                                  type="button"
-                                  className={`inline-flex min-w-[2rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-semibold tabular-nums transition-colors ${
-                                    page === item
-                                      ? "bg-primary text-white shadow-sm"
-                                      : "text-defaulttextcolor hover:bg-gray-100 dark:text-white/80 dark:hover:bg-white/10"
-                                  }`}
-                                  disabled={loading}
-                                  onClick={() => setPage(item)}
-                                  aria-label={`Page ${item}`}
-                                  aria-current={page === item ? "page" : undefined}
-                                >
-                                  {item}
-                                </button>
-                              )
-                            )}
-                            <button
-                              type="button"
-                              className="inline-flex min-w-[2.25rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
-                              disabled={loading || page >= totalPagesMerged}
-                              onClick={() => setPage((p) => Math.min(totalPagesMerged, p + 1))}
-                              aria-label="Next page"
-                            >
-                              Next
-                              <i className="ri-arrow-right-s-line align-middle ms-0.5" />
-                            </button>
-                          </div>
-                        </nav>
-                      )}
+                      <ListPagination
+                        page={page}
+                        totalPages={totalPagesMerged}
+                        totalResults={totalMerged}
+                        pageSize={pageSize}
+                        touchFriendly
+                        hideWhenSinglePage
+                        showPageSize={false}
+                        onPageChange={(nextPage) => replaceListQuery({ page: nextPage })}
+                      />
                     </div>
                   )}
                 </div>

@@ -20,6 +20,8 @@ export default function ContactsList({
   view, selectedContactId, refreshKey, onSelectContact, onDialContact, onEditContact, onNewContact, onLoaded,
 }: Props) {
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
@@ -31,10 +33,11 @@ export default function ContactsList({
     const id = ++reqId.current;
     setLoading(true); setError(null); setForbidden(false);
     try {
-      const res = await listContacts(buildContactParams(view, debouncedQuery));
+      const res = await listContacts(buildContactParams(view, debouncedQuery, page));
       if (id !== reqId.current) return; // a newer request superseded this one
       const sorted = sortContacts(res.results || []);
       setContacts(sorted);
+      setTotalPages(res.totalPages ?? 1);
       onLoaded(sorted);
     } catch (e) {
       if (id !== reqId.current) return;
@@ -42,7 +45,9 @@ export default function ContactsList({
       if (status === 401 || status === 403) setForbidden(true);
       else setError(e instanceof Error ? e.message : "Failed to load contacts");
     } finally { if (id === reqId.current) setLoading(false); }
-  }, [view, debouncedQuery, onLoaded]);
+  }, [view, debouncedQuery, page, onLoaded]);
+
+  useEffect(() => { setPage(1); }, [debouncedQuery, view]);
 
   useEffect(() => { void load(); }, [load, refreshKey]);
 
@@ -86,7 +91,9 @@ export default function ContactsList({
             <button type="button" onClick={() => void load()} className="font-semibold underline">Retry</button>
           </div>
         ) : contacts.length === 0 ? (
-          <p className="px-2 py-8 text-center text-sm text-defaulttextcolor/45">{emptyCopy}</p>
+          <p className="px-2 py-8 text-center text-sm text-defaulttextcolor/45">
+            {debouncedQuery.trim().length >= 2 ? "No contacts match your search" : emptyCopy}
+          </p>
         ) : (
           <div className="space-y-1">
             {contacts.map((c) => (
@@ -96,6 +103,27 @@ export default function ContactsList({
             ))}
           </div>
         )}
+        {totalPages > 1 ? (
+          <div className="flex items-center justify-between gap-2 border-t border-defaultborder/50 px-1 pt-3">
+            <button
+              type="button"
+              className="min-h-[44px] rounded-lg px-3 text-xs font-semibold disabled:opacity-40"
+              disabled={page <= 1 || loading}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Prev
+            </button>
+            <span className="text-xs text-defaulttextcolor/60 tabular-nums">{page} / {totalPages}</span>
+            <button
+              type="button"
+              className="min-h-[44px] rounded-lg px-3 text-xs font-semibold text-primary disabled:opacity-40"
+              disabled={page >= totalPages || loading}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Next
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

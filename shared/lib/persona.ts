@@ -16,6 +16,8 @@ const STAFF_WRITE_PREFIXES = [
   "ats.recruiters:",
   "ats.jobs:",
   "ats.interviews:",
+  "ats.interviews.transcript:",
+  "ats.interviews.summary:",
   "ats.offers:",
   "ats.onboarding:",
   "ats.pre-boarding:",

@@ -91,6 +91,7 @@ export async function createInternalMeeting(
 
 export async function listInternalMeetings(params?: {
   title?: string;
+  search?: string;
   status?: string;
   /**
    * scheduledAt window, as ISO INSTANTS (not calendar days). Resolve the viewer's local

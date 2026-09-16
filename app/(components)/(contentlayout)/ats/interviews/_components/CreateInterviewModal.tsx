@@ -19,6 +19,7 @@ import DateTimeOverlay from '@/shared/components/datetime/DateTimeOverlay'
 import { to12Hour } from '@/shared/components/datetime/daySlots'
 import AgentMultiSelect from './AgentMultiSelect'
 import { saveDraft, loadDraft, clearDraft, type InterviewDraftData } from './interviewDraft'
+import { INTERVIEW_LANGUAGE_OPTIONS, INTERVIEW_ROUND_TYPE_OPTIONS, applicationIdsByJobId } from './interviewLinkage'
 import { listAllUsers, pickOfficialEmail, hasMeetingEmailMuted } from '@/shared/lib/api/users'
 import ParticipantInvitesField, { type ParticipantUser } from '@/shared/components/meeting/ParticipantInvitesField'
 
@@ -170,6 +171,15 @@ export default function CreateInterviewModal({
   const [dateTimeOverlayOpen, setDateTimeOverlayOpen] = useState(false)
   const [selectedJobId, setSelectedJobId] = useState('')
   const [jobsForCandidate, setJobsForCandidate] = useState<Job[]>([])
+  /** jobId → applicationId for the candidate whose list was loaded last; keyed by candidate so a stale list never pairs with another candidate. */
+  const [applicationsFor, setApplicationsFor] = useState<{ candidateId: string; idsByJob: Record<string, string> }>({
+    candidateId: '',
+    idsByJob: {},
+  })
+  const selectedApplicationId =
+    selectedCandidateId && selectedJobId && applicationsFor.candidateId === selectedCandidateId
+      ? applicationsFor.idsByJob[selectedJobId] ?? ''
+      : ''
   const [applicationJobsLoading, setApplicationJobsLoading] = useState(false)
   const scheduleBlocked = Boolean(getInterviewSchedulingBlockReason(prefill?.applicationStatus))
   const scheduleBlockMessage =
@@ -203,9 +213,10 @@ export default function CreateInterviewModal({
     void loadParticipantUsers()
   }, [loadParticipantUsers])
 
-  const loadApplicationJobs = useCallback(async (candidateId: string, preselectJobId?: string) => {
+  const loadApplicationJobs = useCallback(async (candidateId: string, preselectJobId?: string, knownApplicationId?: string) => {
     if (!candidateId) {
       setJobsForCandidate([])
+      setApplicationsFor({ candidateId: '', idsByJob: {} })
       return
     }
     setApplicationJobsLoading(true)
@@ -214,12 +225,17 @@ export default function CreateInterviewModal({
       const res = await listJobApplications({ candidateId, scheduleEligible: true, limit: 100 })
       const list = jobOptionsFromApplications(res.results)
       setJobsForCandidate(list)
+      const idsByJob = applicationIdsByJobId(res.results)
+      // The Applications-page prefill names its application explicitly; it wins for its own job.
+      if (preselectJobId && knownApplicationId) idsByJob[preselectJobId] = knownApplicationId
+      setApplicationsFor({ candidateId, idsByJob })
       if (preselectJobId && list.some((j) => String(j.id ?? j._id) === preselectJobId)) {
         setSelectedJobId(preselectJobId)
       }
     } catch {
       setApplicationJobsError('Could not load job applications.')
       setJobsForCandidate([])
+      setApplicationsFor({ candidateId: '', idsByJob: {} })
     } finally {
       setApplicationJobsLoading(false)
     }
@@ -277,6 +293,7 @@ export default function CreateInterviewModal({
     setSelectedCandidateId('')
     setSelectedJobId('')
     setJobsForCandidate([])
+    setApplicationsFor({ candidateId: '', idsByJob: {} })
     setApplicationJobsError(null)
     appliedPrefillRef.current = null
     setScheduleTimezone(getViewerTimezone())
@@ -297,7 +314,7 @@ export default function CreateInterviewModal({
 
     setSelectedCandidateId(prefill.candidateId)
     void applyCandidateAgent(prefill.candidateId)
-    void loadApplicationJobs(prefill.candidateId, prefill.jobId)
+    void loadApplicationJobs(prefill.candidateId, prefill.jobId, prefill.applicationId)
 
     const titleInput = document.querySelector<HTMLInputElement>('#schedule-meeting-title')
     if (titleInput && !titleInput.value.trim() && prefill.suggestedTitle) {
@@ -623,7 +640,11 @@ export default function CreateInterviewModal({
                   <label htmlFor="schedule-job" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
                     Job / Position
                   </label>
-                  <p className="text-xs text-textmuted dark:text-white/50 mb-1.5">Shows jobs this candidate has applied to.</p>
+                  <p className="text-xs text-textmuted dark:text-white/50 mb-1.5">
+                    Shows jobs this candidate has applied to. The interview is linked to that application.
+                  </p>
+                  {/* Read by the parent submit handler, like the schedule-date/time hidden inputs. */}
+                  <input type="hidden" id="schedule-application-id" value={selectedApplicationId} readOnly tabIndex={-1} aria-hidden />
                   {applicationJobsError ? (
                     <p className="text-xs text-danger mb-1.5" role="alert">
                       {applicationJobsError}
@@ -648,6 +669,52 @@ export default function CreateInterviewModal({
                     {jobsForCandidate.map((job) => (
                       <option key={job.id ?? job._id} value={String(job.id ?? job._id)}>
                         {job.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="schedule-round-type" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                      Round
+                    </label>
+                    <select
+                      id="schedule-round-type"
+                      defaultValue=""
+                      className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    >
+                      <option value="">Not set</option>
+                      {INTERVIEW_ROUND_TYPE_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="schedule-round-label" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                      Round label <span className="text-xs font-normal text-textmuted dark:text-white/55">(optional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      id="schedule-round-label"
+                      placeholder="e.g. System design"
+                      className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label htmlFor="schedule-interview-language" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                    Interview language
+                  </label>
+                  <select
+                    id="schedule-interview-language"
+                    defaultValue="en"
+                    className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  >
+                    {INTERVIEW_LANGUAGE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
                       </option>
                     ))}
                   </select>

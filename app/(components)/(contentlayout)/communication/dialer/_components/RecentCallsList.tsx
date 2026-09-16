@@ -1,9 +1,10 @@
 "use client";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getBolnaCallRecords, type CallRecord } from "@/shared/lib/api/bolna";
 import { useChatSocket } from "@/shared/contexts/ChatSocketContext";
 import RecentCallCard from "./RecentCallCard";
-import { callId, matchesSearch, filterRecents, isMissed, missedCount, sortWithPins, groupByDate, matchesCallUpdate, mergeCallUpdate, type RecentFilter } from "../_lib/recentCalls";
+import { useDebouncedValue } from "../_lib/contactSearch";
+import { callId, filterRecents, isMissed, missedCount, sortWithPins, groupByDate, matchesCallUpdate, mergeCallUpdate, type RecentFilter } from "../_lib/recentCalls";
 
 const PIN_KEY = "dialer_pinned_recents";
 const CHIPS: RecentFilter[] = ["all", "inbound", "outbound", "recorded"];
@@ -29,24 +30,39 @@ export default function RecentCallsList({ activeView, selectedCallId, onSelectCa
   const [error, setError] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query, 300);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [filter, setFilter] = useState<RecentFilter>("all");
   const [pins, setPins] = useState<string[]>([]);
+  const reqId = useRef(0);
   const { onCallUpdate } = useChatSocket();
 
   const load = useCallback(async (silent = false) => {
+    const id = ++reqId.current;
     if (!silent) { setLoading(true); setError(null); setForbidden(false); }
     try {
-      // P2: replace with a virtualized list if this grows beyond ~200 records.
-      // channel:"dialer" → only this user's own dialer-placed calls (no candidate/job calls).
-      const res = await getBolnaCallRecords({ limit: 50, sortBy: "createdAt", order: "desc", channel: "dialer" });
+      const search = debouncedQuery.trim().length >= 2 ? debouncedQuery.trim() : undefined;
+      const res = await getBolnaCallRecords({
+        page,
+        limit: 50,
+        search,
+        sortBy: "createdAt",
+        order: "desc",
+        channel: "dialer",
+      });
+      if (id !== reqId.current) return;
       setRecords(res.records || []);
+      setTotalPages(res.totalPages ?? 1);
     } catch (e) {
       if (silent) return; // transient poll/socket blip: keep showing the existing calls
       const status = (e as { response?: { status?: number } })?.response?.status;
       if (status === 401 || status === 403) setForbidden(true);
       else setError(e instanceof Error ? e.message : "Failed to load calls");
-    } finally { if (!silent) setLoading(false); }
-  }, []);
+    } finally { if (id === reqId.current && !silent) setLoading(false); }
+  }, [debouncedQuery, page]);
+
+  useEffect(() => { setPage(1); }, [debouncedQuery]);
 
   useEffect(() => { setPins(loadPins()); void load(); }, [load]);
   useEffect(() => { if (refreshKey > 0) void load(true); }, [refreshKey, load]);
@@ -94,8 +110,8 @@ export default function RecentCallsList({ activeView, selectedCallId, onSelectCa
 
   const visible = useMemo(() => {
     const base = activeView === "missed" ? records.filter(isMissed) : filterRecents(records, filter);
-    return base.filter((r) => matchesSearch(r, query));
-  }, [records, activeView, filter, query]);
+    return base;
+  }, [records, activeView, filter]);
 
   const { pinned, rest } = useMemo(
     () => (activeView === "recent" ? sortWithPins(visible, pins) : { pinned: [] as CallRecord[], rest: visible }),
@@ -154,7 +170,11 @@ export default function RecentCallsList({ activeView, selectedCallId, onSelectCa
           </div>
         ) : visible.length === 0 ? (
           <p className="px-2 py-8 text-center text-sm text-defaulttextcolor/45">
-            {activeView === "missed" ? "No missed calls" : "No recent calls yet"}
+            {debouncedQuery.trim().length >= 2
+              ? "No calls match your search"
+              : activeView === "missed"
+                ? "No missed calls"
+                : "No recent calls yet"}
           </p>
         ) : (
           <>
@@ -172,6 +192,27 @@ export default function RecentCallsList({ activeView, selectedCallId, onSelectCa
             ))}
           </>
         )}
+        {totalPages > 1 ? (
+          <div className="flex items-center justify-between gap-2 border-t border-defaultborder/50 px-1 pt-3">
+            <button
+              type="button"
+              className="min-h-[44px] rounded-lg px-3 text-xs font-semibold text-defaulttextcolor disabled:opacity-40"
+              disabled={page <= 1 || loading}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Prev
+            </button>
+            <span className="text-xs text-defaulttextcolor/60 tabular-nums">{page} / {totalPages}</span>
+            <button
+              type="button"
+              className="min-h-[44px] rounded-lg px-3 text-xs font-semibold text-primary disabled:opacity-40"
+              disabled={page >= totalPages || loading}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Next
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

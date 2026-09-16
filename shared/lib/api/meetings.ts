@@ -57,6 +57,62 @@ export interface MeetingAgentRef {
   email?: string;
 }
 
+/** D4 round types — must match backend src/constants/interviewLinkage.js INTERVIEW_ROUND_TYPES (Joi rejects others). */
+export type InterviewRoundType =
+  | 'screening'
+  | 'technical'
+  | 'behavioral'
+  | 'hiring_manager'
+  | 'culture'
+  | 'final'
+  | 'other';
+
+/** Backend SUPPORTED_INTERVIEW_LANGUAGES; anything else is a 400. */
+export type InterviewLanguage = 'en';
+
+export interface InterviewRound {
+  /** Server defaults to (non-cancelled interviews for the application) + 1 when omitted. */
+  index?: number;
+  type?: InterviewRoundType;
+  label?: string | null;
+}
+
+/** `verified*` = evaluation-eligible; `legacy_title_candidate` needs human confirmation; missing = `unlinked`. */
+export type InterviewLinkageStatus =
+  | 'unlinked'
+  | 'legacy_title_candidate'
+  | 'verified'
+  | 'verified_exact_ids'
+  | 'verified_manual';
+
+/** `errorCode` of the HTTP 409 bodies returned by the interview-linkage endpoints and placement/transfer. */
+export type InterviewLinkageErrorCode =
+  | 'interview_not_linked'
+  | 'linkage_revision_conflict'
+  | 'interview_already_linked'
+  | 'application_exists';
+
+/** GET /meetings/:id/linkage (also returned by the linkage PATCH and the explicit application create). */
+export interface MeetingLinkage {
+  applicationId?: string | null;
+  jobId?: string | null;
+  candidateId?: string | null;
+  round?: InterviewRound | null;
+  interviewLanguage: string;
+  linkageStatus: InterviewLinkageStatus;
+  linkageSource?: string | null;
+  /** Send back as `expectedRevision`; a stale value answers 409 `linkage_revision_conflict`. */
+  linkageRevision: number;
+  linkageVerifiedAt?: string | null;
+}
+
+export interface PatchMeetingLinkagePayload {
+  applicationId?: string;
+  round?: InterviewRound;
+  interviewLanguage?: InterviewLanguage;
+  expectedRevision: number;
+}
+
 export interface CreateMeetingPayload {
   title: string;
   description?: string;
@@ -74,6 +130,10 @@ export interface CreateMeetingPayload {
   recruiter?: MeetingRecruiterRef | null;
   agents?: MeetingAgentRef[];
   notes?: string;
+  /** 24-hex JobApplication id. Omit (never '' or null) when unknown — Joi accepts only a hex string. */
+  applicationId?: string;
+  round?: InterviewRound;
+  interviewLanguage?: InterviewLanguage;
 }
 
 /** Rubric criterion ids — must stay in sync with backend src/constants/interviewRubric.js. */
@@ -129,9 +189,33 @@ export interface Meeting {
   publicMeetingUrl?: string;
   /** Set when interviewResult=selected but createPlacementFromInterview failed (PATCH response only). */
   moveToPreboardingError?: string;
+  /** Stable code for moveToPreboardingError, e.g. `interview_not_linked` (PATCH response only). */
+  moveToPreboardingErrorCode?: string;
+  /** Result saved but its application side effect was skipped: the interview has no application (PATCH response only). */
+  linkageWarning?: 'interview_not_linked';
+  applicationId?: string | null;
+  jobId?: string | null;
+  candidateId?: string | null;
+  round?: InterviewRound | null;
+  interviewLanguage?: string;
+  linkageStatus?: InterviewLinkageStatus;
+  linkageSource?: string | null;
+  linkageRevision?: number;
+  participantConsents?: MeetingParticipantConsent[];
   /** Populated on GET /meetings/my-interviews for candidate dashboard rows. */
   jobTitle?: string;
   companyName?: string;
+}
+
+export interface MeetingParticipantConsent {
+  identity: string;
+  role?: string | null;
+  noticeVersion: string;
+  recording: boolean;
+  transcription: boolean;
+  aiEvaluation: boolean;
+  acceptedAt: string;
+  withdrawnAt?: string | null;
 }
 
 export interface MeetingsListResponse {
@@ -186,7 +270,8 @@ export async function getMeeting(id: string): Promise<Meeting> {
   return data;
 }
 
-export type UpdateMeetingPayload = Partial<CreateMeetingPayload> & {
+/** Linkage keys are not accepted by `PATCH /meetings/:id` (Joi 400s the whole save) — use patchMeetingLinkage. */
+export type UpdateMeetingPayload = Partial<Omit<CreateMeetingPayload, 'applicationId' | 'round' | 'interviewLanguage'>> & {
   status?: string;
   interviewResult?: 'pending' | 'selected' | 'rejected';
   /** Ratings + comment only — scoredBy/scoredAt are server-owned and rejected by Joi. */
@@ -195,6 +280,27 @@ export type UpdateMeetingPayload = Partial<CreateMeetingPayload> & {
 
 export async function updateMeeting(id: string, payload: UpdateMeetingPayload): Promise<Meeting> {
   const { data } = await apiClient.patch<Meeting>(`/meetings/${id}`, payload);
+  return data;
+}
+
+export async function getMeetingLinkage(id: string): Promise<MeetingLinkage> {
+  const { data } = await apiClient.get<MeetingLinkage>(`/meetings/${id}/linkage`);
+  return data;
+}
+
+/** Link an application / edit round or language. 409 `linkage_revision_conflict` when `expectedRevision` is stale. */
+export async function patchMeetingLinkage(id: string, payload: PatchMeetingLinkagePayload): Promise<MeetingLinkage> {
+  const { data } = await apiClient.patch<MeetingLinkage>(`/meetings/${id}/linkage`, payload);
+  return data;
+}
+
+/**
+ * Explicit, audited "Create application for this interview" (candidate + 24-hex jobPosition required).
+ * 409: `interview_already_linked` / `application_exists` (details.applicationId) /
+ * `linkage_revision_conflict` (application created, link lost a race; details.applicationId).
+ */
+export async function createApplicationForMeeting(id: string): Promise<MeetingLinkage> {
+  const { data } = await apiClient.post<MeetingLinkage>(`/meetings/${id}/application`);
   return data;
 }
 
@@ -361,8 +467,8 @@ export interface RecordingTranscriptResponse {
   meetingTitle: string;
   segments: TranscriptSegment[];
   totalSegments: number;
-  /** Which key found the segments: `recordingId` (preferred) or `meetingId` (legacy fallback). */
-  source: "recordingId" | "meetingId";
+  /** Which key found the segments: `recordingId` (preferred), `meetingId` (legacy), or `v2`. */
+  source: "recordingId" | "meetingId" | "v2";
 }
 
 /** Fetch transcript segments for a recording (sequenceNumber asc). */
@@ -371,6 +477,105 @@ export async function getRecordingTranscript(
 ): Promise<RecordingTranscriptResponse> {
   const { data } = await apiClient.get<RecordingTranscriptResponse>(
     `/recordings/${recordingId}/transcript`
+  );
+  return data;
+}
+
+export interface MeetingTranscriptUtterance {
+  utteranceId?: string;
+  displayName?: string | null;
+  speakerRole?: string;
+  roleAssurance?: string | null;
+  participantIdentity?: string | null;
+  text: string;
+  recordingOffsetMs?: number | null;
+  startedAtEpochMs?: number | null;
+  endedAtEpochMs?: number | null;
+  confidence?: number | null;
+}
+
+export interface MeetingTranscriptResponse {
+  meetingId: string;
+  interviewId: string;
+  version: number;
+  schemaVersion?: number;
+  evidenceGrade?: string | null;
+  partialReasons?: string[];
+  quality?: {
+    maxGapMs?: number | null;
+    lowConfidenceShare?: number | null;
+    coverageRatio?: number | null;
+  } | null;
+  utteranceCount: number;
+  interviewLanguage?: string;
+  transcriptVersionId?: string;
+  utterances: MeetingTranscriptUtterance[];
+}
+
+export async function getMeetingTranscript(
+  meetingId: string,
+  params?: { version?: number }
+): Promise<MeetingTranscriptResponse> {
+  const { data } = await apiClient.get<MeetingTranscriptResponse>(`/meetings/${meetingId}/transcript`, {
+    params,
+  });
+  return data;
+}
+
+export interface MeetingSummaryResponse {
+  meetingId: string;
+  interviewId: string;
+  version: number;
+  partial?: boolean;
+  executiveSummary: string;
+  bulletSummary: string[];
+  actionItems: Array<{ text: string; owner?: string | null; dueHint?: string | null; timestampMs?: number | null }>;
+  decisions: Array<{ text: string; timestampMs?: number | null }>;
+  blockers: string[];
+  nextSteps: string[];
+  participantsActive: Array<{ identity?: string | null; name?: string | null; speakingMs?: number }>;
+  durationMs?: number | null;
+  generatedAt?: string | null;
+  summaryId?: string;
+}
+
+export async function getMeetingSummary(
+  meetingId: string,
+  params?: { version?: number }
+): Promise<MeetingSummaryResponse> {
+  const { data } = await apiClient.get<MeetingSummaryResponse>(`/meetings/${meetingId}/summary`, { params });
+  return data;
+}
+
+export const INTERVIEW_NOTICE_VERSION = "draft-2026-09-v1";
+
+export interface SubmitInterviewConsentPayload {
+  noticeVersion: string;
+  recording: boolean;
+  transcription: boolean;
+  aiEvaluation: boolean;
+}
+
+export interface SubmitInterviewConsentResponse {
+  meetingId: string;
+  identity: string;
+  noticeVersion: string;
+  recording: boolean;
+  transcription: boolean;
+  aiEvaluation: boolean;
+  acceptedAt: string;
+}
+
+/** Public join consent — Authorization: Bearer LiveKit access token. */
+export async function submitPublicMeetingConsent(
+  roomName: string,
+  liveKitToken: string,
+  payload: SubmitInterviewConsentPayload
+): Promise<SubmitInterviewConsentResponse> {
+  const { data } = await apiClient.post<SubmitInterviewConsentResponse>(
+    `/public/meetings/${encodeURIComponent(roomName)}/consent`,
+    payload,
+    { headers: { Authorization: `Bearer ${liveKitToken}` } }
   );
   return data;
 }

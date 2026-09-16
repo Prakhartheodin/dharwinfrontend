@@ -179,6 +179,7 @@
 .searchField {
   display: flex;
   align-items: stretch;
+  min-height: 44px;
   border-radius: var(--chat-radius-md);
   border: 1px solid var(--chat-border);
   background: var(--chat-surface);

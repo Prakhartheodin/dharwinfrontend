@@ -12,12 +12,18 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams, useRouter, useParams } from "next/navigation";
 import { ConnectionState, DisconnectReason, RoomEvent } from "livekit-client";
 import { MeetingRecordingHostControls } from "@/shared/components/livekit/meeting-recording-host-controls";
-import { RecordingParticipantBanner } from "@/shared/components/livekit/recording-participant-banner";
+import { LiveKitAiRecordingBanner } from "@/shared/components/livekit/recording-participant-banner";
+import InterviewJoinConsentPanel from "@/shared/components/meeting/InterviewJoinConsentPanel";
+import InterviewHostResultOverlay from "@/shared/components/meeting/InterviewHostResultOverlay";
+import {
+  isCommunicationChatRoomEntry,
+  shouldShowInterviewJoinConsent,
+} from "@/shared/lib/interviewRoomEntry";
 import { MEETING_CONTROL_BAR_RESPONSIVE_CSS } from "@/shared/components/livekit/meeting-control-bar-responsive.css";
 import { WaitingRoom } from "@/shared/components/livekit/waiting-room";
 import { WaitingParticipantsPanel } from "@/shared/components/livekit/waiting-participants-panel";
 import * as livekitApi from "@/shared/lib/api/livekit";
-import { updateMeeting } from "@/shared/lib/api/meetings";
+import { getMeeting, updateMeeting, type Meeting } from "@/shared/lib/api/meetings";
 import { endCallByRoom, updateCall } from "@/shared/lib/api/chat";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { userCanRecordMeeting } from "@/shared/lib/permissions";
@@ -617,7 +623,7 @@ function RoomContent({
         }
       `}} />
       <div className="room-meeting-container relative">
-        <RecordingParticipantBanner roomName={roomName} />
+        <LiveKitAiRecordingBanner roomName={roomName} />
         {/* Top bar: call info */}
         <div className="meeting-room-top-bar absolute top-0 left-0 right-0 z-[100] flex items-center justify-between px-5 py-3 bg-gradient-to-b from-black/70 via-black/40 to-transparent pointer-events-none">
           <div className="flex items-center gap-3 pointer-events-auto">
@@ -715,6 +721,8 @@ export default function MeetingRoomClient() {
   const [isInWaitingRoom, setIsInWaitingRoom] = useState(false);
   const [participantIdentity, setParticipantIdentity] = useState<string | null>(null);
   const [mediaFailureKind, setMediaFailureKind] = useState<string | null>(null);
+  const [interviewConsentComplete, setInterviewConsentComplete] = useState(false);
+  const [hostPostInterview, setHostPostInterview] = useState<Meeting | null>(null);
 
   // Try to get user from auth context
   let user = null;
@@ -727,15 +735,17 @@ export default function MeetingRoomClient() {
 
   const roomId = params.roomId as string;
   const fromChat = searchParams.get("from") === "chat";
+  const roomName = useMemo(() => decodeURIComponent(roomId), [roomId]);
+  const isChatCall = isCommunicationChatRoomEntry(fromChat, roomName);
   const returnConvId = searchParams.get("conv") || null;
   const chatCallIdParam = searchParams.get("callId");
   const recordChatCallJoinId = useMemo(() => {
-    if (!fromChat) return null;
-    const name = decodeURIComponent(roomId);
+    if (!isChatCall) return null;
+    const name = roomName;
     if (!name.startsWith("chat-")) return null;
     const id = chatCallIdParam?.trim();
     return id || null;
-  }, [fromChat, roomId, chatCallIdParam]);
+  }, [isChatCall, roomName, chatCallIdParam]);
   const participantName = useMemo(() => {
     return (
       searchParams.get("name") || user?.name || user?.email || `user-${Math.random().toString(36).substr(2, 9)}`
@@ -769,13 +779,12 @@ export default function MeetingRoomClient() {
     try {
       setIsLoading(true);
       setError("");
-      const roomName = decodeURIComponent(roomId);
       const data = await livekitApi.getLiveKitToken(roomName, participantName, participantEmail || undefined);
       setToken(data.token);
       setIsHost(data.isHost || false);
       setParticipantIdentity(data.participantIdentity);
       // Chat calls never use a waiting room — all peers join directly
-      setIsInWaitingRoom(!data.isHost && !fromChat);
+      setIsInWaitingRoom(!data.isHost && !isChatCall);
     } catch (err: any) {
       console.error("Error fetching token:", err);
       const errorMessage =
@@ -786,7 +795,7 @@ export default function MeetingRoomClient() {
     } finally {
       setIsLoading(false);
     }
-  }, [roomId, participantName, participantEmail, livekitUrl]);
+  }, [roomName, participantName, participantEmail, livekitUrl, isChatCall]);
 
   useEffect(() => {
     fetchToken();
@@ -815,6 +824,11 @@ export default function MeetingRoomClient() {
     }
   }, [router, roomId, fromChat, returnConvId]);
 
+  const dismissHostPostInterview = useCallback(() => {
+    setHostPostInterview(null);
+    router.push("/meetings/pre-join/");
+  }, [router]);
+
   const handleEndForAll = useCallback(async () => {
     const roomName = decodeURIComponent(roomId);
     if (fromChat && roomName.startsWith("chat-")) {
@@ -825,9 +839,20 @@ export default function MeetingRoomClient() {
       router.push(returnUrl);
     } else {
       await updateMeeting(roomName, { status: "ended" }).catch(() => {});
+      if (isHost) {
+        try {
+          const meeting = await getMeeting(roomName);
+          if (meeting.candidate?.id || meeting.candidateId) {
+            setHostPostInterview(meeting);
+            return;
+          }
+        } catch {
+          /* fall through to lobby */
+        }
+      }
       router.push("/meetings/pre-join/");
     }
-  }, [router, roomId, fromChat, returnConvId]);
+  }, [router, roomId, fromChat, returnConvId, isHost]);
 
   const handleDisconnect = useCallback(() => {
     console.log("Disconnected from room - RoomContent will handle reconnection");
@@ -858,7 +883,7 @@ export default function MeetingRoomClient() {
       const data = await livekitApi.getLiveKitToken(roomName, participantName, participantEmail || undefined);
       setToken(data.token);
       setIsHost(data.isHost || false);
-      setIsInWaitingRoom(!data.isHost && !fromChat);
+      setIsInWaitingRoom(!data.isHost && !isChatCall);
       setReconnectKey((prev) => prev + 1);
     } catch (err) {
       console.error("Error fetching token during reconnect:", err);
@@ -866,7 +891,7 @@ export default function MeetingRoomClient() {
     } finally {
       setIsLoading(false);
     }
-  }, [roomId, participantName, participantEmail]);
+  }, [roomId, participantName, participantEmail, isChatCall]);
 
   const handleAdmitted = useCallback(async (newToken: string) => {
     setToken(newToken);
@@ -880,6 +905,16 @@ export default function MeetingRoomClient() {
     }
     setReconnectKey((prev) => prev + 1);
   }, [roomId, participantName, participantEmail]);
+
+  if (hostPostInterview && isHost) {
+    return (
+      <InterviewHostResultOverlay
+        meeting={hostPostInterview}
+        onDone={dismissHostPostInterview}
+        variant="obsidian"
+      />
+    );
+  }
 
   if (isLoading) {
     return (
@@ -983,6 +1018,24 @@ export default function MeetingRoomClient() {
     return null;
   }
 
+  if (
+    shouldShowInterviewJoinConsent({
+      isChatCall,
+      isHost,
+      interviewConsentComplete,
+    })
+  ) {
+    return (
+      <InterviewJoinConsentPanel
+        roomName={roomName}
+        liveKitToken={token}
+        variant={isHost ? "interviewer" : "guest"}
+        onComplete={() => setInterviewConsentComplete(true)}
+        onCancel={() => void handleLeave()}
+      />
+    );
+  }
+
   return (
     <LiveKitRoom
       key={reconnectKey}
@@ -1023,7 +1076,7 @@ export default function MeetingRoomClient() {
         roomName={decodeURIComponent(roomId)}
         isHost={isHost}
         canRecordMeeting={canRecordMeeting}
-        isChatCall={fromChat}
+        isChatCall={isChatCall}
       />
     </LiveKitRoom>
   );
