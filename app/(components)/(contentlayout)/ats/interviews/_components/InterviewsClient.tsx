@@ -1090,6 +1090,21 @@ export default function InterviewsClient() {
             cancelLabel: 'Not now',
           })
           if (go) await doInternalTransfer(interview)
+        } else if (updated.moveToPreboardingErrorCode === 'JOB_VACANCIES_FILLED') {
+          await confirm({
+            title: 'All vacancies are filled',
+            message: (
+              <>
+                {errMsg}
+                <span className="mt-2 block text-xs text-defaulttextcolor/60 dark:text-white/50">
+                  The interview result was saved. Raise the vacancy count on the job, then use
+                  &ldquo;Re-trigger offer &amp; placement&rdquo; on this row.
+                </span>
+              </>
+            ),
+            confirmLabel: 'Got it',
+            hideCancel: true,
+          })
         } else {
           await confirm({
             title: 'Marked Selected — next step needs attention',

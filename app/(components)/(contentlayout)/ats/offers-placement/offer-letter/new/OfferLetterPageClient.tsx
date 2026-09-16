@@ -29,6 +29,7 @@ import { listJobApplications, type JobApplication } from "@/shared/lib/api/jobAp
 import {
   isJobApplicationEligibleForOffer,
   jobApplicationRecordId,
+  vacancyBlockNotice,
 } from "@/shared/lib/ats/offer-application-eligibility";
 import { findJobApplicationById, resolveOfferInterviewBypassAck } from "@/shared/lib/ats/resolve-offer-interview-bypass";
 import {
@@ -353,6 +354,11 @@ export default function OfferLetterPageClient({
         });
         setLinkedOffer(updated);
         setViewingVersion(null);
+        // The save succeeded but the server held the offer in Draft — say so, or the recruiter
+        // walks away believing the candidate was hired.
+        if (updated.vacancyBlockReason) {
+          await confirm(vacancyBlockNotice(updated.vacancyBlockReason));
+        }
         const newId = getOfferRecordId(updated);
         if (newId && (!offerIdParam || offerIdParam !== newId)) {
           router.replace(
@@ -399,6 +405,10 @@ export default function OfferLetterPageClient({
       const updated = await saveOfferLetter(id, buildOfferLetterUpdatePayload(letterForm, created));
       setLinkedOffer(updated);
       setViewingVersion(null);
+      // Same notice on the create-then-save path: the offer exists but was not accepted.
+      if (updated.vacancyBlockReason) {
+        await confirm(vacancyBlockNotice(updated.vacancyBlockReason));
+      }
       router.replace(`/ats/offers-placement/offer-letter/new?offerId=${encodeURIComponent(id)}`, {
         scroll: false,
       });

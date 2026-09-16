@@ -365,11 +365,25 @@ export async function getOfferLetterDefaults(
   return data;
 }
 
+/**
+ * A saved offer letter, plus the one thing this endpoint reports that a plain Offer does not.
+ *
+ * Saving a letter normally promotes a Draft offer to Accepted. When the job's vacancies are already
+ * filled the server keeps the offer in Draft instead of failing the save, and says why here. It is
+ * null on every normal save.
+ */
+export type SavedOfferLetter = Offer & { vacancyBlockReason?: string | null };
+
 /** Validates letter fields and persists them (POST `/offers/:id/generate-letter`). No server-side PDF — use browser Print / Save as PDF. */
-export async function saveOfferLetter(offerId: string, letterPayload?: UpdateOfferPayload): Promise<Offer> {
-  const { data } = await apiClient.post<Offer>(`/offers/${offerId}/generate-letter`, letterPayload ?? {}, {
-    timeout: OFFER_LETTER_SAVE_API_TIMEOUT_MS,
-  });
+export async function saveOfferLetter(
+  offerId: string,
+  letterPayload?: UpdateOfferPayload
+): Promise<SavedOfferLetter> {
+  const { data } = await apiClient.post<SavedOfferLetter>(
+    `/offers/${offerId}/generate-letter`,
+    letterPayload ?? {},
+    { timeout: OFFER_LETTER_SAVE_API_TIMEOUT_MS }
+  );
   return data;
 }
 

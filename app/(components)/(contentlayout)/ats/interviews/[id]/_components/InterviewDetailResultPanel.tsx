@@ -57,7 +57,7 @@ export default function InterviewDetailResultPanel({
   onSaved: () => void | Promise<void>;
   onRequestLink: (reason: NonNullable<InterviewLinkageTarget["reason"]>) => void;
 }) {
-  const confirm = useConfirm();
+  const { confirm, confirmDialog } = useConfirm();
   const recordId = String(meeting.id ?? meeting._id ?? meetingId);
 
   const [selected, setSelected] = useState<"pending" | "selected" | "rejected">(
@@ -185,6 +185,13 @@ export default function InterviewDetailResultPanel({
             cancelLabel: "Not now",
           });
           if (go) await doInternalTransfer();
+        } else if (updated.moveToPreboardingErrorCode === "JOB_VACANCIES_FILLED") {
+          await confirm({
+            title: "All vacancies are filled",
+            message: `${errMsg} The interview result was saved — raise the vacancy count on the job, then save this result again.`,
+            confirmLabel: "Got it",
+            hideCancel: true,
+          });
         } else {
           await confirm({
             title: "Marked selected — next step needs attention",
@@ -211,7 +218,9 @@ export default function InterviewDetailResultPanel({
   const ended = meeting.status === "ended" || meeting.status === "completed";
 
   return (
-    <div className="space-y-6">
+    <>
+      {confirmDialog}
+      <div className="space-y-6">
       {!ended && (
         <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
           The interview is still in progress. You can save a provisional result, or wait until the session has ended.
@@ -338,5 +347,6 @@ export default function InterviewDetailResultPanel({
         </button>
       </div>
     </div>
+    </>
   );
 }

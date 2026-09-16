@@ -50,6 +50,26 @@ export function applicationHasSelectedInterviewFromMeetings(
   );
 }
 
+/**
+ * Notice shown when a letter saved but its offer was held in Draft because the job is full.
+ *
+ * Saving a letter normally promotes a Draft offer to Accepted and marks the candidate Hired. The
+ * server declines that promotion on a filled requisition rather than failing the save, so without
+ * this the recruiter sees a successful save and reasonably assumes the hire went through.
+ *
+ * Shaped as plain data, not ConfirmOptions, so this module stays free of UI imports — the same
+ * reason confirm-compensation-change.ts declares its own structural subset. No `tone`: a filled
+ * requisition is a rule, not an error.
+ */
+export function vacancyBlockNotice(reason: string) {
+  return {
+    title: "Saved as draft — vacancies are filled",
+    message: `${reason} The letter was saved, but the offer stays a draft and nobody has been hired. Raise the vacancy count on the job, then set this offer to Accepted.`,
+    confirmLabel: "Got it",
+    hideCancel: true,
+  };
+}
+
 export const OFFER_INTERVIEW_BYPASS_CONFIRM = {
   title: "Bypass interview?",
   message:

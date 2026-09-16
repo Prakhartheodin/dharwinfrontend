@@ -470,6 +470,8 @@ export interface PublicJob {
   status?: string;
   jobOrigin?: "internal" | "external";
   externalPlatformUrl?: string;
+  /** True when this role already has as many hires as it has declared vacancies. */
+  vacancyFilled?: boolean;
 }
 
 export interface PublicJobsListResponse {

@@ -19,6 +19,7 @@ import {
   getInterviewSchedulingBlockReason,
   isInterviewSchedulingBlocked,
 } from '@/shared/lib/ats/applicationPipeline'
+import { describeVacancyFill } from '@/shared/lib/ats/jobVacancy'
 import { ApplicationStatusSelect } from '@/shared/components/ats/ApplicationStatusSelect'
 import type { JobApplicationStatus } from '@/shared/lib/api/jobApplications'
 import { CompanyWebsiteLink } from '@/shared/components/ats/CompanyWebsiteLink'
@@ -381,16 +382,42 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                             <div className="text-[0.65rem] uppercase tracking-wide text-gray-500">Applications</div>
                             <div className="text-lg font-bold text-gray-800 dark:text-white">{jobStats.totalApplications}</div>
                           </div>
-                          <div className="rounded border border-gray-200 dark:border-defaultborder/10 p-2">
-                            <div className="text-[0.65rem] uppercase tracking-wide text-gray-500">Hired</div>
-                            <div className="text-lg font-bold text-emerald-600 dark:text-emerald-300">
-                              {jobStats.funnel.find((f) => f.status === 'Hired')?.count ?? 0}
-                            </div>
-                          </div>
-                          <div className="rounded border border-gray-200 dark:border-defaultborder/10 p-2">
-                            <div className="text-[0.65rem] uppercase tracking-wide text-gray-500">Status</div>
-                            <div className="text-sm font-semibold text-gray-800 dark:text-white">{jobStats.jobStatus}</div>
-                          </div>
+                          {(() => {
+                            const fill = describeVacancyFill(
+                              jobStats.funnel.find((f) => f.status === 'Hired')?.count ?? 0,
+                              previewJob.vacancies
+                            )
+                            return (
+                              <>
+                                <div className="rounded border border-gray-200 dark:border-defaultborder/10 p-2">
+                                  <div className="text-[0.65rem] uppercase tracking-wide text-gray-500">Hired</div>
+                                  <div
+                                    className={`text-lg font-bold flex items-center gap-1 ${fill.toneClass}`}
+                                    title={
+                                      fill.overCapacity
+                                        ? 'More applicants are hired than this job has vacancies. Increase the vacancy count to reconcile.'
+                                        : undefined
+                                    }
+                                  >
+                                    {fill.label}
+                                    {fill.overCapacity && (
+                                      <>
+                                        <i className="ri-error-warning-line text-base" aria-hidden="true"></i>
+                                        <span className="sr-only">over capacity</span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="rounded border border-gray-200 dark:border-defaultborder/10 p-2">
+                                  <div className="text-[0.65rem] uppercase tracking-wide text-gray-500">Status</div>
+                                  <div className="text-sm font-semibold text-gray-800 dark:text-white">
+                                    {jobStats.jobStatus}
+                                    <span className="font-normal text-gray-500 dark:text-gray-400">{fill.statusSuffix}</span>
+                                  </div>
+                                </div>
+                              </>
+                            )
+                          })()}
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                           {jobStats.funnel.map((row) => (

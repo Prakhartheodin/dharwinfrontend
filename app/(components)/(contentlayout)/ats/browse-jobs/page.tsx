@@ -479,9 +479,16 @@ export default function BrowseJobsPage() {
                         <h5 className="font-semibold text-[1rem] text-defaulttextcolor dark:text-white group-hover:text-primary transition-colors mb-0">
                           {job.title}
                         </h5>
-                        <span className="badge bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 !rounded-md !px-2 !py-0.5 text-[0.65rem] font-semibold shrink-0">
-                          Open
-                        </span>
+                        {job.vacancyFilled ? (
+                          <span className="badge bg-stone-200 text-stone-600 dark:bg-white/10 dark:text-stone-400 border border-stone-300/60 dark:border-white/10 !rounded-md !px-2 !py-0.5 text-[0.65rem] font-semibold shrink-0 inline-flex items-center gap-1">
+                            <i className="bi bi-person-check text-[0.7rem]" aria-hidden />
+                            Vacancies filled
+                          </span>
+                        ) : (
+                          <span className="badge bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 !rounded-md !px-2 !py-0.5 text-[0.65rem] font-semibold shrink-0">
+                            Open
+                          </span>
+                        )}
                         {isExternalJob(job) ? (
                           <span className="badge bg-info/15 text-info border border-info/30 !rounded-md !px-2 !py-0.5 text-[0.65rem] font-semibold shrink-0">
                             External

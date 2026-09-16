@@ -192,9 +192,11 @@ export default function BrowseJobDetailsPage() {
     }
   };
 
+  const vacanciesFilled = Boolean(job?.vacancyFilled);
   const canApply =
     job?.status === "Active" &&
     !existingApplication &&
+    !vacanciesFilled &&
     !isApplicationDeadlinePast(job?.applicationDeadline);
   const deadlinePassed =
     job?.status === "Active" &&
@@ -314,6 +316,13 @@ export default function BrowseJobDetailsPage() {
           <span className="flex items-center gap-2">
             <i className="ri-calendar-close-line text-lg" aria-hidden />
             The application deadline for this role has passed.
+          </span>
+        </div>
+      ) : vacanciesFilled ? (
+        <div className="rounded-xl border border-stone-200 bg-stone-100/80 px-4 py-3 text-sm text-stone-600 dark:border-white/10 dark:bg-white/[0.05] dark:text-stone-400">
+          <span className="flex items-center gap-2">
+            <i className="ri-user-follow-line text-lg" aria-hidden />
+            All vacancies for this role have been filled.
           </span>
         </div>
       ) : job.status !== "Active" ? (
