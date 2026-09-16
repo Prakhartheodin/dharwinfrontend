@@ -198,6 +198,8 @@ export default function CreateInternalMeetingModal({
               variant="meeting"
               title={createdMeeting.title}
               scheduledAt={createdMeeting.scheduledAt}
+              timezone={createdMeeting.timezone}
+              updatedAt={createdMeeting.updatedAt}
               durationMinutes={createdMeeting.durationMinutes}
               meetingId={createdMeeting.meetingId}
               status={createdMeeting.status === "active" ? "scheduled" : createdMeeting.status}
@@ -207,6 +209,11 @@ export default function CreateInternalMeetingModal({
               onClose={closeModal}
               onAnother={resetCreateMeetingForm}
               joinHref={personalMeetingUrl || shareMeetingUrl || "#"}
+              recurringInviteFootnote={
+                createdMeeting.seriesId
+                  ? "Future occurrences in this series are invited 12–24 hours before they start (daily vs weekly/monthly), so invitees may not receive every date in email yet."
+                  : null
+              }
             />
           ) : (
             <form

@@ -15,6 +15,7 @@ import {
   updateInternalMeeting,
   cancelInternalMeeting,
   deleteInternalMeeting,
+  resendInternalMeetingInvitations,
   type InternalMeeting,
   type CreateInternalMeetingPayload,
   type UpdateInternalMeetingPayload,
@@ -29,6 +30,7 @@ import { useConfirm } from "@/shared/components/ui/useConfirm"
 import { useRecurringScopeDialog } from "@/shared/components/meeting/RecurringScopeDialog"
 import { getMeetingActionVisibility } from "@/shared/lib/permissions"
 import { canJoinMeeting } from "@/shared/lib/dashboard/employeeDashboard"
+import Swal from "sweetalert2"
 
 const JOIN_CLOSED_TOOLTIP = "Opens 10 minutes before the meeting starts"
 
@@ -241,6 +243,7 @@ export default function InternalMeetingsClient() {
   const editStatusLabel = editStatusRaw === "cancelled" ? "cancelled" : "completed"
   const [editLoading, setEditLoading] = useState(false)
   const [editSaving, setEditSaving] = useState(false)
+  const [editResending, setEditResending] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
 
   const [viewMode, setViewMode] = useState<"table" | "week">("table")
@@ -693,6 +696,33 @@ export default function InternalMeetingsClient() {
     },
     [editMeetingId, editMeeting, editEmailInvites, editSeriesMode, refreshMeetingsList, closeEditModal]
   )
+
+  const handleResendInvitations = useCallback(async () => {
+    if (!editMeetingId || !editMeeting) return
+    setEditResending(true)
+    try {
+      const { sent } = await resendInternalMeetingInvitations(editMeetingId)
+      void Swal.fire({
+        toast: true,
+        position: "top-end",
+        icon: "success",
+        title: sent === 1 ? "Invitation resent" : `${sent} invitations resent`,
+        showConfirmButton: false,
+        timer: 3200,
+      })
+    } catch (err: any) {
+      void Swal.fire({
+        toast: true,
+        position: "top-end",
+        icon: "error",
+        title: err?.response?.data?.message || err?.message || "Failed to resend invitations",
+        showConfirmButton: false,
+        timer: 4000,
+      })
+    } finally {
+      setEditResending(false)
+    }
+  }, [editMeeting, editMeetingId])
 
   const handleDeleteEntireSeries = useCallback(
     async (row: InternalMeetingRow) => {
@@ -1616,16 +1646,35 @@ export default function InternalMeetingsClient() {
                     >
                       <option value="scheduled">Scheduled</option>
                       <option value="ended">Ended</option>
-                      <option value="cancelled">Cancelled</option>
+                      {editMeeting.seriesId ? null : <option value="cancelled">Cancelled</option>}
                     </select>
+                    {editMeeting.seriesId ? (
+                      <p className="mt-1.5 text-xs text-textmuted dark:text-white/50">
+                        To cancel a recurring meeting, use Cancel on the meetings list — that sends calendar cancellations and disables join links.
+                      </p>
+                    ) : null}
                   </div>
-                  <div className="flex flex-wrap gap-2 justify-end pt-4 border-t border-defaultborder dark:border-defaultborder/10">
-                    <button type="button" className="ti-btn ti-btn-light !py-2 !px-4 !text-sm" onClick={closeEditModal}>
-                      Cancel
-                    </button>
-                    <button type="submit" disabled={editSaving} className="ti-btn ti-btn-primary !py-2 !px-4 !text-sm">
-                      {editSaving ? "Saving..." : "Save changes"}
-                    </button>
+                  <div className="flex flex-wrap gap-2 justify-between pt-4 border-t border-defaultborder dark:border-defaultborder/10">
+                    {isScheduledMeetingStatus(editMeeting.status) ? (
+                      <button
+                        type="button"
+                        className="ti-btn ti-btn-outline-primary !py-2 !px-4 !text-sm"
+                        disabled={editResending || editSaving}
+                        onClick={() => void handleResendInvitations()}
+                      >
+                        {editResending ? "Sending…" : "Resend invitations"}
+                      </button>
+                    ) : (
+                      <span />
+                    )}
+                    <div className="flex flex-wrap gap-2 justify-end">
+                      <button type="button" className="ti-btn ti-btn-light !py-2 !px-4 !text-sm" onClick={closeEditModal}>
+                        Cancel
+                      </button>
+                      <button type="submit" disabled={editSaving} className="ti-btn ti-btn-primary !py-2 !px-4 !text-sm">
+                        {editSaving ? "Saving..." : "Save changes"}
+                      </button>
+                    </div>
                   </div>
                 </form>
               )}

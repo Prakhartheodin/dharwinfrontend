@@ -556,6 +556,8 @@ export default function CreateInterviewModal({
               variant="interview"
               title={createdMeeting.title}
               scheduledAt={createdMeeting.scheduledAt}
+              timezone={createdMeeting.timezone}
+              updatedAt={createdMeeting.updatedAt}
               durationMinutes={createdMeeting.durationMinutes}
               meetingId={createdMeeting.meetingId}
               status={createdMeeting.status}

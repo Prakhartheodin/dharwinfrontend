@@ -8,7 +8,7 @@ import { useAuth } from '@/shared/contexts/auth-context'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 import { appendJoinIdentityToUrl } from '@/shared/lib/join-room-url'
 import { useTable, useSortBy } from 'react-table'
-import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, deleteMeeting, exportInterviewsExcel, internalTransferEmployee, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload, type InterviewScorecard, type RubricCriterionId } from '@/shared/lib/api/meetings'
+import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, deleteMeeting, resendMeetingInvitations, exportInterviewsExcel, internalTransferEmployee, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload, type InterviewScorecard, type RubricCriterionId } from '@/shared/lib/api/meetings'
 import { buildInterviewExportParams, buildInterviewListParams } from '@/shared/lib/ats/interview-list-query'
 import ListPagination from '@/shared/components/ListPagination'
 import Swal from 'sweetalert2'
@@ -454,6 +454,7 @@ export default function InterviewsClient() {
   const [editMeeting, setEditMeeting] = useState<Meeting | null>(null)
   const [editLoading, setEditLoading] = useState(false)
   const [editSaving, setEditSaving] = useState(false)
+  const [editResending, setEditResending] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
   // Edit modal: candidate-specific job list (mirrors CreateInterviewModal)
   const [editJobsForCandidate, setEditJobsForCandidate] = useState<Job[]>([])
@@ -806,6 +807,33 @@ export default function InterviewsClient() {
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editMeetingId, editOpenNonce])
+
+  const handleResendInvitations = useCallback(async () => {
+    if (!editMeetingId || !editMeeting) return
+    setEditResending(true)
+    try {
+      const { sent } = await resendMeetingInvitations(editMeetingId)
+      void Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'success',
+        title: sent === 1 ? 'Invitation resent' : `${sent} invitations resent`,
+        showConfirmButton: false,
+        timer: 3200,
+      })
+    } catch (err: any) {
+      void Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'error',
+        title: err?.response?.data?.message || err?.message || 'Failed to resend invitations',
+        showConfirmButton: false,
+        timer: 4000,
+      })
+    } finally {
+      setEditResending(false)
+    }
+  }, [editMeeting, editMeetingId])
 
   const handleEditInterviewSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
@@ -3337,11 +3365,25 @@ export default function InterviewsClient() {
                       <option value="cancelled">Cancelled</option>
                     </select>
                   </div>
-                  <div className="flex flex-wrap gap-2 justify-end pt-4 border-t border-defaultborder dark:border-defaultborder/10">
-                    <button type="button" className="ti-btn ti-btn-light !py-2 !px-4 !text-sm font-medium" onClick={closeEditModal}>Cancel</button>
-                    <button type="submit" disabled={editSaving} className="ti-btn ti-btn-primary !py-2 !px-4 !text-sm font-medium">
-                      {editSaving ? (<><span className="animate-spin inline-block me-1.5 w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span> Saving...</>) : (<><i className="ri-check-line me-1.5 align-middle"></i> Save changes</>)}
-                    </button>
+                  <div className="flex flex-wrap gap-2 justify-between pt-4 border-t border-defaultborder dark:border-defaultborder/10">
+                    {(editMeeting.status || '').toLowerCase() === 'scheduled' ? (
+                      <button
+                        type="button"
+                        className="ti-btn ti-btn-outline-primary !py-2 !px-4 !text-sm font-medium"
+                        disabled={editResending || editSaving}
+                        onClick={() => void handleResendInvitations()}
+                      >
+                        {editResending ? 'Sending…' : 'Resend invitations'}
+                      </button>
+                    ) : (
+                      <span />
+                    )}
+                    <div className="flex flex-wrap gap-2 justify-end">
+                      <button type="button" className="ti-btn ti-btn-light !py-2 !px-4 !text-sm font-medium" onClick={closeEditModal}>Cancel</button>
+                      <button type="submit" disabled={editSaving} className="ti-btn ti-btn-primary !py-2 !px-4 !text-sm font-medium">
+                        {editSaving ? (<><span className="animate-spin inline-block me-1.5 w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span> Saving...</>) : (<><i className="ri-check-line me-1.5 align-middle"></i> Save changes</>)}
+                      </button>
+                    </div>
                   </div>
                 </form>
               )}

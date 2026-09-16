@@ -307,8 +307,10 @@ export default function ParticipantInvitesField({
           </span>
         </label>
         <div className="space-y-2">
-          {guestInvites.map(({ e: email, i }) => (
-            <div key={i} className="flex gap-2">
+          {guestInvites.map(({ e: email, i }) => {
+            const guestUser = userByEmail.get(norm(email))
+            return (
+            <div key={i} className="flex gap-2 items-center">
               <input
                 type="email"
                 placeholder="email@example.com"
@@ -320,6 +322,7 @@ export default function ParticipantInvitesField({
                 }}
                 className="form-control !py-2 !text-sm flex-1 border-defaultborder dark:border-defaultborder/10 rounded-lg"
               />
+              {guestUser?.muted ? <NotificationsOffBadge className="flex-shrink-0" title="Meeting invitation email is off for this user" /> : null}
               <button
                 type="button"
                 className="ti-btn ti-btn-light !py-2 !px-2"
@@ -329,7 +332,8 @@ export default function ParticipantInvitesField({
                 <i className="ri-close-line"></i>
               </button>
             </div>
-          ))}
+            )
+          })}
           <button
             type="button"
             className="ti-btn ti-btn-outline-light inline-flex w-full items-center justify-center gap-1.5 !py-2 !px-3 !text-sm sm:w-auto sm:justify-start"

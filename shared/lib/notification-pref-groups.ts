@@ -41,7 +41,12 @@ export const NOTIFICATION_PREF_GROUPS: {
     summary: "Calendar, reminders, and programmes",
     icon: "ri-calendar-event-line",
     items: [
-      { key: "meetingInvitations", inAppKey: "meetingInvitationsInApp", label: "Meeting invitations", description: "Invites and schedule updates" },
+      {
+        key: "meetingInvitations",
+        inAppKey: "meetingInvitationsInApp",
+        label: "Meeting invitations",
+        description: "Invites, reschedules, and meeting cancellations (uses this preference, not reminders)",
+      },
       { key: "meetingReminders", inAppKey: "meetingRemindersInApp", label: "Meeting reminders", description: "Alerts before your sessions" },
       { key: "certificates", inAppKey: "certificatesInApp", label: "Certificates", description: "Issued credentials and completions" },
       { key: "courseUpdates", inAppKey: "courseUpdatesInApp", label: "Course / training updates", description: "Modules, deadlines, and programme news" },

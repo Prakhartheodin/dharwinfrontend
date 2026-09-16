@@ -6,6 +6,10 @@ import { format, isValid } from "date-fns"
 export interface MeetingCreatedSuccessProps {
   title: string
   scheduledAt?: string | Date | null
+  /** IANA zone for displaying the scheduled time (falls back to viewer local). */
+  timezone?: string | null
+  /** Drives ICS SEQUENCE — must match backend `icsSequence(updatedAt)`. */
+  updatedAt?: string | Date | null
   durationMinutes?: number | null
   meetingId?: string | null
   status?: string | null
@@ -16,6 +20,8 @@ export interface MeetingCreatedSuccessProps {
   onAnother: () => void
   joinHref?: string
   variant?: "interview" | "meeting"
+  /** Shown under the schedule chips for recurring internal meetings. */
+  recurringInviteFootnote?: string | null
 }
 
 function safeFormat(dt: string | Date | null | undefined, fmt: string): string | null {
@@ -50,6 +56,24 @@ function escapeIcs(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n")
 }
 
+function icsSequenceFromUpdatedAt(updatedAt?: string | Date | null): number {
+  if (!updatedAt) return 0
+  const t = new Date(updatedAt).getTime()
+  return Number.isFinite(t) ? Math.floor(t / 1000) : 0
+}
+
+function formatInTimezone(dt: string | Date | null | undefined, timezone: string | null | undefined, options: Intl.DateTimeFormatOptions): string | null {
+  if (!dt) return null
+  const d = dt instanceof Date ? dt : new Date(dt)
+  if (!isValid(d)) return null
+  const tz = timezone?.trim()
+  try {
+    return d.toLocaleString("en-US", tz ? { ...options, timeZone: tz } : options)
+  } catch {
+    return d.toLocaleString("en-US", options)
+  }
+}
+
 function buildIcs({
   uid,
   title,
@@ -57,6 +81,7 @@ function buildIcs({
   durationMinutes,
   url,
   description,
+  sequence,
 }: {
   uid: string
   title: string
@@ -64,6 +89,7 @@ function buildIcs({
   durationMinutes: number
   url?: string
   description?: string
+  sequence: number
 }): string {
   const end = new Date(start.getTime() + durationMinutes * 60_000)
   const lines = [
@@ -74,7 +100,7 @@ function buildIcs({
     "METHOD:REQUEST",
     "BEGIN:VEVENT",
     `UID:${escapeIcs(uid)}`,
-    "SEQUENCE:0",
+    `SEQUENCE:${sequence}`,
     `DTSTAMP:${icsStamp(new Date())}`,
     `DTSTART:${icsStamp(start)}`,
     `DTEND:${icsStamp(end)}`,
@@ -193,6 +219,8 @@ function MetaCell({ label, value, mono = false }: { label: string; value: React.
 export default function MeetingCreatedSuccess({
   title,
   scheduledAt,
+  timezone,
+  updatedAt,
   durationMinutes,
   meetingId,
   status,
@@ -203,9 +231,14 @@ export default function MeetingCreatedSuccess({
   onAnother,
   joinHref,
   variant = "meeting",
+  recurringInviteFootnote,
 }: MeetingCreatedSuccessProps) {
-  const dateText = safeFormat(scheduledAt, "EEE · MMM d")
-  const timeText = safeFormat(scheduledAt, "h:mm a")
+  const dateText =
+    formatInTimezone(scheduledAt, timezone, { weekday: "short", month: "short", day: "numeric" }) ??
+    safeFormat(scheduledAt, "EEE · MMM d")
+  const timeText =
+    formatInTimezone(scheduledAt, timezone, { hour: "numeric", minute: "2-digit", hour12: true }) ??
+    safeFormat(scheduledAt, "h:mm a")
   const showPersonal = !!personalUrl && personalUrl !== shareUrl
   const hostLabels = useMemo(
     () =>
@@ -254,10 +287,11 @@ export default function MeetingCreatedSuccess({
       durationMinutes,
       url: personalUrl || shareUrl,
       description: showPersonal ? `Join: ${personalUrl}\nShare: ${shareUrl}` : `Join: ${shareUrl}`,
+      sequence: icsSequenceFromUpdatedAt(updatedAt ?? scheduledAt),
     })
     const safeName = title.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "meeting"
     downloadIcs(`${safeName}.ics`, ics)
-  }, [durationMinutes, meetingId, personalUrl, shareUrl, showPersonal, startDate, title])
+  }, [durationMinutes, meetingId, personalUrl, scheduledAt, shareUrl, showPersonal, startDate, title, updatedAt])
 
   const joinHrefFinal = joinHref || personalUrl || shareUrl || "#"
 
@@ -315,8 +349,19 @@ export default function MeetingCreatedSuccess({
                     {durationMinutes} min
                   </span>
                 )}
+                {timezone?.trim() ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-defaultborder/60 bg-white/60 px-2.5 py-1 text-[0.65rem] font-medium text-textmuted shadow-sm dark:border-defaultborder/20 dark:bg-white/5 dark:text-white/60">
+                    <i className="ri-earth-line text-[0.85rem]" />
+                    {timezone.trim()}
+                  </span>
+                ) : null}
               </div>
             )}
+            {recurringInviteFootnote ? (
+              <p className="mx-auto mt-2 max-w-[34rem] text-[0.7rem] leading-snug text-textmuted dark:text-white/50">
+                {recurringInviteFootnote}
+              </p>
+            ) : null}
           </div>
         </div>
 
