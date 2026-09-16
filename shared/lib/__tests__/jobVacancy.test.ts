@@ -1,5 +1,40 @@
 import { describe, it, expect } from "vitest";
-import { describeVacancyFill } from "../ats/jobVacancy";
+import { describeVacancyFill, validateVacanciesInput } from "../ats/jobVacancy";
+
+describe("validateVacanciesInput", () => {
+  it("accepts a whole number of 1 or more", () => {
+    expect(validateVacanciesInput("1")).toEqual({ ok: true, value: 1 });
+    expect(validateVacanciesInput("25")).toEqual({ ok: true, value: 25 });
+    expect(validateVacanciesInput(10000)).toEqual({ ok: true, value: 10000 });
+  });
+
+  it("rejects a blank field, which used to save as no cap at all", () => {
+    for (const blank of ["", "   ", null, undefined]) {
+      const r = validateVacanciesInput(blank);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.message).toMatch(/required/i);
+    }
+  });
+
+  it("rejects zero and negatives, and points at the status field instead", () => {
+    // "0 openings" reads like a way to pause hiring; closing the job is the real switch.
+    for (const bad of ["0", "-1", -5]) {
+      const r = validateVacanciesInput(bad);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.message).toMatch(/Closed/);
+    }
+  });
+
+  it("rejects fractions", () => {
+    expect(validateVacanciesInput("1.5").ok).toBe(false);
+  });
+
+  it("rejects above the schema cap rather than letting the API 400", () => {
+    const r = validateVacanciesInput("10001");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toMatch(/10,000/);
+  });
+});
 
 describe("describeVacancyFill", () => {
   it("shows a bare count when the job declares no vacancies", () => {

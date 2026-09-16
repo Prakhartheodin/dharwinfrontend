@@ -42,6 +42,7 @@ function splitRequirementsFromDescription(rawHtml: string): { description: strin
   return { description: before, requirements: after }
 }
 import { resolveTemplateVars, type TemplateVarContext } from '@/shared/lib/ats/templateVars'
+import { validateVacanciesInput } from '@/shared/lib/ats/jobVacancy'
 import { PHONE_COUNTRIES, getPhoneCountry, getPhoneValidationError, formatPhoneForApi } from '@/shared/lib/phoneCountries'
 import { PhoneCountrySelect } from '@/shared/components/PhoneCountrySelect'
 import { usePmReactSelectStyles } from '@/shared/hooks/usePmReactSelectStyles'
@@ -426,12 +427,15 @@ export default function EditJobClient() {
 
       const minExpNum = formData.minExperience ? Number(formData.minExperience) : undefined
       const maxExpNum = formData.maxExperience ? Number(formData.maxExperience) : undefined
-      const vacanciesNum = formData.vacancies ? Number(formData.vacancies) : undefined
-      if (vacanciesNum != null && (!Number.isInteger(vacanciesNum) || vacanciesNum < 1)) {
-        Swal.fire({ icon: 'error', title: 'Validation', text: 'Vacancies must be a whole number ≥ 1.' })
+      const vacancies = validateVacanciesInput(formData.vacancies)
+      if (!vacancies.ok) {
+        Swal.fire({ icon: 'error', title: 'Check vacancies', text: vacancies.message })
         setSubmitting(false)
+        // Put the cursor on the field the message is about, so the fix is one keystroke away.
+        document.getElementById('vacancies')?.focus()
         return
       }
+      const vacanciesNum = vacancies.value
 
       const payload: UpdateJobPayload = {
         title: formData.jobTitle.trim(),
@@ -457,7 +461,7 @@ export default function EditJobClient() {
         experienceLevel: formData.experienceLevel?.value || undefined,
         minExperience: Number.isFinite(minExpNum) ? minExpNum : null,
         maxExperience: Number.isFinite(maxExpNum) ? maxExpNum : null,
-        vacancies: Number.isFinite(vacanciesNum) ? vacanciesNum : null,
+        vacancies: vacanciesNum,
         applicationDeadline: formData.applicationDeadline
           ? new Date(formData.applicationDeadline).toISOString()
           : null,
@@ -604,7 +608,9 @@ export default function EditJobClient() {
                             />
                           </div>
                           <div className="xl:col-span-3 md:col-span-6 col-span-12">
-                            <label htmlFor="vacancies" className="form-label">Vacancies / Openings</label>
+                            <label htmlFor="vacancies" className="form-label">
+                              Vacancies / Openings <span className="text-danger">*</span>
+                            </label>
                             <input
                               type="number"
                               inputMode="numeric"
@@ -614,6 +620,7 @@ export default function EditJobClient() {
                               min={1}
                               max={10000}
                               step={1}
+                              required
                               value={formData.vacancies}
                               onChange={(e) =>
                                 handleInputChange('vacancies', e.target.value.replace(/\D/g, ''))
