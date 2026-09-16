@@ -212,6 +212,8 @@ export type TelephonySdkTokenResponse = {
   username: string;
   identity?: string;
   provider?: TelephonyProvider;
+  /** Twilio Voice JWT lifetime in seconds (typically 3600). */
+  ttl?: number;
 };
 
 export async function getTelephonySdkToken(): Promise<TelephonySdkTokenResponse> {

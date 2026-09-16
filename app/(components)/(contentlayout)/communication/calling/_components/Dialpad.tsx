@@ -88,6 +88,21 @@ function getTwilioCallParam(call: TwilioCall, key: string): string {
   return fromCustom || c.parameters?.[key] || "";
 }
 
+/** Twilio Voice SDK AuthorizationErrors.AccessTokenExpired */
+const TWILIO_ACCESS_TOKEN_EXPIRED = 20104;
+
+function isTwilioAccessTokenExpiredError(err: unknown): boolean {
+  return Boolean(err && typeof err === "object" && (err as { code?: number }).code === TWILIO_ACCESS_TOKEN_EXPIRED);
+}
+
+async function mintTwilioVoiceAccessToken(): Promise<string> {
+  const tokenRes = await getTelephonySdkToken();
+  if (tokenRes.provider !== "twilio" || !tokenRes.token) {
+    throw new Error("Telephony provider is not Twilio or token missing");
+  }
+  return tokenRes.token;
+}
+
 /**
  * Two-mode telephony dialer (Plivo or Twilio via backend facade):
  *  - browser  : WebRTC softphone (browser mic/speakers).
@@ -130,6 +145,7 @@ export default function Dialpad({
   // WebRTC softphone state.
   const plivoRef = useRef<any>(null);
   const twilioDeviceRef = useRef<import("@twilio/voice-sdk").Device | null>(null);
+  const twilioTokenRefreshRef = useRef<Promise<void> | null>(null);
   const twilioCallRef = useRef<TwilioCall | null>(null);
   const incomingTwilioCallRef = useRef<TwilioCall | null>(null);
   const [webrtc, setWebrtc] = useState<WebrtcStatus>("idle");
@@ -272,6 +288,23 @@ export default function Dialpad({
   // --- WebRTC softphone --------------------------------------------------------
   const connectingRef = useRef(false);
 
+  const refreshTwilioDeviceToken = useCallback(async (device: import("@twilio/voice-sdk").Device) => {
+    if (twilioTokenRefreshRef.current) {
+      await twilioTokenRefreshRef.current;
+      return;
+    }
+    const job = (async () => {
+      const token = await mintTwilioVoiceAccessToken();
+      await device.updateToken(token);
+    })();
+    twilioTokenRefreshRef.current = job;
+    try {
+      await job;
+    } finally {
+      twilioTokenRefreshRef.current = null;
+    }
+  }, []);
+
   const resetTwilioCallState = useCallback((call?: TwilioCall | null) => {
     if (!call || twilioCallRef.current === call) twilioCallRef.current = null;
     if (!call || incomingTwilioCallRef.current === call) incomingTwilioCallRef.current = null;
@@ -393,7 +426,34 @@ export default function Dialpad({
           setWebrtc("ready");
         };
         device.on("registered", markReady);
+        device.on("tokenWillExpire", () => {
+          void refreshTwilioDeviceToken(device).catch(() => {
+            setWebrtc("error");
+            setFeedback({
+              kind: "err",
+              msg: "Softphone session expired. Click Retry to reconnect.",
+            });
+          });
+        });
         device.on("error", (err) => {
+          if (isTwilioAccessTokenExpiredError(err)) {
+            void refreshTwilioDeviceToken(device)
+              .then(async () => {
+                if (device.state !== "registered") await device.register();
+                setWebrtc("ready");
+                setFeedback(null);
+              })
+              .catch(() => {
+                window.clearTimeout(timeout);
+                connectingRef.current = false;
+                setWebrtc("error");
+                setFeedback({
+                  kind: "err",
+                  msg: "Softphone session expired. Click Retry to reconnect.",
+                });
+              });
+            return;
+          }
           window.clearTimeout(timeout);
           connectingRef.current = false;
           setWebrtc("error");
@@ -490,7 +550,7 @@ export default function Dialpad({
       setWebrtc("error");
       setFeedback({ kind: "err", msg: apiErr(e, "Could not start the softphone") });
     }
-  }, [attachTwilioCallEvents, callerId, reportDialerCallOutcome]);
+  }, [attachTwilioCallEvents, callerId, refreshTwilioDeviceToken, reportDialerCallOutcome]);
 
   // Connect on entering browser mode; login persists across toggles.
   useEffect(() => {
