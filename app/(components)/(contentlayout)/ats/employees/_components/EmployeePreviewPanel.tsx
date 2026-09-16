@@ -12,6 +12,7 @@ import {
   normalizeCandidateSkillsStructured,
   type CandidateDocument,
 } from "@/shared/lib/api/employees"
+import { candidateDocumentProfileDisplayName } from "@/shared/components/candidates/VersionedDocumentSlot"
 
 const DatePicker = dynamic(() => import("react-datepicker").then((mod) => mod.default), { ssr: false })
 
@@ -700,7 +701,7 @@ export default function EmployeePreviewPanel({
                         return Array.isArray(docsList) && docsList.length > 0 ? (
                         <div className="space-y-3">
                           {docsList.map((doc: CandidateDocument & { label?: string; originalName?: string }, index: number) => {
-                            const label = doc?.label || doc?.originalName || `Document ${index + 1}`
+                            const label = candidateDocumentProfileDisplayName(doc, `Document ${index + 1}`)
                             const viewable = candidateDocumentCanView(doc)
                             return (
                             <div key={index} className="flex items-center justify-between gap-3 p-3 border border-gray-200 dark:border-gray-700 rounded-lg">

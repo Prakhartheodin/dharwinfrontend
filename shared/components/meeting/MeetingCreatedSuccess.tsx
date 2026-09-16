@@ -69,11 +69,12 @@ function buildIcs({
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Dharwin//Meeting//EN",
+    "PRODID:-//Dharwin Business Solutions//Meetings//EN",
     "CALSCALE:GREGORIAN",
-    "METHOD:PUBLISH",
+    "METHOD:REQUEST",
     "BEGIN:VEVENT",
-    `UID:${escapeIcs(uid)}@dharwin`,
+    `UID:${escapeIcs(uid)}`,
+    "SEQUENCE:0",
     `DTSTAMP:${icsStamp(new Date())}`,
     `DTSTART:${icsStamp(start)}`,
     `DTEND:${icsStamp(end)}`,
@@ -245,8 +246,9 @@ export default function MeetingCreatedSuccess({
   const canAddToCalendar = !!startDate && typeof durationMinutes === "number" && durationMinutes > 0
   const handleAddToCalendar = useCallback(() => {
     if (!startDate || !durationMinutes) return
+    const uid = meetingId ? `meeting-${meetingId}@dharwin` : `${Date.now()}@dharwin`
     const ics = buildIcs({
-      uid: meetingId || `${Date.now()}`,
+      uid,
       title,
       start: startDate,
       durationMinutes,

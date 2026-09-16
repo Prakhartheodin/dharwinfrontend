@@ -5,6 +5,7 @@ import {
   type CandidateDocumentVersion,
   type DocumentVersionSlot,
   addCandidateDocumentVersion,
+  restoreCandidateDocumentVersion,
   deleteCandidateDocumentVersion,
   getDocumentVersionDownloadUrl,
   isMongoObjectId,
@@ -100,6 +101,53 @@ function versionDisplayName(version: CandidateDocumentVersion, slot: DocumentVer
   return version.originalName || SLOT_UPLOAD_LABELS[slot] || `Version ${version.version}`;
 }
 
+const GENERIC_SLOT_LABELS = new Set<string>(Object.values(SLOT_UPLOAD_LABELS));
+
+/** Profile / read views: prefer the stored filename over generic slot labels like "CV/Resume". */
+export function candidateDocumentProfileDisplayName(
+  doc: VersionedDocumentLike & { originalName?: string; type?: string },
+  fallback = "Document"
+): string {
+  const originalName = String(doc.originalName || "").trim();
+  if (originalName) return originalName;
+  const label = String(doc.label || "").trim();
+  const type = String(doc.type || "").trim();
+  if (label && !GENERIC_SLOT_LABELS.has(label)) return label;
+  if (type && !GENERIC_SLOT_LABELS.has(type)) return type;
+  const slot = inferDocumentVersionSlot(doc);
+  if (slot) return SLOT_TITLES[slot];
+  return label || type || fallback;
+}
+
+/** Client-side guard before PATCH restore — mirrors backend no-op when already active. */
+export function isDocumentVersionAlreadyCurrent(
+  currentVersion: number | null,
+  targetVersion: number,
+  currentKey?: string | null,
+  targetKey?: string | null
+): boolean {
+  if (currentVersion != null && currentVersion === targetVersion) return true;
+  const ck = String(currentKey || "").trim();
+  const tk = String(targetKey || "").trim();
+  return Boolean(ck && tk && ck === tk);
+}
+
+function formatCurrentVersionMeta(
+  versionNumber: number,
+  savedCount: number,
+  createdAt?: string,
+  createdByName?: string | null,
+  size?: number | null
+): string {
+  const parts = [
+    savedCount <= 1 ? `Version ${versionNumber}` : `Version ${versionNumber} · ${savedCount} saved`,
+    `Uploaded ${formatVersionDate(createdAt)}`,
+    createdByName ? `by ${createdByName}` : null,
+    formatBytes(size),
+  ];
+  return parts.filter(Boolean).join(" · ");
+}
+
 /**
  * Every failure here used to read "Upload failed. Check the file type and try again.", which sent
  * people hunting for a file problem when the server had actually answered 403.
@@ -151,6 +199,7 @@ export function VersionedDocumentSlot({
 }: VersionedDocumentSlotProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const promoteInFlightRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [versions, setVersions] = useState<CandidateDocumentVersion[]>([]);
@@ -159,6 +208,7 @@ export function VersionedDocumentSlot({
   const [uploading, setUploading] = useState(false);
   const [downloadingVersion, setDownloadingVersion] = useState<number | null>(null);
   const [deletingVersion, setDeletingVersion] = useState<number | null>(null);
+  const [promotingVersion, setPromotingVersion] = useState<number | null>(null);
   const [pendingDeleteVersion, setPendingDeleteVersion] = useState<number | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -166,7 +216,7 @@ export function VersionedDocumentSlot({
   const [stagedFile, setStagedFile] = useState<File | null>(null);
   const [versionName, setVersionName] = useState("");
 
-  const displayTitle = title || SLOT_TITLES[slot];
+  const slotContextLabel = title || SLOT_TITLES[slot];
 
   const loadVersions = useCallback(async () => {
     if (!isMongoObjectId(candidateId)) {
@@ -203,6 +253,8 @@ export function VersionedDocumentSlot({
   const fallbackName = fallbackDocument?.originalName || fallbackDocument?.label || null;
   const hasFallbackOnly = !current && Boolean(fallbackDocument?.url);
   const currentName = current ? versionDisplayName(current, slot) : fallbackName;
+  const primaryHeading = currentName || slotContextLabel;
+  const showSlotContextBadge = Boolean(currentName);
   const nextVersionNumber = (versions.length > 0 ? Math.max(...versions.map((v) => v.version)) : 0) + 1;
 
   const clearStaged = useCallback(() => {
@@ -224,6 +276,34 @@ export function VersionedDocumentSlot({
     }
   };
 
+  const handlePromote = async (row: CandidateDocumentVersion) => {
+    if (uploading || promoteInFlightRef.current) return;
+    if (
+      isDocumentVersionAlreadyCurrent(
+        currentVersion,
+        row.version,
+        current?.key,
+        row.key
+      )
+    ) {
+      return;
+    }
+    promoteInFlightRef.current = true;
+    setPromotingVersion(row.version);
+    setDeleteError(null);
+    try {
+      const result = await restoreCandidateDocumentVersion(candidateId, slot, row.version);
+      setCurrentVersion(result.currentVersion);
+      await loadVersions();
+      await onUpdated?.();
+    } catch (err) {
+      setDeleteError(apiErrorMessage(err, "Could not set this version as current. Try again."));
+    } finally {
+      promoteInFlightRef.current = false;
+      setPromotingVersion(null);
+    }
+  };
+
   const handleDelete = async (version: number) => {
     setDeletingVersion(version);
     setDeleteError(null);
@@ -241,10 +321,14 @@ export function VersionedDocumentSlot({
     }
   };
 
-  const renderVersionActions = (version: number, labelPrefix: string) => {
+  const renderVersionActions = (version: number, labelPrefix: string, options?: { isCurrent?: boolean }) => {
+    const isCurrent = options?.isCurrent ?? false;
     const isDownloading = downloadingVersion === version;
     const isDeleting = deletingVersion === version;
+    const isPromoting = promotingVersion === version;
+    const promoteBlocked = uploading || promotingVersion !== null;
     const isConfirming = pendingDeleteVersion === version;
+    const row = versions.find((v) => v.version === version);
 
     if (isConfirming) {
       return (
@@ -260,8 +344,8 @@ export function VersionedDocumentSlot({
             type="button"
             className="ti-btn ti-btn-danger !min-h-[44px] !py-1.5 !px-3 !text-xs"
             onClick={() => void handleDelete(version)}
-            disabled={isDeleting}
-            aria-label={`Confirm remove ${labelPrefix} of ${displayTitle}`}
+            disabled={isDeleting || isPromoting}
+            aria-label={`Confirm remove ${labelPrefix} of ${slotContextLabel}`}
           >
             {isDeleting ? "Removing…" : "Yes, remove"}
           </button>
@@ -270,7 +354,7 @@ export function VersionedDocumentSlot({
             className="ti-btn ti-btn-outline-secondary !min-h-[44px] !py-1.5 !px-3 !text-xs"
             onClick={() => setPendingDeleteVersion(null)}
             disabled={isDeleting}
-            aria-label={`Cancel remove ${labelPrefix} of ${displayTitle}`}
+            aria-label={`Cancel remove ${labelPrefix} of ${slotContextLabel}`}
           >
             Cancel
           </button>
@@ -284,11 +368,22 @@ export function VersionedDocumentSlot({
           type="button"
           className="ti-btn ti-btn-outline-primary !min-h-[44px] !py-1.5 !px-3 !text-xs"
           onClick={() => void handleDownload(version)}
-          disabled={isDownloading || isDeleting}
-          aria-label={`Download ${labelPrefix} of ${displayTitle}`}
+          disabled={isDownloading || isDeleting || isPromoting}
+          aria-label={`Download ${labelPrefix} of ${slotContextLabel}`}
         >
           {isDownloading ? "Downloading…" : "Download"}
         </button>
+        {!isCurrent && row ? (
+          <button
+            type="button"
+            className="ti-btn ti-btn-outline-secondary !min-h-[44px] !py-1.5 !px-3 !text-xs"
+            onClick={() => void handlePromote(row)}
+            disabled={isDownloading || isDeleting || isPromoting || promoteBlocked}
+            aria-label={`Use version ${version} as current ${slotContextLabel}`}
+          >
+            {isPromoting ? "Switching…" : "Use as current"}
+          </button>
+        ) : null}
         <button
           type="button"
           className="ti-btn ti-btn-outline-danger !min-h-[44px] !py-1.5 !px-3 !text-xs"
@@ -296,8 +391,8 @@ export function VersionedDocumentSlot({
             setPendingDeleteVersion(version);
             setDeleteError(null);
           }}
-          disabled={isDownloading || isDeleting}
-          aria-label={`Remove ${labelPrefix} of ${displayTitle}`}
+          disabled={isDownloading || isDeleting || isPromoting}
+          aria-label={`Remove ${labelPrefix} of ${slotContextLabel}`}
         >
           Remove
         </button>
@@ -348,24 +443,32 @@ export function VersionedDocumentSlot({
     <section
       id={sectionId}
       className="rounded-sm border border-defaultborder/60 bg-gray-50/80 p-4 dark:border-white/10 dark:bg-gray-800/40 scroll-mt-4"
-      aria-label={`${displayTitle} versions`}
+      aria-label={`${slotContextLabel} versions`}
     >
       <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h6
-            ref={headingRef}
-            tabIndex={-1}
-            className="text-sm font-semibold text-gray-800 outline-none dark:text-gray-200"
-          >
-            {displayTitle}
-          </h6>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h6
+              ref={headingRef}
+              tabIndex={-1}
+              className="truncate text-sm font-semibold text-gray-800 outline-none dark:text-gray-200"
+              title={primaryHeading}
+            >
+              {primaryHeading}
+            </h6>
+            {showSlotContextBadge ? (
+              <span className="inline-flex shrink-0 items-center rounded-full bg-gray-500/10 px-2 py-0.5 text-[0.65rem] font-medium text-gray-600 dark:text-gray-300">
+                {slotContextLabel}
+              </span>
+            ) : null}
+          </div>
           <p className="mb-0 text-xs text-gray-500 dark:text-gray-400">
-            Replacing the file saves a new version and keeps prior uploads.
+            Replacing the file saves a new version and keeps prior uploads. Use as current switches to a saved copy without uploading again.
           </p>
         </div>
         {current ? (
           <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
-            Version {current.version}
+            Version {currentVersion ?? current.version}
           </span>
         ) : hasFallbackOnly ? (
           <span className="inline-flex items-center rounded-full bg-gray-500/10 px-2.5 py-0.5 text-xs font-medium text-gray-600 dark:text-gray-300">
@@ -397,17 +500,16 @@ export function VersionedDocumentSlot({
                     {versionDisplayName(current, slot)}
                   </p>
                   <p className="mb-0 text-xs text-gray-500 dark:text-gray-400">
-                    {[
-                      `Version ${current.version} of ${versions.length}`,
-                      `Uploaded ${formatVersionDate(current.createdAt)}`,
-                      current.createdByName ? `by ${current.createdByName}` : null,
-                      formatBytes(current.size),
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
+                    {formatCurrentVersionMeta(
+                      currentVersion ?? current.version,
+                      versions.length,
+                      current.createdAt,
+                      current.createdByName,
+                      current.size
+                    )}
                   </p>
                 </div>
-                {renderVersionActions(current.version, "current version")}
+                {renderVersionActions(current.version, "current version", { isCurrent: true })}
               </div>
             </div>
           ) : hasFallbackOnly ? (
@@ -416,9 +518,9 @@ export function VersionedDocumentSlot({
                 <div className="min-w-0">
                   <p
                     className="mb-0 truncate text-sm font-medium text-gray-800 dark:text-gray-100"
-                    title={fallbackName || displayTitle}
+                    title={fallbackName || slotContextLabel}
                   >
-                    {fallbackName || displayTitle}
+                    {fallbackName || slotContextLabel}
                   </p>
                   <p className="mb-0 text-xs text-gray-500 dark:text-gray-400">
                     Existing file on profile. Replacing it keeps this copy as version 1.
@@ -432,7 +534,7 @@ export function VersionedDocumentSlot({
                       window.open(resolveDownloadUrlForBrowser(fallbackDocument.url), "_blank", "noopener,noreferrer");
                     }
                   }}
-                  aria-label={`Download current ${displayTitle}`}
+                  aria-label={`Download current ${slotContextLabel}`}
                 >
                   Download
                 </button>
@@ -505,7 +607,7 @@ export function VersionedDocumentSlot({
         <div
           className="rounded-sm border border-primary/40 bg-primary/5 p-3"
           role="group"
-          aria-label={`Confirm new version of ${displayTitle}`}
+          aria-label={`Confirm new version of ${slotContextLabel}`}
         >
           <p className="mb-2 text-sm text-gray-800 dark:text-gray-100">
             {currentName ? (
@@ -588,7 +690,7 @@ export function VersionedDocumentSlot({
       ) : (
         <div>
           <label className="form-label" htmlFor={`${slot}-replace-file`}>
-            {current || hasFallbackOnly ? `Replace ${displayTitle.toLowerCase()}` : `Upload ${displayTitle.toLowerCase()}`}
+            {current || hasFallbackOnly ? `Replace ${slotContextLabel.toLowerCase()}` : `Upload ${slotContextLabel.toLowerCase()}`}
           </label>
           <input
             ref={fileInputRef}
@@ -600,6 +702,7 @@ export function VersionedDocumentSlot({
               const file = event.target.files?.[0];
               if (file) handleStageFile(file);
             }}
+            disabled={uploading || promotingVersion !== null}
           />
           <small className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
             Supported formats: PDF, DOC, DOCX · up to {formatBytes(MAX_UPLOAD_BYTES)}. You can review before saving.

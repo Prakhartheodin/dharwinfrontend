@@ -21,6 +21,11 @@ import {
 } from "@/shared/lib/employee-profile-display";
 import { formatUserRoleDisplayName } from "@/shared/lib/user-role-display";
 import Swal from "sweetalert2";
+import {
+  candidateDocumentProfileDisplayName,
+  inferDocumentVersionSlot,
+} from "@/shared/components/candidates/VersionedDocumentSlot";
+import { VERSIONED_DOC_SLOT_IDS } from "@/shared/components/candidates/documentUploadUx";
 
 function normalizeSocialUrlForHref(raw: string): string {
   const u = raw.trim();
@@ -693,14 +698,30 @@ function DynamicProfileView({
                 Documents
               </Eyebrow>
               <div className="space-y-1.5">
-                {candidate.documents.map((doc, index) => (
+                {candidate.documents.map((doc, index) => {
+                  const profileLabel = candidateDocumentProfileDisplayName(doc, `Document ${index + 1}`);
+                  const versionedSlot = inferDocumentVersionSlot(doc);
+                  const manageHref = versionedSlot
+                    ? `/settings/personal-information/#${VERSIONED_DOC_SLOT_IDS[versionedSlot]}`
+                    : "/settings/personal-information/";
+                  return (
                   <div
                     key={index}
                     className="flex items-center justify-between gap-2 rounded-lg border border-defaultborder/60 bg-white/70 px-3 py-2 dark:bg-bodybg/60 dark:border-defaultborder/15"
                   >
-                    <span className="inline-flex items-center gap-2 min-w-0 text-[0.78rem]">
-                      <i className="ri-file-line text-info shrink-0" />
-                      <span className="truncate">{doc.label || doc.type || `Document ${index + 1}`}</span>
+                    <span className="inline-flex min-w-0 flex-col gap-0.5 text-[0.78rem]">
+                      <span className="inline-flex items-center gap-2 min-w-0">
+                        <i className="ri-file-line text-info shrink-0" />
+                        <span className="truncate font-medium" title={profileLabel}>{profileLabel}</span>
+                      </span>
+                      {versionedSlot ? (
+                        <Link
+                          href={manageHref}
+                          className="ms-6 text-[0.65rem] font-medium text-primary hover:underline"
+                        >
+                          Versions &amp; replace
+                        </Link>
+                      ) : null}
                     </span>
                     {candidateIdForDocs && (doc.key || doc.url) ? (
                       <button
@@ -714,13 +735,14 @@ function DynamicProfileView({
                             Swal.fire("Error", "Could not open document.", "error");
                           }
                         }}
-                        aria-label={`Open ${doc.label || doc.type || "document"}`}
+                        aria-label={`Open ${profileLabel}`}
                       >
                         <i className="ri-external-link-line" />
                       </button>
                     ) : null}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </SectionCard>
           )}

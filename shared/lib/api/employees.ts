@@ -440,6 +440,29 @@ export async function addCandidateDocumentVersion(
   return data.data;
 }
 
+export async function restoreCandidateDocumentVersion(
+  candidateId: string,
+  slot: DocumentVersionSlot,
+  version: number
+): Promise<{
+  slot: DocumentVersionSlot;
+  restored: boolean;
+  currentVersion: number;
+  version: CandidateDocumentVersion;
+}> {
+  const { data } = await apiClient.patch<{
+    success: boolean;
+    data: {
+      slot: DocumentVersionSlot;
+      restored: boolean;
+      currentVersion: number;
+      version: CandidateDocumentVersion;
+    };
+  }>(`/employees/documents/${candidateId}/versions/${slot}/${version}`);
+  if (!data?.success || !data?.data) throw new Error("Failed to restore document version");
+  return data.data;
+}
+
 export async function getDocumentVersionDownloadUrl(
   candidateId: string,
   slot: DocumentVersionSlot,

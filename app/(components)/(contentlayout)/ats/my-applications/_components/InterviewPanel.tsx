@@ -174,7 +174,7 @@ export default function InterviewPanel({ application, user, now }: InterviewPane
 
           {state.kind === "cancelled" ? (
             <p className="text-sm text-defaulttextcolor/65 dark:text-white/55" role="status">
-              This interview was cancelled. Watch for an updated invite from your recruiter.
+              This interview was cancelled. Contact your recruiter if you have questions.
             </p>
           ) : null}
 
