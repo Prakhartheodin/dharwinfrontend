@@ -13,6 +13,7 @@ export type NotificationType =
   | "course"
   | "certificate"
   | "job_application"
+  | "job_filled"
   | "project"
   | "account"
   | "recruiter"
