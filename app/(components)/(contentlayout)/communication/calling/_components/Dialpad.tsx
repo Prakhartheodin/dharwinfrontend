@@ -95,12 +95,20 @@ function isTwilioAccessTokenExpiredError(err: unknown): boolean {
   return Boolean(err && typeof err === "object" && (err as { code?: number }).code === TWILIO_ACCESS_TOKEN_EXPIRED);
 }
 
-async function mintTwilioVoiceAccessToken(): Promise<string> {
+/** Twilio Voice JWTs default to 1h; fall back to that when the server does not say. */
+const TWILIO_DEFAULT_TOKEN_TTL_S = 3600;
+/** Refresh this far ahead of expiry — comfortably more than Twilio's own 3-minute warning. */
+const TWILIO_TOKEN_REFRESH_LEAD_MS = 5 * 60 * 1000;
+/** Never schedule a refresh tighter than this, so a short TTL cannot spin. */
+const TWILIO_TOKEN_MIN_REFRESH_MS = 30 * 1000;
+
+async function mintTwilioVoiceAccessToken(): Promise<{ token: string; ttlMs: number }> {
   const tokenRes = await getTelephonySdkToken();
   if (tokenRes.provider !== "twilio" || !tokenRes.token) {
     throw new Error("Telephony provider is not Twilio or token missing");
   }
-  return tokenRes.token;
+  const ttlSeconds = Number(tokenRes.ttl) > 0 ? Number(tokenRes.ttl) : TWILIO_DEFAULT_TOKEN_TTL_S;
+  return { token: tokenRes.token, ttlMs: ttlSeconds * 1000 };
 }
 
 /**
@@ -146,6 +154,8 @@ export default function Dialpad({
   const plivoRef = useRef<any>(null);
   const twilioDeviceRef = useRef<import("@twilio/voice-sdk").Device | null>(null);
   const twilioTokenRefreshRef = useRef<Promise<void> | null>(null);
+  const twilioTokenTimerRef = useRef<number | null>(null);
+  const twilioTokenExpiresAtRef = useRef<number>(0);
   const twilioCallRef = useRef<TwilioCall | null>(null);
   const incomingTwilioCallRef = useRef<TwilioCall | null>(null);
   const [webrtc, setWebrtc] = useState<WebrtcStatus>("idle");
@@ -288,21 +298,77 @@ export default function Dialpad({
   // --- WebRTC softphone --------------------------------------------------------
   const connectingRef = useRef(false);
 
-  const refreshTwilioDeviceToken = useCallback(async (device: import("@twilio/voice-sdk").Device) => {
-    if (twilioTokenRefreshRef.current) {
-      await twilioTokenRefreshRef.current;
-      return;
-    }
-    const job = (async () => {
-      const token = await mintTwilioVoiceAccessToken();
-      await device.updateToken(token);
-    })();
-    twilioTokenRefreshRef.current = job;
-    try {
-      await job;
-    } finally {
-      twilioTokenRefreshRef.current = null;
-    }
+  /**
+   * Keep the softphone's access token alive.
+   *
+   * Twilio's own `tokenWillExpire` fires roughly three minutes out, from an SDK timer. A dialer tab
+   * left in the background has its timers throttled, so that warning arrives late or not at all and
+   * the token dies first — which is what surfaces as AccessTokenExpired (20104) on the signaling
+   * socket. So the refresh is scheduled from the TTL the server reports, re-armed after each
+   * refresh, and re-checked whenever the tab becomes visible again.
+   *
+   * `updateToken` alone is not enough once that has happened: the SDK drops the device to
+   * unregistered, and it stays that way (silently not receiving calls) until it is registered again.
+   */
+  // Declared ahead of the scheduler so the timer and the visibility listener can reach the current
+  // refresh closure without either of them re-arming on every render.
+  const refreshTwilioDeviceTokenRef = useRef<
+    ((device: import("@twilio/voice-sdk").Device) => Promise<void>) | null
+  >(null);
+
+  const scheduleTwilioTokenRefresh = useCallback(
+    (device: import("@twilio/voice-sdk").Device, ttlMs: number) => {
+      if (twilioTokenTimerRef.current) window.clearTimeout(twilioTokenTimerRef.current);
+      twilioTokenExpiresAtRef.current = Date.now() + ttlMs;
+      const delay = Math.max(TWILIO_TOKEN_MIN_REFRESH_MS, ttlMs - TWILIO_TOKEN_REFRESH_LEAD_MS);
+      twilioTokenTimerRef.current = window.setTimeout(() => {
+        void refreshTwilioDeviceTokenRef.current?.(device).catch(() => {
+          /* the device 'error' handler reports and offers Retry */
+        });
+      }, delay);
+    },
+    []
+  );
+
+  const refreshTwilioDeviceToken = useCallback(
+    async (device: import("@twilio/voice-sdk").Device) => {
+      if (twilioTokenRefreshRef.current) {
+        await twilioTokenRefreshRef.current;
+        return;
+      }
+      const job = (async () => {
+        const { token, ttlMs } = await mintTwilioVoiceAccessToken();
+        await device.updateToken(token);
+        // Bring the device back if the expiry already knocked it offline.
+        if (device.state !== "registered") await device.register();
+        scheduleTwilioTokenRefresh(device, ttlMs);
+      })();
+      twilioTokenRefreshRef.current = job;
+      try {
+        await job;
+      } finally {
+        twilioTokenRefreshRef.current = null;
+      }
+    },
+    [scheduleTwilioTokenRefresh]
+  );
+
+  refreshTwilioDeviceTokenRef.current = refreshTwilioDeviceToken;
+
+  // A throttled background tab can sleep straight through the scheduled refresh. Catch up the
+  // moment the operator looks at the dialer again, before they try to place a call.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      const device = twilioDeviceRef.current;
+      if (!device) return;
+      if (Date.now() < twilioTokenExpiresAtRef.current - TWILIO_TOKEN_MIN_REFRESH_MS) return;
+      void refreshTwilioDeviceTokenRef.current?.(device).catch(() => {
+        /* the device 'error' handler reports and offers Retry */
+      });
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
 
   const resetTwilioCallState = useCallback((call?: TwilioCall | null) => {
@@ -420,6 +486,12 @@ export default function Dialpad({
       if (activeProvider === "twilio") {
         const { Device } = await import("@twilio/voice-sdk");
         const device = new Device(tokenRes.token, { logLevel: "warn" });
+        // Arm the proactive refresh from this token's own lifetime, rather than waiting for the
+        // SDK's tokenWillExpire, which a throttled background tab can sleep through entirely.
+        scheduleTwilioTokenRefresh(
+          device,
+          (Number(tokenRes.ttl) > 0 ? Number(tokenRes.ttl) : TWILIO_DEFAULT_TOKEN_TTL_S) * 1000
+        );
         const markReady = () => {
           window.clearTimeout(timeout);
           connectingRef.current = false;
@@ -550,7 +622,13 @@ export default function Dialpad({
       setWebrtc("error");
       setFeedback({ kind: "err", msg: apiErr(e, "Could not start the softphone") });
     }
-  }, [attachTwilioCallEvents, callerId, refreshTwilioDeviceToken, reportDialerCallOutcome]);
+  }, [
+    attachTwilioCallEvents,
+    callerId,
+    refreshTwilioDeviceToken,
+    reportDialerCallOutcome,
+    scheduleTwilioTokenRefresh,
+  ]);
 
   // Connect on entering browser mode; login persists across toggles.
   useEffect(() => {
@@ -575,6 +653,9 @@ export default function Dialpad({
     } catch {
       /* ignore */
     }
+    if (twilioTokenTimerRef.current) window.clearTimeout(twilioTokenTimerRef.current);
+    twilioTokenTimerRef.current = null;
+    twilioTokenExpiresAtRef.current = 0;
     plivoRef.current = null;
     twilioDeviceRef.current = null;
     twilioCallRef.current = null;
@@ -594,6 +675,9 @@ export default function Dialpad({
       } catch {
         /* ignore */
       }
+      // Stop the scheduled refresh, or it fires against a destroyed device after unmount.
+      if (twilioTokenTimerRef.current) window.clearTimeout(twilioTokenTimerRef.current);
+      twilioTokenTimerRef.current = null;
       plivoRef.current = null;
       twilioDeviceRef.current = null;
       twilioCallRef.current = null;
