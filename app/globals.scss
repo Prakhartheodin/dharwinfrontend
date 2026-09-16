@@ -547,6 +547,11 @@ html.swal2-shown {
   overflow-y: auto !important;
 }
 
+/* Project overview tasks table — same inner scroll override */
+.project-tasks-table-scroll {
+  overflow-y: auto !important;
+}
+
 /* ATS jobs/interviews table — keep body scrollable for sticky header/footer shells */
 .jobs-table-scroll,
 .interviews-table-scroll,

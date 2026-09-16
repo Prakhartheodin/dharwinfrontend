@@ -107,6 +107,7 @@ export default function ListPagination({
                 onClick={() => onPageChange(page - 1)}
                 disabled={atStart}
                 aria-disabled={atStart}
+                aria-label="Previous page"
               >
                 Prev
               </button>
@@ -140,6 +141,7 @@ export default function ListPagination({
                 onClick={() => onPageChange(page + 1)}
                 disabled={atEnd}
                 aria-disabled={atEnd}
+                aria-label="Next page"
               >
                 Next
               </button>

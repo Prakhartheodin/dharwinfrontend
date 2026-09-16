@@ -1,9 +1,14 @@
 "use client";
 
-import React, { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  applyConversationListParams,
+  parseConversationListPage,
+  parseConversationListQ,
+} from "../../../communication/chats/_lib/conversationListQuery";
 import Swal from "sweetalert2";
 import Seo from "@/shared/layout-components/seo/seo";
 import { emitPmDataMutated } from "@/shared/hooks/usePmRefetchOnFocus";
@@ -30,6 +35,11 @@ import { resolveDownloadUrlForBrowser } from "@/shared/lib/api/client";
 import { listCandidates, type CandidateListItem } from "@/shared/lib/api/candidates";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { projectCanEdit } from "@/shared/lib/project-capabilities";
+import ListPagination from "@/shared/components/ListPagination";
+import { getPaginationRange } from "@/shared/lib/pagination-items";
+import { ProjectTasksMobileList } from "./TaskListMobile";
+
+const TASKS_PAGE_SIZE = 25;
 
 const STATUS_LABEL: Record<ProjectStatus, string> = {
   Inprogress: "In Progress",
@@ -569,7 +579,22 @@ const Projectoverview = (): JSX.Element => {
   const auth = useAuth();
   const canEditProject = projectCanEdit(auth);
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const id = searchParams.get("id") ?? "";
+  const tasksPage = parseConversationListPage(searchParams.get("page"));
+
+  const replaceTasksListParams = useCallback(
+    (page: number) => {
+      const params = applyConversationListParams(searchParams, {
+        page,
+        q: parseConversationListQ(searchParams.get("q")),
+      });
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
 
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
@@ -577,9 +602,29 @@ const Projectoverview = (): JSX.Element => {
   const [notFound, setNotFound] = useState(false);
 
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasksTotalResults, setTasksTotalResults] = useState(0);
+  const [tasksTotalPages, setTasksTotalPages] = useState(0);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [tasksError, setTasksError] = useState<string | null>(null);
   const [candidateAvatars, setCandidateAvatars] = useState<Map<string, string>>(() => new Map());
+  const tasksTableScrollRef = useRef<HTMLDivElement | null>(null);
+  const tasksMobileScrollRef = useRef<HTMLDivElement | null>(null);
+
+  const effectiveTasksTotalPages = useMemo(() => {
+    if (tasksTotalResults <= 0) return 0;
+    const fromApi = tasksTotalPages ?? 0;
+    const derived = Math.ceil(tasksTotalResults / TASKS_PAGE_SIZE);
+    return Math.max(fromApi, derived);
+  }, [tasksTotalResults, tasksTotalPages]);
+
+  const handleTasksPageChange = useCallback(
+    (nextPage: number) => {
+      replaceTasksListParams(nextPage);
+      tasksTableScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      tasksMobileScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    },
+    [replaceTasksListParams],
+  );
 
   const sessionAvatar = useMemo(() => {
     const email = auth.user?.email?.trim();
@@ -659,15 +704,33 @@ const Projectoverview = (): JSX.Element => {
     void refresh();
   }, [refresh]);
 
+  const prevProjectIdRef = useRef(id);
+  useEffect(() => {
+    if (prevProjectIdRef.current === id) return;
+    prevProjectIdRef.current = id;
+    if (tasksPage !== 1) replaceTasksListParams(1);
+  }, [id, tasksPage, replaceTasksListParams]);
+
   // Tasks load independently of the project — a tasks failure must not block the overview.
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
     setTasksLoading(true);
     setTasksError(null);
-    listTasks({ projectId: id, limit: 100, sortBy: "createdAt:desc" })
+    setTasksTotalResults(0);
+    setTasksTotalPages(0);
+    listTasks({
+      projectId: id,
+      limit: TASKS_PAGE_SIZE,
+      page: tasksPage,
+      sortBy: "createdAt:desc",
+    })
       .then((res) => {
-        if (!cancelled) setTasks(res.results);
+        if (!cancelled) {
+          setTasks(res.results);
+          setTasksTotalResults(res.totalResults);
+          setTasksTotalPages(res.totalPages ?? 0);
+        }
       })
       .catch(() => {
         if (!cancelled) setTasksError("Failed to load tasks.");
@@ -678,7 +741,19 @@ const Projectoverview = (): JSX.Element => {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, tasksPage]);
+
+  const tasksCountBadge = useMemo(() => {
+    if (tasksTotalResults <= 0) return "";
+    if (effectiveTasksTotalPages <= 1) {
+      return `${tasksTotalResults} task${tasksTotalResults === 1 ? "" : "s"}`;
+    }
+    const { start, end } = getPaginationRange(tasksTotalResults, tasksPage, TASKS_PAGE_SIZE);
+    return `Page ${tasksPage} · ${start}–${end} of ${tasksTotalResults}`;
+  }, [tasksTotalResults, effectiveTasksTotalPages, tasksPage]);
+
+  const tasksAtFirstPage = tasksPage <= 1;
+  const tasksAtLastPage = tasksPage >= effectiveTasksTotalPages || effectiveTasksTotalPages === 0;
 
   // Lift a saved due date back into local task state so the row re-renders without a refetch.
   const handleDueDateSaved = useCallback((taskId: string, dueDate: string | null) => {
@@ -959,14 +1034,43 @@ const Projectoverview = (): JSX.Element => {
             </div>
 
             {/* PROJECT TASKS */}
-            <div className="box custom-box overflow-hidden">
-              <div className="box-header justify-between flex">
+            <div className="box custom-box flex flex-col overflow-hidden">
+              <div className="box-header justify-between flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
                 <div className="box-title">Project Tasks</div>
-                {!tasksLoading && !tasksError && (
-                  <span className="badge bg-light text-default">{tasks.length}</span>
-                )}
+                {!tasksLoading && !tasksError && tasksCountBadge ? (
+                  <div className="flex w-full flex-col gap-2 sm:ms-auto sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end shrink-0">
+                    <span className="badge bg-light text-default">{tasksCountBadge}</span>
+                    {effectiveTasksTotalPages > 1 ? (
+                      <nav
+                        aria-label="Project tasks page navigation"
+                        className="inline-flex items-center gap-1 rounded-md border border-defaultborder bg-white p-0.5 dark:border-white/10 dark:bg-bodybg"
+                      >
+                        <button
+                          type="button"
+                          className="ti-btn ti-btn-light !mb-0 inline-flex !min-h-11 !min-w-11 items-center justify-center !px-3 disabled:cursor-not-allowed disabled:opacity-50"
+                          onClick={() => handleTasksPageChange(tasksPage - 1)}
+                          disabled={tasksAtFirstPage}
+                          aria-disabled={tasksAtFirstPage}
+                          aria-label="Previous page of project tasks"
+                        >
+                          Prev
+                        </button>
+                        <button
+                          type="button"
+                          className="ti-btn ti-btn-light !mb-0 inline-flex !min-h-11 !min-w-11 items-center justify-center !px-3 text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                          onClick={() => handleTasksPageChange(tasksPage + 1)}
+                          disabled={tasksAtLastPage}
+                          aria-disabled={tasksAtLastPage}
+                          aria-label="Next page of project tasks"
+                        >
+                          Next
+                        </button>
+                      </nav>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
-              <div className="box-body !p-0">
+              <div className="box-body flex min-h-0 flex-1 flex-col overflow-hidden !p-0">
                 {tasksLoading ? (
                   <div className="text-center py-8 text-[#8c9097] dark:text-white/50 text-[0.875rem]">
                     Loading tasks…
@@ -981,9 +1085,39 @@ const Projectoverview = (): JSX.Element => {
                     </p>
                   </div>
                 ) : (
-                  <div className="table-responsive">
-                    <table className="table whitespace-nowrap min-w-full">
-                      <thead>
+                  <>
+                    <ProjectTasksMobileList
+                      listRef={tasksMobileScrollRef}
+                      tasks={tasks}
+                      taskStatusBadge={TASK_STATUS_BADGE}
+                      priorityBadge={PRIORITY_BADGE}
+                      renderAssignees={(t) => (
+                        <AssigneeBubbles
+                          users={t.assignedTo ?? []}
+                          candidateAvatarByEmail={candidateAvatars}
+                          sessionAvatar={sessionAvatar}
+                        />
+                      )}
+                      renderDueDate={(t) => (
+                        <DueDateCell
+                          task={t}
+                          readOnly={!canEditProject}
+                          onSaved={handleDueDateSaved}
+                        />
+                      )}
+                    />
+                    <div
+                      className="hidden lg:flex flex-1 min-h-0 min-w-0 max-w-full overflow-hidden"
+                      style={{ minHeight: 0 }}
+                    >
+                      <div
+                        ref={tasksTableScrollRef}
+                        className="project-tasks-table-scroll table-responsive w-full min-w-0 flex-1 max-h-[min(60vh,36rem)] overflow-y-auto overflow-x-auto overscroll-contain [scrollbar-width:thin] [scrollbar-color:rgb(203_213_225)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300/80 dark:[scrollbar-color:rgb(100_116_139)_transparent] dark:[&::-webkit-scrollbar-thumb]:bg-slate-600/80"
+                        tabIndex={0}
+                        aria-label="Project tasks table"
+                      >
+                    <table className="table whitespace-nowrap min-w-full mb-0">
+                      <thead className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur-sm dark:bg-bodybg/95">
                         <tr>
                           <th scope="col" className="text-start">
                             Task
@@ -1045,9 +1179,28 @@ const Projectoverview = (): JSX.Element => {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
+              {!tasksLoading && !tasksError && tasks.length > 0 && effectiveTasksTotalPages > 1 ? (
+                <div className="box-footer shrink-0 border-t border-defaultborder/60 dark:border-white/5 !px-3 !py-2 sm:!px-4">
+                  <ListPagination
+                    page={tasksPage}
+                    totalPages={effectiveTasksTotalPages}
+                    totalResults={tasksTotalResults}
+                    pageSize={TASKS_PAGE_SIZE}
+                    onPageChange={handleTasksPageChange}
+                    hideWhenSinglePage
+                    showPageSize={false}
+                    showSummary={false}
+                    touchFriendly
+                    ariaLabel="Project tasks pagination"
+                    gotoInputId="project-overview-tasks-goto-page"
+                  />
+                </div>
+              ) : null}
             </div>
 
             {/* PROJECT ATTACHMENTS */}
