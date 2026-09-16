@@ -23,6 +23,8 @@ export const notifTypeToIcon: Record<NotificationType | string, string> = {
   onboarding_reminder: "user-plus",
   system: "settings",
   general: "bell",
+  job_filled: "briefcase",
+  smart_nudge: "bulb",
 };
 
 export const notifTypeToColor: Record<NotificationType | string, string> = {
@@ -48,4 +50,14 @@ export const notifTypeToColor: Record<NotificationType | string, string> = {
   onboarding_reminder: "primary",
   system: "secondary",
   general: "secondary",
+  job_filled: "warning",
+  smart_nudge: "pinkmain",
 };
+
+/**
+ * True when this notification was produced by the smart-nudge (AI) layer.
+ * @param type Notification `type` string
+ */
+export function isAiNudge(type?: string | null): boolean {
+  return type === "smart_nudge";
+}

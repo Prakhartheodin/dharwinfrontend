@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { useChatSocket } from "@/shared/contexts/ChatSocketContext";
 import { useNotificationContext } from "@/shared/contexts/NotificationContext";
-import { notifTypeToColor, notifTypeToIcon } from "@/shared/lib/notification-utils";
+import { isAiNudge, notifTypeToColor, notifTypeToIcon } from "@/shared/lib/notification-utils";
 import { resolveNotificationRoute } from "@/shared/lib/notificationRoutes";
+import { AiNudgeBadge } from "@/shared/components/AiNudgeBadge";
 
 type ToastKind = "chat" | "system";
 
@@ -18,6 +19,7 @@ interface AppToast {
   link?: string;
   icon: string;
   color: string;
+  fromAi?: boolean;
   createdAt: number;
 }
 
@@ -95,14 +97,16 @@ function ToastCard({ toast, onDismiss }: { toast: AppToast; onDismiss: (id: stri
       className={`relative w-[22rem] bg-white dark:bg-bodybg2 rounded-xl shadow-xl border border-defaultborder dark:border-defaultborder/30 overflow-hidden cursor-pointer select-none transition-all duration-200 ${exiting ? "opacity-0 translate-x-4" : "animate-slide-in-right"}`}
       role="alert"
       aria-live="polite"
+      aria-label={toast.fromAi ? `${toast.title} — AI generated` : toast.title}
     >
       <div className="flex items-start gap-3 p-4">
         <span className={`shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-full text-sm ${iconBg}`}>
           <i className={`ti ti-${toast.icon} text-[1.1rem]`} />
         </span>
         <div className="flex-1 min-w-0">
-          <p className="text-[0.8125rem] font-semibold text-defaulttextcolor dark:text-white leading-snug truncate">
-            {toast.title}
+          <p className="text-[0.8125rem] font-semibold text-defaulttextcolor dark:text-white leading-snug min-w-0 flex items-center gap-1.5">
+            <span className="truncate">{toast.title}</span>
+            {toast.fromAi ? <AiNudgeBadge /> : null}
           </p>
           <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50 mt-0.5 line-clamp-2 leading-snug">
             {toast.body}
@@ -200,14 +204,15 @@ export function NotificationToastStack() {
     if (prevLatestIdRef.current === latestNotification._id) return;
     prevLatestIdRef.current = latestNotification._id;
     const n = latestNotification;
-    addToast({
-      kind: "system",
-      title: n.title,
-      body: n.message,
-      link: resolveNotificationRoute(n),
-      icon: notifTypeToIcon[n.type] ?? "bell",
-      color: notifTypeToColor[n.type] ?? "secondary",
-    });
+      addToast({
+        kind: "system",
+        title: n.title,
+        body: n.message,
+        link: resolveNotificationRoute(n),
+        icon: notifTypeToIcon[n.type] ?? "bell",
+        color: notifTypeToColor[n.type] ?? "secondary",
+        fromAi: isAiNudge(n.type),
+      });
   }, [latestNotification, addToast]);
 
   return (

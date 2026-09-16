@@ -29,11 +29,18 @@ const nextConfig = {
   },
   // In dev, proxy /api/v1 to backend so cookies are same-origin and survive refresh
   async rewrites() {
-    // Backend origin (no trailing path) — same as api proxy target
+    // Never derive the rewrite host from a relative NEXT_PUBLIC_API_URL (`/api/v1`) —
+    // that used to keep proxying to production after an env reload, and prod CORS
+    // rejects http://localhost:3001.
+    const explicit =
+      process.env.NEXT_PUBLIC_API_BACKEND_URL || process.env.BACKEND_URL || "";
+    const fromApiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+    const derivedHost = /^https?:\/\//i.test(fromApiUrl)
+      ? fromApiUrl.replace(/\/v1\/?$/, "").replace(/\/api\/?$/, "")
+      : "";
     const backend =
-      process.env.NEXT_PUBLIC_API_BACKEND_URL ||
-      process.env.BACKEND_URL ||
-      (process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/\/v1\/?$/, "").replace(/\/api\/?$/, "") : null) ||
+      explicit ||
+      (process.env.NODE_ENV === "production" ? derivedHost : "") ||
       "http://localhost:3000";
     const b = backend.replace(/\/$/, "");
 

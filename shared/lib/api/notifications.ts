@@ -26,7 +26,9 @@ export type NotificationType =
   | "placement_update"
   | "onboarding_reminder"
   | "system"
-  | "general";
+  | "general"
+  | "job_filled"
+  | "smart_nudge";
 
 export interface NotificationRelatedEntity {
   type?: string | null;

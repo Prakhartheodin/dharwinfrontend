@@ -46,6 +46,12 @@ export const NOTIFICATION_PREF_GROUPS: {
       { key: "certificates", inAppKey: "certificatesInApp", label: "Certificates", description: "Issued credentials and completions" },
       { key: "courseUpdates", inAppKey: "courseUpdatesInApp", label: "Course / training updates", description: "Modules, deadlines, and programme news" },
       { inAppKey: "sopAssignmentsInApp", label: "Onboarding SOP reminders", description: "Open onboarding steps assigned to you" },
+      {
+        key: "smartNudges",
+        inAppKey: "smartNudgesInApp",
+        label: "Smart nudges (AI)",
+        description: "AI-generated reminders for delays and missed interviews",
+      },
     ],
   },
   {
@@ -90,4 +96,6 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPreferences = {
   assignmentUpdatesInApp: true,
   projectUpdatesInApp: true,
   sopAssignmentsInApp: true,
+  smartNudges: true,
+  smartNudgesInApp: true,
 };

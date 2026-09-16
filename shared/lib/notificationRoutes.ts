@@ -78,6 +78,24 @@ const ROUTE_MAP: Record<string, RouteFn> = {
   },
   system: () => "/notifications",
   general: () => "/notifications",
+  job_filled: (n) => {
+    const id = stripId(n.relatedEntity?.id) || stripId(meta(n, "jobId"));
+    return id ? `/ats/jobs/edit/${id}` : "/ats/jobs";
+  },
+  smart_nudge: (n) => {
+    const nav = meta(n, "navTarget");
+    if (nav === "interviews_list") return "/ats/interviews";
+    if (nav === "offers") return "/ats/offers-placement";
+    if (nav === "applications") return "/ats/applications";
+    if (nav === "preboarding") return "/ats/pre-boarding";
+    if (nav === "onboarding") return "/ats/onboarding";
+    if (nav === "tasks") return "/task/my-tasks";
+    if (nav === "leave") return "/settings/attendance/leave-requests";
+    if (n.relatedEntity?.type === "meeting" && n.relatedEntity.id) {
+      return `/join/room?room=${encodeURIComponent(String(n.relatedEntity.id))}`;
+    }
+    return "/notifications";
+  },
 };
 
 const FALLBACK = "/notifications";

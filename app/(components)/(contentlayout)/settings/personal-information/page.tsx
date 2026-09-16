@@ -431,6 +431,8 @@ export default function PersonalInformationPage() {
     assignmentUpdatesInApp: true,
     projectUpdatesInApp: true,
     sopAssignmentsInApp: true,
+    smartNudges: true,
+    smartNudgesInApp: true,
   });
 
   const roleDisplayName = useMemo(

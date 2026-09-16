@@ -12,6 +12,8 @@ import {
 } from "@/shared/lib/api/notifications";
 import { useNotificationContext } from "@/shared/contexts/NotificationContext";
 import { formatCountLocale } from "@/shared/lib/format-badge-count";
+import { isAiNudge } from "@/shared/lib/notification-utils";
+import { AiNudgeBadge } from "@/shared/components/AiNudgeBadge";
 
 const TYPE_LABELS: Record<NotificationType | "all", string> = {
   all: "All",
@@ -36,6 +38,9 @@ const TYPE_LABELS: Record<NotificationType | "all", string> = {
   onboarding_reminder: "Onboarding",
   system: "System",
   general: "General",
+  job_filled: "Vacancies",
+  smart_nudge: "AI nudge",
+  dev_ticket: "Dev tickets",
 };
 
 const TYPE_CHIPS: { value: NotificationType | "all"; label: string }[] = [
@@ -50,6 +55,7 @@ const TYPE_CHIPS: { value: NotificationType | "all"; label: string }[] = [
   { value: "account", label: TYPE_LABELS.account },
   { value: "recruiter", label: TYPE_LABELS.recruiter },
   { value: "sop", label: TYPE_LABELS.sop },
+  { value: "smart_nudge", label: TYPE_LABELS.smart_nudge },
   { value: "general", label: TYPE_LABELS.general },
 ];
 
@@ -75,6 +81,9 @@ const TYPE_BADGE_MAP: Record<NotificationType, string> = {
   onboarding_reminder: "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400",
   system: "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300",
   general: "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300",
+  job_filled: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+  smart_nudge: "bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-900/30 dark:text-fuchsia-400",
+  dev_ticket: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
 };
 
 const getTypeBadgeClass = (type: NotificationType): string =>
@@ -344,7 +353,7 @@ const Notifications = () => {
                                   handleNotificationClick(n);
                                 }
                               }}
-                              aria-label={`${n.title} — open notification`}
+                              aria-label={`${n.title}${isAiNudge(n.type) ? " — AI generated" : ""} — open notification`}
                               className={`group relative rounded-xl border transition-all duration-200 cursor-pointer hover:shadow-md hover:-translate-y-0.5 hover:border-primary/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 active:scale-[0.998] ${
                                 n.read
                                   ? "border-defaultborder/70 bg-white dark:bg-bodybg2"
@@ -378,8 +387,9 @@ const Notifications = () => {
                                           {formatTimeAgo(n.createdAt)}
                                         </span>
                                       </div>
-                                      <p className={`mb-0.5 text-[.875rem] leading-snug ${n.read ? "font-medium text-defaulttextcolor" : "font-semibold text-defaulttextcolor"}`}>
-                                        {n.title}
+                                      <p className={`mb-0.5 text-[.875rem] leading-snug min-w-0 flex items-center gap-1.5 ${n.read ? "font-medium text-defaulttextcolor" : "font-semibold text-defaulttextcolor"}`}>
+                                        <span className="min-w-0">{n.title}</span>
+                                        {isAiNudge(n.type) ? <AiNudgeBadge size="md" /> : null}
                                       </p>
                                       <p className="mb-0 text-[#8c9097] dark:text-white/50 text-[0.8125rem] leading-relaxed whitespace-pre-line line-clamp-2">
                                         {n.message}

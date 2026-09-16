@@ -11,7 +11,8 @@ import { ROUTES } from '@/shared/lib/constants';
 import { isPublicLayoutPath } from '@/shared/lib/public-layout-paths';
 import { usePathname } from 'next/navigation';
 import { type Notification } from '@/shared/lib/api/notifications';
-import { notifTypeToIcon, notifTypeToColor } from '@/shared/lib/notification-utils';
+import { notifTypeToIcon, notifTypeToColor, isAiNudge } from '@/shared/lib/notification-utils';
+import { AiNudgeBadge } from '@/shared/components/AiNudgeBadge';
 import {
   formatBadgeCount,
   formatCountLocale,
@@ -629,7 +630,7 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                             role="button"
                             tabIndex={0}
                             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleNotificationClick(n); } }}
-                            aria-label={`${n.title} — open notification`}
+                            aria-label={`${n.title}${isAiNudge(n.type) ? " — AI generated" : ""} — open notification`}
                           >
                             <div className="flex items-start">
                               <div className="pe-2">
@@ -639,8 +640,9 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                               </div>
                               <div className="grow flex items-start justify-between gap-2 min-w-0">
                                 <div className="min-w-0 flex-1">
-                                  <p className={`mb-1 text-defaulttextcolor dark:text-defaulttextcolor text-[0.8125rem] truncate ${n.read ? 'font-medium' : 'font-semibold'}`}>
-                                    {n.title}
+                                  <p className={`mb-1 text-defaulttextcolor dark:text-defaulttextcolor text-[0.8125rem] min-w-0 flex items-center gap-1.5 ${n.read ? 'font-medium' : 'font-semibold'}`}>
+                                    <span className="truncate">{n.title}</span>
+                                    {isAiNudge(n.type) ? <AiNudgeBadge /> : null}
                                   </p>
                                   <span className="text-[#8c9097] dark:text-white/60 font-normal text-[0.75rem] header-notification-text block min-w-0 whitespace-pre-line line-clamp-2">{n.message}</span>
                                   {n.createdAt && (
