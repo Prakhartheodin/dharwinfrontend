@@ -578,6 +578,14 @@ function RosterSidebarAvatar({
   );
 }
 
+/** Roster positions offered in the dialog. `seniority` is an unconstrained string on the backend
+ *  (team.model.js defaults it to 'Member', team.validation.js only caps the length), so this list
+ *  shapes the UI, not the data — which is why an older free-text value stays selectable below. */
+const POSITION_OPTIONS = [
+  { value: "Member", label: "Member" },
+  { value: "Team Lead", label: "Team Lead" },
+];
+
 interface TeamMemberFormModalProps {
   open: boolean;
   isEdit: boolean;
@@ -669,6 +677,15 @@ function TeamMemberFormModal({
     candidateAvatarByEmail.get(normalizeMemberEmail(form.email))?.trim() ||
     matchedCandidate?.profilePictureUrl?.trim() ||
     "";
+
+  /** Positions predate this dropdown and were free text, so a member may hold something that is
+   *  neither option. Keep that value selectable rather than showing an empty control that would
+   *  silently rewrite it to Member the next time someone edits an unrelated roster field. */
+  const positionOptions = useMemo(() => {
+    const current = form.position.trim();
+    if (!current || POSITION_OPTIONS.some((o) => o.value === current)) return POSITION_OPTIONS;
+    return [...POSITION_OPTIONS, { value: current, label: `${current} (existing)` }];
+  }, [form.position]);
 
   if (!open) return null;
 
@@ -849,14 +866,20 @@ function TeamMemberFormModal({
                 <label htmlFor="member-position" className="form-label">
                   Position
                 </label>
-                <input
-                  id="member-position"
-                  type="text"
-                  className="form-control"
-                  placeholder="e.g. Member, Associate"
-                  value={form.position}
-                  onChange={(e) => onChange({ position: e.target.value })}
-                  autoComplete="organization-title"
+                <Select
+                  inputId="member-position"
+                  classNamePrefix="Select2"
+                  className="basic-single-select"
+                  menuPlacement="auto"
+                  options={positionOptions}
+                  value={positionOptions.find((o) => o.value === form.position) ?? null}
+                  onChange={(opt) =>
+                    onChange({ position: (opt as { value: string } | null)?.value ?? "" })
+                  }
+                  placeholder="Select position"
+                  isClearable
+                  menuPortalTarget={selectMenuPortalTarget}
+                  styles={selectMenuLayerStyles}
                 />
               </div>
               {isEdit ? (
