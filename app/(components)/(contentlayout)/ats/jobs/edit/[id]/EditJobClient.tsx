@@ -15,7 +15,9 @@ import {
   createJobTemplate,
   COMPANY_SIZE_BUCKETS,
   type UpdateJobPayload,
+  type RubricAssignment,
 } from '@/shared/lib/api/jobs'
+import JobRubricSection from '@/shared/components/interview/JobRubricSection'
 import { ROUTES } from '@/shared/lib/constants'
 import { normalizeTipTapHtmlFromApi } from '@/shared/lib/tiptapHtml'
 import { YmdFilterDateInput } from '@/shared/components/filters/YmdFilterDateInput'
@@ -110,6 +112,9 @@ export default function EditJobClient() {
   const [jobDescription, setJobDescription] = useState('')
   const [requirements, setRequirements] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [rubricAssignments, setRubricAssignments] = useState<RubricAssignment[]>([])
+  const [loadedRubricAssignments, setLoadedRubricAssignments] = useState<RubricAssignment[]>([])
+  const [rubricError, setRubricError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [formData, setFormData] = useState({
     jobTitle: '',
@@ -313,6 +318,8 @@ export default function EditJobClient() {
             : '',
           education: '',
         })
+        setRubricAssignments(job.rubricAssignments ?? [])
+        setLoadedRubricAssignments(job.rubricAssignments ?? [])
         // Decode entity-encoded payloads (xss-clean middleware may return `&lt;p&gt;…`)
         // and split the appended Requirements & Qualifications block back out, so
         // the editor displays clean description + requirements separately. Without
@@ -384,6 +391,10 @@ export default function EditJobClient() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (rubricError) {
+      Swal.fire({ icon: 'error', title: 'Validation', text: rubricError })
+      return
+    }
     if (!jobId || jobId === '_' || !formData.jobTitle?.trim() || !formData.organisationName?.trim() || !formData.location?.trim() || !formData.jobType?.value || !jobDescription?.trim()) {
       Swal.fire({ icon: 'error', title: 'Validation', text: 'Please fill in required fields.' })
       return
@@ -401,6 +412,14 @@ export default function EditJobClient() {
     if (foundedRaw && (!Number.isInteger(foundedNum) || foundedNum! < 1800 || foundedNum! > new Date().getFullYear())) {
       Swal.fire({ icon: 'error', title: 'Validation', text: `Founded must be a year between 1800 and ${new Date().getFullYear()}.` })
       return
+    }
+    if (loadedRubricAssignments.length > 0 && rubricAssignments.length === 0) {
+      const ok = window.confirm(
+        `This removes ${loadedRubricAssignments.length} interview scoring assignment${
+          loadedRubricAssignments.length === 1 ? '' : 's'
+        } from this job. Future interviews will use the default rubric. Interviews already scheduled keep the rubric they were created with.`
+      )
+      if (!ok) return
     }
     setSubmitting(true)
     try {
@@ -437,6 +456,9 @@ export default function EditJobClient() {
       }
       const vacanciesNum = vacancies.value
 
+      const rubricsChanged =
+        JSON.stringify(rubricAssignments) !== JSON.stringify(loadedRubricAssignments)
+
       const payload: UpdateJobPayload = {
         title: formData.jobTitle.trim(),
         organisation: {
@@ -466,6 +488,10 @@ export default function EditJobClient() {
           ? new Date(formData.applicationDeadline).toISOString()
           : null,
         status: formData.status?.value || 'Active',
+        // On edit an empty array is a real instruction ("remove this job's rubrics"), so it
+        // is sent — unlike on create. Skipped when unchanged, so a plain title edit does not
+        // need interview access (audit J11).
+        ...(rubricsChanged ? { rubricAssignments } : {}),
       }
       await updateJob(jobId, payload)
       await Swal.fire({ icon: 'success', title: 'Job Updated', text: 'The job has been updated successfully.' })
@@ -941,11 +967,17 @@ export default function EditJobClient() {
                       </section>
                     </div>
                   )}
+                  <JobRubricSection
+                    value={rubricAssignments}
+                    onChange={setRubricAssignments}
+                    jobId={jobId}
+                    onValidityChange={setRubricError}
+                  />
                   <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-gray-200 dark:border-defaultborder/10">
                     <Link href="/ats/jobs" className="ti-btn ti-btn-secondary">
                       Cancel
                     </Link>
-                    <button type="submit" className="ti-btn ti-btn-primary" disabled={submitting}>
+                    <button type="submit" className="ti-btn ti-btn-primary" disabled={submitting || Boolean(rubricError)}>
                       <i className="ri-save-line font-semibold align-middle me-1"></i>
                       {submitting ? 'Saving...' : 'Save Changes'}
                     </button>
