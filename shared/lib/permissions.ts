@@ -52,6 +52,15 @@ export const ACTION_PERMISSIONS: Record<string, ActionRule> = Object.freeze({
     prefixes: ["ats.interviews.summary"],
     anyOf: ["view", "create", "edit", "delete"],
   },
+  /**
+   * Changing a job's interview rubric is interview configuration, not job editing, so it
+   * needs interview write access even though it is saved through the job form (audit J11).
+   * The backend refuses the write independently — this only decides what is rendered.
+   */
+  manage_interview_rubrics: {
+    prefixes: ["ats.interviews"],
+    anyOf: ["create", "edit", "delete"],
+  },
 
   // ATS Candidates (legacy pipeline / referral)
   view_candidates: { prefixes: ["ats.candidates"], anyOf: ["view", "create", "edit", "delete"] },
