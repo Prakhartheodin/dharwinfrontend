@@ -1,17 +1,18 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { listJobs, type Job } from "@/shared/lib/api/jobs";
 import type { InterviewRoundType } from "@/shared/lib/api/meetings";
 import { INTERVIEW_ROUND_TYPE_OPTIONS } from "../../interviews/_components/interviewLinkage";
 import {
   archiveRubricTemplate,
   createRubricTemplate,
   criteriaWeightError,
+  getRubricTemplateUsage,
   restoreRubricTemplate,
   updateRubricTemplate,
   type RubricCriterion,
   type RubricTemplate,
+  type RubricTemplateUsage,
 } from "@/shared/lib/api/rubricTemplates";
 import { getApiErrorMessage } from "@/shared/lib/api/client";
 
@@ -50,7 +51,6 @@ export default function RubricTemplateEditor({
   const isEdit = Boolean(template?.id);
   const [name, setName] = useState(template?.name ?? "");
   const [description, setDescription] = useState(template?.description ?? "");
-  const [jobId, setJobId] = useState<string>(template?.appliesTo?.jobId ?? "");
   const [roundType, setRoundType] = useState<InterviewRoundType | "">(
     template?.appliesTo?.roundType ?? ""
   );
@@ -58,16 +58,20 @@ export default function RubricTemplateEditor({
   const [criteria, setCriteria] = useState<EditorCriterion[]>(() =>
     toEditorCriteria(template?.criteria?.length ? template.criteria : DEFAULT_RUBRIC_CRITERIA, isEdit)
   );
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [usage, setUsage] = useState<RubricTemplateUsage | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | null>(null);
 
   useEffect(() => {
-    void listJobs({ limit: 200, sortBy: "title:asc" })
-      .then((res) => setJobs(res.results || []))
-      .catch(() => setJobs([]));
-  }, []);
+    if (!template?.id) {
+      setUsage(null);
+      return;
+    }
+    void getRubricTemplateUsage(template.id)
+      .then(setUsage)
+      .catch(() => setUsage(null));
+  }, [template?.id]);
 
   const weightError = useMemo(() => criteriaWeightError(criteria), [criteria]);
   const weightTotal = criteria.reduce((sum, c) => sum + (Number(c.weight) || 0), 0);
@@ -124,7 +128,6 @@ export default function RubricTemplateEditor({
           scaleMax,
         })),
         appliesTo: {
-          jobId: jobId || null,
           roundType: roundType || null,
         },
         isDefault,
@@ -148,7 +151,7 @@ export default function RubricTemplateEditor({
       const saved = await archiveRubricTemplate(template.id);
       onSaved(saved);
     } catch (err: unknown) {
-      setError(getApiErrorMessage(err, "Could not archive the rubric."));
+      setError(getApiErrorMessage(err, "Failed to archive the rubric."));
     } finally {
       setBusy(false);
     }
@@ -198,26 +201,10 @@ export default function RubricTemplateEditor({
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <label htmlFor="rubric-job" className="form-label mb-1 block text-sm font-medium">
-            Applies to job (optional)
-          </label>
-          <select
-            id="rubric-job"
-            className="form-select w-full text-sm"
-            value={jobId}
-            onChange={(e) => setJobId(e.target.value)}
-          >
-            <option value="">Any job</option>
-            {jobs.map((job) => {
-              const id = String(job.id ?? job._id ?? "");
-              return (
-                <option key={id} value={id}>
-                  {job.title}
-                </option>
-              );
-            })}
-          </select>
+        <div className="sm:col-span-2">
+          <p className="text-xs text-defaulttextcolor/60 dark:text-white/60">
+            To use this rubric for a specific job, open that job and set it under Interview scoring.
+          </p>
         </div>
         <div>
           <label htmlFor="rubric-round-type" className="form-label mb-1 block text-sm font-medium">
@@ -250,6 +237,13 @@ export default function RubricTemplateEditor({
       </label>
 
       <div>
+        {isEdit && usage && usage.jobCount > 0 && (
+          <div className="mb-3 rounded-lg border border-warning/25 bg-warning/[0.06] p-3 text-sm">
+            Used by {usage.jobCount} {usage.jobCount === 1 ? "job" : "jobs"}
+            {usage.jobs.length ? `: ${usage.jobs.map((j) => j.title).join(", ")}` : ""}.
+            Changing the weights changes how those jobs score future interviews.
+          </div>
+        )}
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-medium text-defaulttextcolor dark:text-white">Criteria</p>
           <p className="text-xs tabular-nums text-defaulttextcolor/70 dark:text-white/70">

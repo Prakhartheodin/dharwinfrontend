@@ -12,7 +12,6 @@ import RubricTemplateEditor, { DEFAULT_RUBRIC_CRITERIA } from "./_components/Rub
 
 function appliesToLabel(template: RubricTemplate): string {
   const parts: string[] = [];
-  if (template.appliesTo?.jobId) parts.push("Job-specific");
   const rt = template.appliesTo?.roundType;
   if (rt) {
     const label = INTERVIEW_ROUND_TYPE_OPTIONS.find((o) => o.value === rt)?.label || rt;
@@ -20,6 +19,12 @@ function appliesToLabel(template: RubricTemplate): string {
   }
   if (!parts.length) return "All interviews";
   return parts.join(" · ");
+}
+
+function jobUsageLabel(template: RubricTemplate): string {
+  const count = template.jobCount ?? 0;
+  if (count === 0) return "Not in use";
+  return `Used by ${count} ${count === 1 ? "job" : "jobs"}`;
 }
 
 function criteriaWeightTotal(template: RubricTemplate): number {
@@ -155,6 +160,7 @@ export default function InterviewRubricsPage() {
                         <tr>
                           <th className="px-3 py-2 text-start font-medium">Name</th>
                           <th className="px-3 py-2 text-start font-medium">Applies to</th>
+                          <th className="px-3 py-2 text-start font-medium">Jobs</th>
                           <th className="px-3 py-2 text-start font-medium tabular-nums">Criteria</th>
                           <th className="px-3 py-2 text-start font-medium tabular-nums">Weights</th>
                           <th className="px-3 py-2 text-start font-medium" />
@@ -177,6 +183,7 @@ export default function InterviewRubricsPage() {
                               )}
                             </td>
                             <td className="px-3 py-2 text-defaulttextcolor/80 dark:text-white/80">{appliesToLabel(t)}</td>
+                            <td className="px-3 py-2 text-defaulttextcolor/80 dark:text-white/80">{jobUsageLabel(t)}</td>
                             <td className="px-3 py-2 tabular-nums">{t.criteria?.length ?? 0}</td>
                             <td className="px-3 py-2 tabular-nums">{criteriaWeightTotal(t)}%</td>
                             <td className="px-3 py-2 text-end">
