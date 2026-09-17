@@ -1,42 +1,8 @@
 "use client";
 
-import React, { useCallback, useMemo, useState } from "react";
-import {
-  updateMeeting,
-  type InterviewScorecard,
-  type Meeting,
-  type RubricCriterionId,
-  type UpdateMeetingPayload,
-} from "@/shared/lib/api/meetings";
-
-/**
- * Interview rubric (PRD 5.4). Ids MUST match backend src/constants/interviewRubric.js.
- */
-const RUBRIC_CRITERIA: ReadonlyArray<{ id: RubricCriterionId; label: string }> = [
-  { id: "technical", label: "Technical Skills" },
-  { id: "communication", label: "Communication" },
-  { id: "problemSolving", label: "Problem Solving" },
-  { id: "cultureFit", label: "Culture Fit" },
-  { id: "experience", label: "Relevant Experience" },
-];
-
-const RUBRIC_SCALE = [1, 2, 3, 4, 5] as const;
-
-type RubricRatingMap = Partial<Record<RubricCriterionId, number>>;
-
-function scorecardToRatingMap(scorecard?: InterviewScorecard): RubricRatingMap {
-  const map: RubricRatingMap = {};
-  for (const r of scorecard?.ratings || []) {
-    if (r?.criterion) map[r.criterion] = r.rating;
-  }
-  return map;
-}
-
-function rubricAverage(ratings: RubricRatingMap): number | null {
-  const values = RUBRIC_CRITERIA.map((c) => ratings[c.id]).filter((v): v is number => typeof v === "number");
-  if (!values.length) return null;
-  return values.reduce((a, b) => a + b, 0) / values.length;
-}
+import React, { useState } from "react";
+import { updateMeeting, type Meeting, type UpdateMeetingPayload } from "@/shared/lib/api/meetings";
+import RubricEvaluationForm from "@/shared/components/interview/RubricEvaluationForm";
 
 function meetingRecordId(meeting: Meeting): string {
   return String(meeting.id ?? meeting._id ?? meeting.meetingId ?? "");
@@ -61,39 +27,15 @@ export default function InterviewHostResultOverlay({
   const [selected, setSelected] = useState<"pending" | "selected" | "rejected">(
     meeting.interviewResult || "pending"
   );
-  const [ratings, setRatings] = useState<RubricRatingMap>(() => scorecardToRatingMap(meeting.interviewScorecard));
-  const [comment, setComment] = useState(meeting.interviewScorecard?.comment || "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const setRubricRating = useCallback((criterion: RubricCriterionId, rating: number) => {
-    setRatings((prev) => {
-      const next = { ...prev };
-      if (next[criterion] === rating) delete next[criterion];
-      else next[criterion] = rating;
-      return next;
-    });
-  }, []);
-
-  const avg = useMemo(() => rubricAverage(ratings), [ratings]);
-  const scoredCount = Object.keys(ratings).length;
 
   const handleSave = async () => {
     if (!meetingId || busy) return;
     setBusy(true);
     setError(null);
     try {
-      const ratingRows = RUBRIC_CRITERIA.filter((c) => typeof ratings[c.id] === "number").map((c) => ({
-        criterion: c.id,
-        rating: ratings[c.id] as number,
-      }));
-      const trimmedComment = comment.trim();
-      const hadScorecard =
-        Boolean(meeting.interviewScorecard?.ratings?.length) || Boolean(meeting.interviewScorecard?.comment);
       const payload: UpdateMeetingPayload = { interviewResult: selected };
-      if (ratingRows.length || trimmedComment || hadScorecard) {
-        payload.interviewScorecard = { ratings: ratingRows, comment: trimmedComment };
-      }
       await updateMeeting(meetingId, payload);
       onDone();
     } catch (err: unknown) {
@@ -139,19 +81,6 @@ export default function InterviewHostResultOverlay({
     return `${base} border-defaultborder hover:bg-gray-50 dark:border-white/15 dark:hover:bg-white/5`;
   };
 
-  const ratingButtonClass = (active: boolean) => {
-    const base =
-      "inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#16181c]";
-    if (active) {
-      return `${base} border-primary bg-primary text-white`;
-    }
-    return `${base} border-defaultborder text-defaulttextcolor/80 hover:bg-gray-50 dark:border-white/15 dark:text-white/85 dark:hover:bg-white/10`;
-  };
-
-  const notesFieldClass = isObsidian
-    ? "form-control h-24 w-full resize-none !rounded-md border border-white/15 !bg-[#1a1d22] text-sm !text-white placeholder:!text-white/45 focus:!border-primary/60 focus:!ring-2 focus:!ring-primary/30"
-    : "form-control h-24 w-full resize-none !rounded-md text-sm dark:bg-bodybg dark:text-white dark:placeholder:text-white/40";
-
   const skipButtonClass = isObsidian
     ? "ti-btn min-h-11 !px-4 !py-2 !text-sm font-medium !text-white border border-white/20 !bg-white/10 hover:!bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
     : "ti-btn ti-btn-light min-h-11 !px-4 !py-2 !text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40";
@@ -194,70 +123,11 @@ export default function InterviewHostResultOverlay({
             </div>
           </div>
 
-          <div className={sectionDividerClass}>
-            <div className="mb-3 flex items-end justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-defaulttextcolor dark:text-white">Scorecard</p>
-                <p className="text-xs text-textmuted dark:text-white/70">
-                  Rate 1–5. Click a rating again to clear it. Optional.
-                </p>
-              </div>
-              {avg !== null && (
-                <div className="text-end">
-                  <p className="text-lg font-semibold leading-none text-primary">
-                    {avg.toFixed(1)}
-                    <span className="text-xs font-normal text-textmuted dark:text-white/60"> / 5</span>
-                  </p>
-                  <p className="mt-1 text-[0.65rem] text-textmuted dark:text-white/60">
-                    {scoredCount} of {RUBRIC_CRITERIA.length} scored
-                  </p>
-                </div>
-              )}
+          {meetingId && (
+            <div className={sectionDividerClass}>
+              <RubricEvaluationForm meetingId={meetingId} variant={isObsidian ? "obsidian" : "default"} />
             </div>
-
-            <div className="flex flex-col gap-2">
-              {RUBRIC_CRITERIA.map((criterion) => (
-                <div key={criterion.id} className="flex items-center justify-between gap-3 py-1.5">
-                  <span className="text-sm text-defaulttextcolor dark:text-white/90">{criterion.label}</span>
-                  <div className="flex flex-shrink-0 items-center gap-1" role="group" aria-label={criterion.label}>
-                    {RUBRIC_SCALE.map((value) => {
-                      const active = ratings[criterion.id] === value;
-                      return (
-                        <button
-                          key={value}
-                          type="button"
-                          aria-pressed={active}
-                          aria-label={`${criterion.label}: ${value} of 5`}
-                          onClick={() => setRubricRating(criterion.id, value)}
-                          className={ratingButtonClass(active)}
-                        >
-                          {value}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-3">
-              <label
-                htmlFor="host-interview-scorecard-comment"
-                className="form-label mb-1.5 block text-sm font-medium text-defaulttextcolor dark:text-white"
-              >
-                Notes
-              </label>
-              <textarea
-                id="host-interview-scorecard-comment"
-                rows={3}
-                maxLength={2000}
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                placeholder="What stood out, concerns, follow-up questions..."
-                className={notesFieldClass}
-              />
-            </div>
-          </div>
+          )}
 
           {error && (
             <p role="alert" className="rounded-lg border border-danger/25 bg-danger/10 p-3 text-sm text-danger">

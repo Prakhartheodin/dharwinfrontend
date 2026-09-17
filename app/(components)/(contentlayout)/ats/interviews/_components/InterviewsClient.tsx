@@ -8,7 +8,9 @@ import { useAuth } from '@/shared/contexts/auth-context'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 import { appendJoinIdentityToUrl } from '@/shared/lib/join-room-url'
 import { useTable, useSortBy } from 'react-table'
-import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, deleteMeeting, resendMeetingInvitations, exportInterviewsExcel, internalTransferEmployee, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload, type InterviewScorecard, type RubricCriterionId } from '@/shared/lib/api/meetings'
+import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, deleteMeeting, resendMeetingInvitations, exportInterviewsExcel, internalTransferEmployee, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload, type InterviewRound } from '@/shared/lib/api/meetings'
+import { getApiErrorMessage } from '@/shared/lib/api/client'
+import RubricEvaluationForm from '@/shared/components/interview/RubricEvaluationForm'
 import { buildInterviewExportParams, buildInterviewListParams } from '@/shared/lib/ats/interview-list-query'
 import ListPagination from '@/shared/components/ListPagination'
 import Swal from 'sweetalert2'
@@ -31,7 +33,7 @@ import RecordingsModal from './RecordingsModal'
 import InterviewsFilterPanel from './InterviewsFilterPanel'
 import { detectOverlap } from './interviewOverlap'
 import InterviewLinkageModal, { InterviewLinkageBadge, type InterviewLinkageTarget } from './InterviewLinkageModal'
-import { buildScheduleLinkageFields, linkageActions, offersLinkAction, parseInterviewLinkageError } from './interviewLinkage'
+import { buildScheduleLinkageFields, formatRoundBadge, linkageActions, offersLinkAction, parseInterviewLinkageError } from './interviewLinkage'
 
 /** When scheduling, store job id on `Meeting.jobPosition` if known — backend matches Job / JobApplication by ObjectId; title-only strings often fail exact regex match. */
 function isMongoObjectIdString(value: string | undefined): boolean {
@@ -88,8 +90,7 @@ interface InterviewTableRow {
   status: string
   /** Interview result: pending, selected, rejected */
   interviewResult: 'pending' | 'selected' | 'rejected'
-  /** Saved rubric scores, so the result modal reads them back for whoever opens it next. */
-  interviewScorecard?: InterviewScorecard
+  round?: InterviewRound | null
   /** Public join URL for the interview (copy link) */
   publicMeetingUrl: string
   meetingId: string
@@ -99,49 +100,6 @@ interface InterviewTableRow {
   linkageStatus?: string
 }
 
-
-/**
- * Interview rubric (PRD 5.4). Ids MUST match backend src/constants/interviewRubric.js —
- * an unknown id is rejected by Joi and 400s the whole result update.
- */
-const RUBRIC_CRITERIA: ReadonlyArray<{ id: RubricCriterionId; label: string }> = [
-  { id: 'technical', label: 'Technical Skills' },
-  { id: 'communication', label: 'Communication' },
-  { id: 'problemSolving', label: 'Problem Solving' },
-  { id: 'cultureFit', label: 'Culture Fit' },
-  { id: 'experience', label: 'Relevant Experience' },
-]
-
-const RUBRIC_SCALE = [1, 2, 3, 4, 5] as const
-
-type RubricRatingMap = Partial<Record<RubricCriterionId, number>>
-
-const scorecardToRatingMap = (scorecard?: InterviewScorecard): RubricRatingMap => {
-  const map: RubricRatingMap = {}
-  for (const r of scorecard?.ratings || []) {
-    if (r?.criterion) map[r.criterion] = r.rating
-  }
-  return map
-}
-
-/** Average of the criteria actually scored — skipped criteria don't drag the score down. */
-const rubricAverage = (ratings: RubricRatingMap): number | null => {
-  const values = RUBRIC_CRITERIA.map((c) => ratings[c.id]).filter((v): v is number => typeof v === 'number')
-  if (!values.length) return null
-  return values.reduce((a, b) => a + b, 0) / values.length
-}
-
-const scoredByLabel = (scorecard?: InterviewScorecard): string => {
-  const by = scorecard?.scoredBy
-  const name = by && typeof by === 'object' ? by.name || by.email : ''
-  const when = scorecard?.scoredAt
-    ? new Date(scorecard.scoredAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    : ''
-  if (name && when) return `Scored by ${name} · ${when}`
-  if (name) return `Scored by ${name}`
-  if (when) return `Scored ${when}`
-  return ''
-}
 
 /** Per-column visibility for lg+ table view (below lg uses card list). table-fixed + max-w-0 truncates cell content. */
 const COLUMN_VISIBILITY: Record<string, string> = {
@@ -271,7 +229,7 @@ function meetingToTableRow(m: Meeting, viewerTz?: string): InterviewTableRow {
     },
     status: m.status || 'Scheduled',
     interviewResult: (m.interviewResult || 'pending') as 'pending' | 'selected' | 'rejected',
-    interviewScorecard: m.interviewScorecard,
+    round: m.round ?? null,
     publicMeetingUrl: m.publicMeetingUrl || (typeof window !== 'undefined' ? `${window.location.origin}/join/room?room=${encodeURIComponent(m.meetingId || '')}` : ''),
     meetingId: m.meetingId || '',
     jobPosition: m.jobPosition || '',
@@ -439,8 +397,6 @@ export default function InterviewsClient() {
   // Interview result modal: row being edited + selected value
   const [resultModalInterview, setResultModalInterview] = useState<InterviewTableRow | null>(null)
   const [resultModalSelected, setResultModalSelected] = useState<'pending' | 'selected' | 'rejected'>('pending')
-  const [resultModalRatings, setResultModalRatings] = useState<RubricRatingMap>({})
-  const [resultModalComment, setResultModalComment] = useState('')
   const [resultUpdating, setResultUpdating] = useState(false)
 
   // Copy interview link feedback
@@ -933,27 +889,13 @@ export default function InterviewsClient() {
   const openResultModal = useCallback((row: InterviewTableRow) => {
     setResultModalInterview(row)
     setResultModalSelected(row.interviewResult || 'pending')
-    setResultModalRatings(scorecardToRatingMap(row.interviewScorecard))
-    setResultModalComment(row.interviewScorecard?.comment || '')
     ;(window as any).HSOverlay?.open(document.querySelector('#interview-result-modal'))
   }, [])
 
   const closeResultModal = useCallback(() => {
     setResultModalInterview(null)
     setResultModalSelected('pending')
-    setResultModalRatings({})
-    setResultModalComment('')
     ;(window as any).HSOverlay?.close(document.querySelector('#interview-result-modal'))
-  }, [])
-
-  /** Click the rating you already gave to clear it — a skipped criterion is absent, not a 0. */
-  const setRubricRating = useCallback((criterion: RubricCriterionId, rating: number) => {
-    setResultModalRatings((prev) => {
-      const next = { ...prev }
-      if (next[criterion] === rating) delete next[criterion]
-      else next[criterion] = rating
-      return next
-    })
   }, [])
 
   /** Link-application dialog target; `linkageDialogNonce` remounts it per open so no stale response crosses interviews. */
@@ -1062,13 +1004,19 @@ export default function InterviewsClient() {
     setDeletingSelected(true)
     try {
       const results = await Promise.allSettled(ids.map((id) => deleteMeeting(id)))
-      const failed = results.filter((r) => r.status === 'rejected').length
+      const rejected = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[]
+      const failed = rejected.length
       setSelectedRows(new Set())
       await refreshMeetingsList()
       if (failed > 0) {
+        const firstErr = rejected[0]?.reason
+        const message = getApiErrorMessage(firstErr, 'Failed to delete the interview')
         await confirm({
           title: 'Some deletions failed',
-          message: `${ids.length - failed} deleted, ${failed} failed. Refresh and try the remaining ones again.`,
+          message:
+            failed === ids.length
+              ? message
+              : `${ids.length - failed} deleted, ${failed} failed. ${message}`,
           confirmLabel: 'Close',
           tone: 'danger',
           hideCancel: true,
@@ -1084,20 +1032,7 @@ export default function InterviewsClient() {
     const interview = resultModalInterview
     setResultUpdating(true)
     try {
-      const ratings = RUBRIC_CRITERIA.filter((c) => typeof resultModalRatings[c.id] === 'number').map((c) => ({
-        criterion: c.id,
-        rating: resultModalRatings[c.id] as number,
-      }))
-      const comment = resultModalComment.trim()
-      // Only send the scorecard when there is something to store, or something stored to clear —
-      // otherwise every plain result flip would restamp scoredBy/scoredAt on an empty scorecard.
-      const hadScorecard =
-        Boolean(interview.interviewScorecard?.ratings?.length) ||
-        Boolean(interview.interviewScorecard?.comment)
       const payload: UpdateMeetingPayload = { interviewResult: resultModalSelected }
-      if (ratings.length || comment || hadScorecard) {
-        payload.interviewScorecard = { ratings, comment }
-      }
       const updated = await updateMeeting(interview.id, payload)
       await refreshMeetingsList()
       closeResultModal()
@@ -1117,7 +1052,7 @@ export default function InterviewsClient() {
     } finally {
       setResultUpdating(false)
     }
-  }, [resultModalInterview, resultModalSelected, resultModalRatings, resultModalComment, refreshMeetingsList, closeResultModal, confirm, promptLinkInterview])
+  }, [resultModalInterview, resultModalSelected, refreshMeetingsList, closeResultModal, confirm, promptLinkInterview])
 
   /**
    * Explicit Interview → Offer step. Application-scoped, so an interview with no linked application
@@ -1728,6 +1663,11 @@ export default function InterviewsClient() {
               <div className="font-semibold text-gray-800 dark:text-white text-[0.8125rem] truncate" title={interview.position}>
                 {interview.position}
               </div>
+              {formatRoundBadge(interview.round) && (
+                <span className="mt-0.5 inline-flex items-center rounded-md bg-primary/[0.08] px-1.5 py-0.5 text-[0.65rem] font-medium text-primary dark:bg-primary/15">
+                  {formatRoundBadge(interview.round)}
+                </span>
+              )}
               <div className="text-[0.6875rem] text-gray-600 dark:text-gray-400 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                 <span className="inline-flex items-center gap-1 whitespace-nowrap">
                   <i className="ri-calendar-line text-primary"></i>
@@ -3043,92 +2983,11 @@ export default function InterviewsClient() {
                     </div>
                   </div>
 
-                  {/* Rubric scores (PRD 5.4). Informational only — they never change the result above. */}
-                  <div className="mt-6 pt-5 border-t border-defaultborder dark:border-defaultborder/10">
-                    <div className="flex items-end justify-between gap-3 mb-3">
-                      <div>
-                        <p className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-0.5">
-                          Scorecard
-                        </p>
-                        <p className="text-xs text-defaulttextcolor/60 dark:text-white/60">
-                          Rate 1&ndash;5. Click a rating again to clear it. Optional.
-                        </p>
-                      </div>
-                      {(() => {
-                        const avg = rubricAverage(resultModalRatings)
-                        const scored = Object.keys(resultModalRatings).length
-                        if (avg === null) return null
-                        return (
-                          <div className="text-end flex-shrink-0">
-                            <p className="text-lg font-semibold leading-none text-primary">
-                              {avg.toFixed(1)}
-                              <span className="text-xs font-normal text-defaulttextcolor/60 dark:text-white/60"> / 5</span>
-                            </p>
-                            <p className="text-[0.65rem] text-defaulttextcolor/60 dark:text-white/60 mt-1">
-                              {scored} of {RUBRIC_CRITERIA.length} scored
-                            </p>
-                          </div>
-                        )
-                      })()}
+                  {resultModalInterview?.id && (
+                    <div className="mt-6 border-t border-defaultborder pt-5 dark:border-defaultborder/10">
+                      <RubricEvaluationForm meetingId={resultModalInterview.id} />
                     </div>
-
-                    <div className="flex flex-col gap-2">
-                      {RUBRIC_CRITERIA.map((criterion) => (
-                        <div
-                          key={criterion.id}
-                          className="flex items-center justify-between gap-3 py-1.5"
-                        >
-                          <span className="text-sm text-defaulttextcolor dark:text-white/90">{criterion.label}</span>
-                          <div className="flex items-center gap-1 flex-shrink-0" role="group" aria-label={criterion.label}>
-                            {RUBRIC_SCALE.map((value) => {
-                              const active = resultModalRatings[criterion.id] === value
-                              return (
-                                <button
-                                  key={value}
-                                  type="button"
-                                  aria-pressed={active}
-                                  aria-label={`${criterion.label}: ${value} of 5`}
-                                  onClick={() => setRubricRating(criterion.id, value)}
-                                  className={`w-8 h-8 rounded-md border text-xs font-medium transition-colors ${
-                                    active
-                                      ? 'border-primary bg-primary text-white'
-                                      : 'border-defaultborder dark:border-defaultborder/10 text-defaulttextcolor/70 dark:text-white/60 hover:bg-gray-50 dark:hover:bg-black/20'
-                                  }`}
-                                >
-                                  {value}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="mt-3">
-                      <label
-                        htmlFor="interview-scorecard-comment"
-                        className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5"
-                      >
-                        Notes
-                      </label>
-                      <textarea
-                        id="interview-scorecard-comment"
-                        rows={3}
-                        maxLength={2000}
-                        value={resultModalComment}
-                        onChange={(e) => setResultModalComment(e.target.value)}
-                        placeholder="What stood out, concerns, follow-up questions..."
-                        className="form-control w-full !rounded-md text-sm h-24 resize-none"
-                      />
-                    </div>
-
-                    {scoredByLabel(resultModalInterview.interviewScorecard) && (
-                      <p className="mt-2 text-xs text-defaulttextcolor/60 dark:text-white/60">
-                        <i className="ri-user-star-line me-1 align-middle"></i>
-                        {scoredByLabel(resultModalInterview.interviewScorecard)}
-                      </p>
-                    )}
-                  </div>
+                  )}
                 </>
               )}
             </div>
