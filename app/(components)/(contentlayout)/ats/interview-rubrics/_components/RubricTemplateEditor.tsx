@@ -23,7 +23,17 @@ export const DEFAULT_RUBRIC_CRITERIA: RubricCriterion[] = [
   { key: "culture_fit", label: "Culture Fit", weight: 15, scaleMin: 1, scaleMax: 5 },
 ];
 
-type EditorCriterion = RubricCriterion & { keyFrozen: boolean };
+/**
+ * `rowId` is a render identity — never persisted, never derived from the data.
+ *
+ * It exists because `key` is recomputed from the label on every keystroke of an unfrozen
+ * row. Keying the <tr> on that made React unmount and remount the row per character, so
+ * the label input became a new DOM node mid-word and the caret was lost.
+ */
+type EditorCriterion = RubricCriterion & { keyFrozen: boolean; rowId: string };
+
+let rowIdCounter = 0;
+const nextRowId = () => `row-${(rowIdCounter += 1)}`;
 
 function slugifyLabel(label: string): string {
   const slug = label
@@ -35,8 +45,26 @@ function slugifyLabel(label: string): string {
   return slug || "criterion";
 }
 
+/**
+ * Derive a key from the label that cannot collide with another row's.
+ *
+ * Punctuation collapses to `_`, so "Problem Solving!" and "Problem Solving?" both slugify
+ * to `problem_solving`, as do two blank labels (both `criterion`). That used to surface as
+ * "Duplicate criterion key: problem_solving" against two labels that visibly differ — an
+ * error naming a concept the form never showed. Suffixing means the user never meets it.
+ */
+function uniqueKeyForLabel(label: string, taken: Set<string>): string {
+  const base = slugifyLabel(label);
+  if (!taken.has(base)) return base;
+  for (let n = 2; n < 1000; n += 1) {
+    const candidate = `${base}_${n}`.slice(0, 40);
+    if (!taken.has(candidate)) return candidate;
+  }
+  return `${base}_${Date.now()}`.slice(0, 40);
+}
+
 function toEditorCriteria(criteria: RubricCriterion[], freezeKeys: boolean): EditorCriterion[] {
-  return criteria.map((c) => ({ ...c, keyFrozen: freezeKeys }));
+  return criteria.map((c) => ({ ...c, keyFrozen: freezeKeys, rowId: nextRowId() }));
 }
 
 export default function RubricTemplateEditor({
@@ -76,12 +104,28 @@ export default function RubricTemplateEditor({
   const weightError = useMemo(() => criteriaWeightError(criteria), [criteria]);
   const weightTotal = criteria.reduce((sum, c) => sum + (Number(c.weight) || 0), 0);
 
+  /**
+   * computeWeightedScore skips any criterion with weight <= 0, so a 0% row is dead: the
+   * interviewer still sees it and can still rate it, but it moves neither the score nor
+   * the completeness count. Weights can legitimately still total 100 with one present,
+   * so this warns rather than blocks.
+   */
+  const zeroWeightLabels = useMemo(
+    () =>
+      criteria
+        .filter((c) => (Number(c.weight) || 0) <= 0)
+        .map((c) => (c.label || "").trim() || "Untitled criterion"),
+    [criteria]
+  );
+
   const updateCriterion = (index: number, patch: Partial<EditorCriterion>) => {
     setCriteria((prev) => {
       const next = [...prev];
       const row = { ...next[index], ...patch };
       if (!row.keyFrozen && patch.label !== undefined) {
-        row.key = slugifyLabel(patch.label);
+        // Every other row's key is off limits, so retyping a label can never collide.
+        const taken = new Set(next.filter((_, i) => i !== index).map((c) => c.key));
+        row.key = uniqueKeyForLabel(patch.label, taken);
       }
       next[index] = row;
       return next;
@@ -92,12 +136,13 @@ export default function RubricTemplateEditor({
     setCriteria((prev) => [
       ...prev,
       {
-        key: "criterion",
+        key: uniqueKeyForLabel("", new Set(prev.map((c) => c.key))),
         label: "",
         weight: 0,
         scaleMin: 1,
         scaleMax: 5,
         keyFrozen: false,
+        rowId: nextRowId(),
       },
     ]);
   };
@@ -251,10 +296,47 @@ export default function RubricTemplateEditor({
           </p>
         </div>
         <p className="mb-2 text-xs text-defaulttextcolor/60 dark:text-white/60">
-          The criterion key is derived from the label when you add a row, then frozen. Stored ratings reference the
-          key — rename the label, never the key.
+          A new criterion&apos;s key follows its label until you save, then it is frozen. Stored ratings reference the
+          key — after that, rename the label, never the key.
         </p>
-        {weightError && <p className="mb-2 text-xs text-danger">{weightError}</p>}
+        {/* One stack, blocker first. These are different severities — the weight total
+            stops the save, the zero-weight note does not — so each carries a text label
+            as well as a colour, and the two never read as interchangeable noise. */}
+        {(weightError || zeroWeightLabels.length > 0) && (
+          <div className="mb-3 space-y-2">
+            {weightError && (
+              <p
+                className="flex gap-2 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger"
+                role="alert"
+              >
+                <span className="font-semibold uppercase tracking-wide">Fix to save</span>
+                <span className="min-w-0 flex-1">{weightError}</span>
+              </p>
+            )}
+            {zeroWeightLabels.length > 0 && (
+              <p
+                className="flex gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning"
+                role="status"
+              >
+                <span className="font-semibold uppercase tracking-wide">Heads up</span>
+                <span className="min-w-0 flex-1">
+                  {zeroWeightLabels.length === 1 ? (
+                    <>
+                      <strong className="font-semibold">{zeroWeightLabels[0]}</strong> has 0% weight, so it will not
+                      affect the score. Interviewers still see it and can still rate it — give it weight or remove it.
+                    </>
+                  ) : (
+                    <>
+                      <strong className="font-semibold">{zeroWeightLabels.join(", ")}</strong> have 0% weight, so they
+                      will not affect the score. Interviewers still see them and can still rate them — give them
+                      weight or remove them.
+                    </>
+                  )}
+                </span>
+              </p>
+            )}
+          </div>
+        )}
         <div className="overflow-x-auto rounded-lg border border-defaultborder/70 dark:border-white/10">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50 dark:bg-white/5">
@@ -269,7 +351,7 @@ export default function RubricTemplateEditor({
             </thead>
             <tbody>
               {criteria.map((row, index) => (
-                <tr key={`${row.key}-${index}`} className="border-t border-defaultborder/50 dark:border-white/10">
+                <tr key={row.rowId} className="border-t border-defaultborder/50 dark:border-white/10">
                   <td className="px-2 py-2">
                     <input
                       type="text"

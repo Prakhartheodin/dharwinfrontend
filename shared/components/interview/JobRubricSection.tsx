@@ -38,10 +38,32 @@ type EditorCriterion = RubricCriterion & { keyFrozen: boolean };
 function slugifyLabel(label: string): string {
   const slug = label
     .trim()
-    .replace(/[^a-zA-Z0-9_-]+/g, "_")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .slice(0, 40);
   return slug || "criterion";
+}
+
+/**
+ * Derive a key from the label that cannot collide with another criterion's in the same row.
+ *
+ * Punctuation collapses to `_`, so "Problem Solving!" and "Problem Solving?" both slugify
+ * to `problem_solving`, as do two blank labels. That surfaced as "Duplicate criterion key"
+ * against labels that visibly differ — an error naming a concept the form never showed.
+ * Suffixing means the user never meets it.
+ *
+ * Kept identical to the rubric template editor's copy so the same label yields the same
+ * key wherever it is typed.
+ */
+function uniqueKeyForLabel(label: string, taken: Set<string>): string {
+  const base = slugifyLabel(label);
+  if (!taken.has(base)) return base;
+  for (let n = 2; n < 1000; n += 1) {
+    const candidate = `${base}_${n}`.slice(0, 40);
+    if (!taken.has(candidate)) return candidate;
+  }
+  return `${base}_${Date.now()}`.slice(0, 40);
 }
 
 function rowRoundLabel(roundType: InterviewRoundType | null): string {
@@ -82,10 +104,20 @@ export default function JobRubricSection({
   const validationError = useMemo(() => rubricAssignmentsError(value), [value]);
   const sectionEnabled = value.length > 0;
 
+  /**
+   * Loads archived rubrics too.
+   *
+   * resolveRubricForRound deliberately keeps resolving a referenced template after it is
+   * archived, so a job deliberately assigned one does not silently drop to the house
+   * default. Listing only live rubrics meant such a row had no matching <option>: the
+   * dropdown rendered blank and the assignment looked absent, inviting the user to
+   * replace a rubric that was working. Archived ones are offered only where already
+   * referenced — see templateOptions.
+   */
   const loadTemplates = useCallback(() => {
     setTemplatesError(null);
-    return listRubricTemplates(false)
-      .then((res) => setTemplates((res.results || []).filter((t) => !t.archivedAt)))
+    return listRubricTemplates(true)
+      .then((res) => setTemplates(res.results || []))
       .catch(() => {
         setTemplates([]);
         setTemplatesError("Could not load saved rubrics.");
@@ -187,7 +219,11 @@ export default function JobRubricSection({
     const criteria = [...(row.criteria || [])];
     const current = { ...criteria[criterionIndex], ...patch };
     if (!keyFrozen && patch.label !== undefined) {
-      current.key = slugifyLabel(patch.label);
+      // Every sibling's key is off limits, so retyping a label can never collide.
+      const taken = new Set(
+        criteria.filter((_, i) => i !== criterionIndex).map((c) => c.key)
+      );
+      current.key = uniqueKeyForLabel(patch.label, taken);
     }
     criteria[criterionIndex] = current;
     updateRow(rowIndex, { criteria });
@@ -197,7 +233,7 @@ export default function JobRubricSection({
     const row = value[rowIndex];
     const criteria = [...(row.criteria || [])];
     criteria.push({
-      key: "criterion",
+      key: uniqueKeyForLabel("", new Set(criteria.map((c) => c.key))),
       label: "",
       weight: 0,
       scaleMin: 1,
@@ -375,11 +411,17 @@ export default function JobRubricSection({
                       onChange={(e) => handleRubricPick(index, e.target.value)}
                     >
                       <option value="" disabled>Select a rubric</option>
-                      {templates.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
+                      {templates
+                        // Live rubrics are always offered. An archived one appears only on
+                        // the row that already references it, so history stays visible and
+                        // editable without archived rubrics cluttering new choices.
+                        .filter((t) => !t.archivedAt || t.id === row.templateId)
+                        .map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                            {t.archivedAt ? " (archived)" : ""}
+                          </option>
+                        ))}
                       <option value={RUBRIC_CUSTOM}>Custom for this job</option>
                     </select>
                   </div>
@@ -388,7 +430,6 @@ export default function JobRubricSection({
                       type="button"
                       className="ti-btn ti-btn-light !text-xs min-h-[44px]"
                       onClick={() => removeRow(index)}
-                      disabled={value.length <= 1}
                     >
                       Remove
                     </button>
@@ -402,8 +443,8 @@ export default function JobRubricSection({
                 {rubricSelectValue(row) === RUBRIC_CUSTOM && (
                   <div className="mt-3 space-y-2">
                     <p className="text-xs text-defaulttextcolor/60 dark:text-white/60">
-                      The criterion key is derived from the label when you add a row, then frozen. Stored ratings
-                      reference the key — rename the label, never the key.
+                      A new criterion&apos;s key follows its label until you save, then it is frozen. Stored ratings
+                      reference the key — after that, rename the label, never the key.
                     </p>
                     {criteriaErr && <p className="text-xs text-danger">{criteriaErr}</p>}
                     <div className="overflow-x-auto rounded-lg border border-defaultborder/70 dark:border-white/10">
@@ -421,8 +462,12 @@ export default function JobRubricSection({
                         <tbody>
                           {criteria.map((c, ci) => {
                             const frozen = Boolean(c.label?.trim());
+                            // Keyed by position, never by c.key: the key is recomputed from
+                            // the label on every keystroke, so keying on it made React
+                            // remount the row mid-word and drop the caret. This list only
+                            // appends and removes, never reorders.
                             return (
-                              <tr key={`${c.key}-${ci}`} className="border-t border-defaultborder/50 dark:border-white/10">
+                              <tr key={ci} className="border-t border-defaultborder/50 dark:border-white/10">
                                 <td className="px-2 py-2">
                                   <input
                                     type="text"

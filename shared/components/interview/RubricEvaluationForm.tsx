@@ -93,9 +93,30 @@ export default function RubricEvaluationForm({
   saveRef,
 }: RubricEvaluationFormProps) {
   const { user } = useAuth();
+  const userId = String(user?.id || "");
   const userEmail = (user?.email || "").trim().toLowerCase();
 
+  /**
+   * Which stored evaluation is the caller's own.
+   *
+   * Matches on the user id first, because that is what the server upserts on —
+   * `(meeting, evaluator)`. Email is only a fallback for rows written before the id was
+   * returned. Matching on email alone meant an account with no email, or an email changed
+   * after scoring, saw its own evaluation listed as somebody else's and opened a blank
+   * form, inviting the interviewer to re-enter scores they had already submitted.
+   */
+  const isMine = useCallback(
+    (evaluation: InterviewEvaluation) => {
+      if (userId && evaluation.evaluator) return String(evaluation.evaluator) === userId;
+      if (!userEmail) return false;
+      return (evaluation.evaluatorEmail || "").trim().toLowerCase() === userEmail;
+    },
+    [userId, userEmail]
+  );
+
   const [criteria, setCriteria] = useState<RubricCriterion[]>([]);
+  /** Which rubric this round is scored against, so the interviewer can see it changed. */
+  const [rubricName, setRubricName] = useState("");
   const [ratings, setRatings] = useState<Record<string, RatingEntry>>({});
   const [comment, setComment] = useState("");
   const [otherEvaluations, setOtherEvaluations] = useState<InterviewEvaluation[]>([]);
@@ -112,17 +133,12 @@ export default function RubricEvaluationForm({
       const data = await getInterviewEvaluations(meetingId);
       const rubricCriteria = data.rubric?.criteria || [];
       setCriteria(rubricCriteria);
+      setRubricName(data.rubric?.templateName || "");
 
-      const mine = userEmail
-        ? data.evaluations.find((e) => (e.evaluatorEmail || "").trim().toLowerCase() === userEmail)
-        : undefined;
+      const mine = data.evaluations.find(isMine);
       setRatings(evaluationToRatings(mine, rubricCriteria));
       setComment(mine?.comment || "");
-
-      const others = userEmail
-        ? data.evaluations.filter((e) => (e.evaluatorEmail || "").trim().toLowerCase() !== userEmail)
-        : data.evaluations;
-      setOtherEvaluations(others);
+      setOtherEvaluations(data.evaluations.filter((e) => !isMine(e)));
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
@@ -132,7 +148,7 @@ export default function RubricEvaluationForm({
     } finally {
       setLoading(false);
     }
-  }, [meetingId, userEmail]);
+  }, [meetingId, isMine]);
 
   useEffect(() => {
     void load();
@@ -179,12 +195,11 @@ export default function RubricEvaluationForm({
       setRatings(evaluationToRatings(saved, criteria));
       setComment(saved.comment || "");
       onSaved?.(saved);
-      const others = userEmail
-        ? (await getInterviewEvaluations(meetingId)).evaluations.filter(
-            (e) => (e.evaluatorEmail || "").trim().toLowerCase() !== userEmail
-          )
-        : [];
-      setOtherEvaluations(others);
+      // Refetch so a colleague's evaluation submitted while this form was open appears.
+      // Previously the else-branch here cleared the list outright when the caller had no
+      // email, so everyone else's evaluations vanished from view until a reload.
+      const refreshed = await getInterviewEvaluations(meetingId);
+      setOtherEvaluations(refreshed.evaluations.filter((e) => !isMine(e)));
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
@@ -194,7 +209,7 @@ export default function RubricEvaluationForm({
     } finally {
       setSaving(false);
     }
-  }, [meetingId, saving, criteria, ratings, comment, onSaved, userEmail]);
+  }, [meetingId, saving, criteria, ratings, comment, onSaved, isMine]);
 
   useEffect(() => {
     if (!saveRef) return;
@@ -204,7 +219,7 @@ export default function RubricEvaluationForm({
     };
   }, [saveRef, handleSave]);
 
-  const setRating = (key: string, value: number, scaleMin: number, scaleMax: number) => {
+  const setRating = (key: string, value: number) => {
     setRatings((prev) => {
       const current = prev[key] || { rating: null, notApplicable: false };
       if (current.notApplicable) return prev;
@@ -259,7 +274,16 @@ export default function RubricEvaluationForm({
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-sm font-medium text-defaulttextcolor dark:text-white">Evaluation</p>
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <p className="text-sm font-medium text-defaulttextcolor dark:text-white">Evaluation</p>
+          {/* Rubrics differ by job and by round, so naming the one in play is what lets an
+              interviewer notice it is not the one they used on the previous round. */}
+          {rubricName && (
+            <span className="rounded bg-primary/[0.08] px-1.5 py-0.5 text-[0.65rem] font-medium text-primary dark:bg-primary/15">
+              {rubricName}
+            </span>
+          )}
+        </div>
         <p className="text-xs text-textmuted dark:text-white/70">
           Rate each criterion. Click a rating again to clear it. Use N/A when a criterion does not apply.
         </p>
@@ -306,7 +330,7 @@ export default function RubricEvaluationForm({
                         aria-pressed={active}
                         aria-label={`${criterion.label}: ${value}`}
                         disabled={entry.notApplicable}
-                        onClick={() => setRating(criterion.key, value, criterion.scaleMin, criterion.scaleMax)}
+                        onClick={() => setRating(criterion.key, value)}
                         className={ratingButtonClass(active)}
                       >
                         {value}

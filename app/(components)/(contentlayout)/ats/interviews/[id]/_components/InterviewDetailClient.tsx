@@ -28,6 +28,7 @@ import InterviewLinkageModal, {
 import { InterviewConsentBadge } from "../../_components/InterviewConsentBadge";
 import { formatRoundBadge, linkageActions, offersLinkAction } from "../../_components/interviewLinkage";
 import InterviewDetailResultPanel from "./InterviewDetailResultPanel";
+import RoundHistoryPanel from "@/shared/components/interview/RoundHistoryPanel";
 import {
   INTERVIEW_DETAIL_TAB_LABELS,
   parseInterviewDetailTab,
@@ -525,6 +526,20 @@ export default function InterviewDetailClient({
           )}
         </div>
       </div>
+
+      {/* The round history was reachable only from the Applications list, so anyone who
+          arrived at a single round had no route to the rest of the candidate's journey.
+          Rendered only once the interview is linked — with no application there is no
+          history to show. */}
+      {meeting?.applicationId && (
+        <div className="mt-4">
+          <RoundHistoryPanel
+            applicationId={String(meeting.applicationId)}
+            candidateName={meeting.candidate?.name || undefined}
+            jobTitle={meeting.jobPosition || undefined}
+          />
+        </div>
+      )}
 
       {linkageTarget && (
         <InterviewLinkageModal target={linkageTarget} onClose={() => setLinkageTarget(null)} onLinked={loadMeeting} />
