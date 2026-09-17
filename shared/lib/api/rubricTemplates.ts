@@ -26,6 +26,8 @@ export interface RubricTemplate {
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** How many jobs reference this rubric. Present on the list response only. */
+  jobCount?: number;
 }
 
 /** What a round is actually scored against — a snapshot, not a live template. */
@@ -127,5 +129,17 @@ export async function resolveRubric(params: {
   if (params.jobId) query.jobId = params.jobId;
   if (params.roundType) query.roundType = params.roundType;
   const res = await apiClient.get<ResolvedRubric>("/rubric-templates/resolve", { params: query });
+  return res.data;
+}
+
+export interface RubricTemplateUsage {
+  templateId: string;
+  jobCount: number;
+  jobs: Array<{ id: string; title: string }>;
+}
+
+/** Which jobs reference this rubric. Drives the archive-blocked message and the editor note. */
+export async function getRubricTemplateUsage(id: string): Promise<RubricTemplateUsage> {
+  const res = await apiClient.get<RubricTemplateUsage>(`/rubric-templates/${id}/usage`);
   return res.data;
 }

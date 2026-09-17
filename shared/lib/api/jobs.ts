@@ -3,6 +3,8 @@
 import axios from "axios";
 import { apiClient, API_MUTATION_TIMEOUT_MS, normalizeApiBase } from "@/shared/lib/api/client";
 import { consumeCaptchaToken, getOptionalCaptchaToken } from "@/shared/lib/publicApplyResume";
+import { criteriaWeightError, type RubricCriterion } from "@/shared/lib/api/rubricTemplates";
+import type { InterviewRoundType } from "@/shared/lib/api/meetings";
 
 export type CompanySizeBucket =
   | '1-10'
@@ -67,6 +69,8 @@ export interface Job {
   createdBy?: { _id: string; name?: string; email?: string } | { id: string; name?: string };
   createdAt?: string;
   updatedAt?: string;
+  /** This job's interview rubrics. Empty/absent = inherit the global rubric. */
+  rubricAssignments?: RubricAssignment[];
 }
 
 export function isExternalJob(job: { jobOrigin?: string }): boolean {
@@ -209,6 +213,8 @@ export interface CreateJobPayload {
   vacancies?: number | null;
   applicationDeadline?: string | null;
   status?: string;
+  /** This job's interview rubrics. Empty/absent = inherit the global rubric. */
+  rubricAssignments?: RubricAssignment[];
 }
 
 export async function createJob(payload: CreateJobPayload): Promise<Job> {
@@ -230,6 +236,8 @@ export interface UpdateJobPayload {
   vacancies?: number | null;
   applicationDeadline?: string | null;
   status?: string;
+  /** This job's interview rubrics. Empty/absent = inherit the global rubric. */
+  rubricAssignments?: RubricAssignment[];
 }
 
 export async function updateJob(id: string, payload: UpdateJobPayload): Promise<Job> {
@@ -803,5 +811,68 @@ export interface JobStatsResponse {
 export async function getJobStats(jobId: string): Promise<JobStatsResponse> {
   const { data } = await apiClient.get<JobStatsResponse>(`/jobs/${jobId}/stats`);
   return data;
+}
+
+/* ----------------------------------------------------------------------- *
+ * Per-job interview rubrics.
+ *
+ * Backend: Job.rubricAssignments, validated by rubricAssignmentsError in
+ * src/constants/interviewRubric.js. Sending this key needs interview management
+ * access — a job-only user gets 403 rubric_requires_interview_access.
+ * ----------------------------------------------------------------------- */
+
+/** A job can declare at most this many assignments. Mirrors MAX_RUBRIC_ASSIGNMENTS. */
+export const MAX_RUBRIC_ASSIGNMENTS = 12;
+
+export interface RubricAssignment {
+  /** null = this job's default row, used by any round without a row of its own. */
+  roundType: InterviewRoundType | null;
+  /** Set => reuse this saved rubric. Mutually exclusive with `criteria`. */
+  templateId?: string | null;
+  /** Set => this job's own criteria. Mutually exclusive with `templateId`. */
+  criteria?: RubricCriterion[] | null;
+}
+
+/**
+ * Mirrors backend rubricAssignmentsError.
+ *
+ * Duplicated on purpose so the job form can block its own Save before a round trip; the
+ * backend stays the authority. If the rule changes, change both.
+ */
+export function rubricAssignmentsError(
+  assignments: RubricAssignment[] | null | undefined
+): string | null {
+  if (assignments == null) return null;
+  if (!Array.isArray(assignments)) return "Interview scoring must be a list of assignments.";
+  if (assignments.length === 0) return null;
+  if (assignments.length > MAX_RUBRIC_ASSIGNMENTS) {
+    return `A job can have at most ${MAX_RUBRIC_ASSIGNMENTS} rubric assignments.`;
+  }
+
+  const seen = new Set<string>();
+  for (const row of assignments) {
+    if (!row || typeof row !== "object") return "Each rubric assignment must be an object.";
+
+    const roundType = row.roundType ?? null;
+    const key = roundType === null ? "__default__" : roundType;
+    if (seen.has(key)) {
+      return roundType
+        ? `The ${roundType} round is set more than once.`
+        : "The job default is set more than once.";
+    }
+    seen.add(key);
+
+    const label = roundType ? `the ${roundType} round` : "rounds with no specific rubric";
+    const hasTemplate = Boolean(row.templateId);
+    const hasCriteria = Array.isArray(row.criteria) && row.criteria.length > 0;
+    if (hasTemplate === hasCriteria) {
+      return `${label} needs either a saved rubric or its own criteria — not both, and not neither.`;
+    }
+    if (hasCriteria) {
+      const reason = criteriaWeightError(row.criteria as RubricCriterion[]);
+      if (reason) return `${label}: ${reason}`;
+    }
+  }
+  return null;
 }
 
