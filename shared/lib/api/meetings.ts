@@ -2,6 +2,7 @@
 
 /** ATS screening interviews only. API: `GET|POST /meetings`. Communication internal meetings use `internal-meetings.ts` → `/internal-meetings`. */
 import { apiClient } from "@/shared/lib/api/client";
+import type { RubricCriterion, ResolvedRubric } from "@/shared/lib/api/rubricTemplates";
 
 /**
  * Download interviews as an .xlsx file. POST with the same query filters as the list
@@ -199,6 +200,13 @@ export interface Meeting {
   jobId?: string | null;
   candidateId?: string | null;
   round?: InterviewRound | null;
+  /** The rubric this round is scored against, copied at schedule time. Absent on old rounds. */
+  rubricSnapshot?: {
+    templateId: string | null;
+    templateName: string;
+    criteria: RubricCriterion[];
+    capturedAt: string | null;
+  } | null;
   interviewLanguage?: string;
   linkageStatus?: InterviewLinkageStatus;
   linkageSource?: string | null;
@@ -582,4 +590,131 @@ export async function submitPublicMeetingConsent(
     { headers: { Authorization: `Bearer ${liveKitToken}` } }
   );
   return data;
+}
+
+/* ------------------------------------------------------------------------- *
+ * Per-interviewer evaluations and round history.
+ *
+ * Meeting.interviewScorecard (above) is LEGACY: it still comes back on a meeting and is
+ * still displayed, but PATCHing it now returns 400. New scores go through
+ * saveInterviewEvaluation.
+ * ------------------------------------------------------------------------- */
+
+export interface EvaluationRatingInput {
+  key: string;
+  /** null = not scored yet. Distinct from notApplicable. */
+  rating: number | null;
+  notApplicable?: boolean;
+}
+
+export interface SaveEvaluationPayload {
+  ratings: EvaluationRatingInput[];
+  comment?: string;
+}
+
+/** One interviewer's evaluation, as stored. */
+export interface InterviewEvaluation {
+  id: string;
+  meeting: string;
+  evaluator: string;
+  evaluatorName: string;
+  evaluatorEmail: string;
+  rubricTemplateName: string;
+  ratings: Array<{ key: string; rating: number | null; notApplicable: boolean }>;
+  comment: string;
+  /** 0-100, or null when nothing scorable was rated. */
+  weightedScore: number | null;
+  /** Share of applicable weight rated. ALWAYS display this next to weightedScore. */
+  coveragePct: number;
+  scoredCount: number;
+  totalCount: number;
+  /** False when any applicable criterion is unrated. Must be surfaced, never hidden. */
+  isComplete: boolean;
+  submittedAt: string | null;
+}
+
+/** An evaluation as the round-history endpoint returns it: ratings carry label and weight. */
+export interface RoundEvaluation {
+  id: string | null;
+  evaluatorName: string;
+  evaluatorEmail: string;
+  weightedScore: number | null;
+  coveragePct: number;
+  scoredCount: number;
+  totalCount: number;
+  isComplete: boolean;
+  comment: string;
+  ratings: Array<{
+    key: string;
+    label: string;
+    weight: number | null;
+    rating: number | null;
+    notApplicable: boolean;
+  }>;
+  submittedAt: string | null;
+  /** A pre-weights scorecard. Has no weightedScore — label it, never average it in. */
+  isLegacy: boolean;
+}
+
+export interface InterviewRoundHistoryEntry {
+  id: string;
+  meetingId: string;
+  round: InterviewRound | null;
+  /** Server-built display name, e.g. "Round 2 — System design". Render this, do not rebuild it. */
+  roundName: string;
+  title: string;
+  scheduledAt: string | null;
+  timezone: string;
+  durationMinutes: number | null;
+  interviewType: string;
+  status: string;
+  interviewResult: string;
+  interviewers: Array<{ name: string; email: string; role: string }>;
+  rubric: { templateId: string | null; templateName: string; criteria: RubricCriterion[] };
+  evaluations: RoundEvaluation[];
+}
+
+export interface InterviewRoundHistory {
+  applicationId: string;
+  summary: {
+    roundCount: number;
+    decidedCount: number;
+    evaluationCount: number;
+    averageWeightedScore: number | null;
+  };
+  rounds: InterviewRoundHistoryEntry[];
+}
+
+/**
+ * Save the CALLING USER'S evaluation of a round. The server takes the evaluator from the
+ * session, so this can never overwrite a colleague's evaluation.
+ */
+export async function saveInterviewEvaluation(
+  meetingId: string,
+  payload: SaveEvaluationPayload
+): Promise<InterviewEvaluation> {
+  const res = await apiClient.put<InterviewEvaluation>(`/meetings/${meetingId}/evaluation`, payload);
+  return res.data;
+}
+
+/** Every evaluation for one round, plus the criteria it was scored against. */
+export async function getInterviewEvaluations(meetingId: string): Promise<{
+  meetingId: string;
+  rubric: ResolvedRubric;
+  evaluations: InterviewEvaluation[];
+}> {
+  const res = await apiClient.get<{
+    meetingId: string;
+    rubric: ResolvedRubric;
+    evaluations: InterviewEvaluation[];
+  }>(`/meetings/${meetingId}/evaluations`);
+  return res.data;
+}
+
+/** Every round of one application, in round order, with all evaluations. */
+export async function getRoundHistory(applicationId: string): Promise<InterviewRoundHistory> {
+  const res = await apiClient.get<InterviewRoundHistory>("/meetings/rounds", {
+    params: { applicationId },
+  });
+  return res.data;
 }
