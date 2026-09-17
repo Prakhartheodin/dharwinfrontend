@@ -30,6 +30,7 @@ import { getApiErrorMessage } from "@/shared/lib/api/client";
 import { YmdFilterDateInput } from "@/shared/components/filters/YmdFilterDateInput";
 import { getReferralLeadsDateRangeError, getYmdDateRangeIncompleteError } from "@/shared/lib/ymd-filter-date-input.util";
 import { alertYmdDateRangeIncomplete } from "@/shared/lib/ymd-filter-date-range-alert";
+import RoundHistoryPanel from "@/shared/components/interview/RoundHistoryPanel";
 
 const APPLIED_TO_INPUT_ID = "applications-applied-to";
 
@@ -172,12 +173,14 @@ function ApplicationRowActions({
   isUpdating,
   onReject,
   onSchedule,
+  onRounds,
 }: {
   meta: ApplicationRowMeta;
   appStatus: JobApplicationStatus;
   isUpdating: boolean;
   onReject: () => void;
   onSchedule: () => void;
+  onRounds: () => void;
 }) {
   const scheduleBlocked = isInterviewSchedulingBlocked(appStatus);
   const scheduleBlockMessage = getInterviewSchedulingBlockReason(appStatus);
@@ -202,6 +205,16 @@ function ApplicationRowActions({
       >
         <i className="ri-mail-line text-[0.875rem]" />
       </a>
+      <button
+        type="button"
+        title="Interview rounds"
+        aria-label="Interview rounds"
+        disabled={isUpdating}
+        onClick={onRounds}
+        className="inline-flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 rounded-md text-[#8c9097] hover:bg-primary/10 hover:text-primary disabled:opacity-40"
+      >
+        <i className="ri-stack-line text-[0.875rem]" />
+      </button>
       <button
         type="button"
         title={scheduleBlocked ? scheduleBlockMessage ?? "Schedule interview unavailable" : "Schedule interview"}
@@ -238,6 +251,7 @@ export default function ApplicationsPage() {
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [confirmReject, setConfirmReject] = useState<ApplicationWithDocs | null>(null);
+  const [roundsPanelMeta, setRoundsPanelMeta] = useState<ApplicationRowMeta | null>(null);
 
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -812,6 +826,7 @@ export default function ApplicationsPage() {
                             isUpdating={isUpdating}
                             onReject={() => setConfirmReject(app)}
                             onSchedule={() => handleScheduleInterview(meta)}
+                            onRounds={() => setRoundsPanelMeta(meta)}
                           />
                         </div>
                       </article>
@@ -909,6 +924,7 @@ export default function ApplicationsPage() {
                                 isUpdating={isUpdating}
                                 onReject={() => setConfirmReject(app)}
                                 onSchedule={() => handleScheduleInterview(meta)}
+                                onRounds={() => setRoundsPanelMeta(meta)}
                               />
                             </td>
                           </tr>
@@ -936,6 +952,40 @@ export default function ApplicationsPage() {
           )}
         </div>
       </div>
+
+      {roundsPanelMeta && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Interview rounds"
+          onClick={() => setRoundsPanelMeta(null)}
+        >
+          <div
+            className="bg-white dark:bg-bodybg rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-gray-200 dark:border-white/10 px-4 py-3 shrink-0">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white">Interview rounds</h3>
+              <button
+                type="button"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md text-[#8c9097] hover:bg-gray-100 dark:hover:bg-white/10"
+                aria-label="Close"
+                onClick={() => setRoundsPanelMeta(null)}
+              >
+                <i className="ri-close-line text-lg" />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-hidden px-4 py-3">
+              <RoundHistoryPanel
+                applicationId={roundsPanelMeta.id}
+                candidateName={roundsPanelMeta.name}
+                jobTitle={roundsPanelMeta.jobTitle}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Reject confirmation modal */}
       {confirmReject && (
