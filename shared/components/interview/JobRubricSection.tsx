@@ -1,19 +1,27 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import Swal from "sweetalert2";
 import { useAuth } from "@/shared/contexts/auth-context";
-import { INTERVIEW_ROUND_TYPE_OPTIONS } from "@/app/(components)/(contentlayout)/ats/interviews/_components/interviewLinkage";
-import type { RubricAssignment } from "@/shared/lib/api/jobs";
-import { MAX_RUBRIC_ASSIGNMENTS, rubricAssignmentsError } from "@/shared/lib/api/jobs";
-import type { InterviewRoundType } from "@/shared/lib/api/meetings";
+import { hasPermission } from "@/shared/lib/permissions";
 import {
+  MAX_RUBRIC_ASSIGNMENTS,
+  rubricAssignmentsError,
+  type RubricAssignment,
+} from "@/shared/lib/api/jobs";
+import type { InterviewRoundType } from "@/shared/lib/api/meetings";
+import { INTERVIEW_ROUND_TYPE_OPTIONS } from "@/app/(components)/(contentlayout)/ats/interviews/_components/interviewLinkage";
+import {
+  createRubricTemplate,
   criteriaWeightError,
   listRubricTemplates,
   resolveRubric,
+  type ResolvedRubric,
   type RubricCriterion,
   type RubricTemplate,
 } from "@/shared/lib/api/rubricTemplates";
-import { hasPermission } from "@/shared/lib/permissions";
+
+const RUBRIC_CUSTOM = "__custom__";
 
 export type JobRubricSectionProps = {
   /** Current value. Controlled by the parent form. */
@@ -27,21 +35,30 @@ export type JobRubricSectionProps = {
 
 type EditorCriterion = RubricCriterion & { keyFrozen: boolean };
 
-const CUSTOM_RUBRIC_VALUE = "__custom__";
-
 function slugifyLabel(label: string): string {
   const slug = label
     .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "_")
+    .replace(/[^a-zA-Z0-9_-]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .slice(0, 40);
   return slug || "criterion";
 }
 
-function rowRubricSelectValue(row: RubricAssignment): string {
-  if (row.templateId) return String(row.templateId);
-  if (Array.isArray(row.criteria) && row.criteria.length > 0) return CUSTOM_RUBRIC_VALUE;
+function rowRoundLabel(roundType: InterviewRoundType | null): string {
+  if (roundType === null) return "rounds with no specific rubric";
+  const opt = INTERVIEW_ROUND_TYPE_OPTIONS.find((o) => o.value === roundType);
+  return opt ? `the ${opt.label} round` : `the ${roundType} round`;
+}
+
+function errorTargetsRow(message: string | null, roundType: InterviewRoundType | null): boolean {
+  if (!message) return false;
+  const label = rowRoundLabel(roundType);
+  return message.includes(label);
+}
+
+function rubricSelectValue(row: RubricAssignment): string {
+  if (row.templateId) return row.templateId;
+  if (Array.isArray(row.criteria) && row.criteria.length > 0) return RUBRIC_CUSTOM;
   return "";
 }
 
@@ -52,91 +69,82 @@ export default function JobRubricSection({
   onValidityChange,
 }: JobRubricSectionProps) {
   const auth = useAuth();
-  const canEdit = hasPermission(auth, "manage_interview_rubrics");
+  const canManage = hasPermission(auth, "manage_interview_rubrics");
 
-  const [stash, setStash] = useState<RubricAssignment[]>([]);
+  const [stashedRows, setStashedRows] = useState<RubricAssignment[] | null>(null);
   const [templates, setTemplates] = useState<RubricTemplate[]>([]);
-  const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templatesError, setTemplatesError] = useState<string | null>(null);
 
-  const [previewName, setPreviewName] = useState<string | null>(null);
-  const [previewCriteria, setPreviewCriteria] = useState<RubricCriterion[]>([]);
+  const [preview, setPreview] = useState<ResolvedRubric | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
-  const sectionOn = value.length > 0;
   const validationError = useMemo(() => rubricAssignmentsError(value), [value]);
+  const sectionEnabled = value.length > 0;
+
+  const loadTemplates = useCallback(() => {
+    setTemplatesError(null);
+    return listRubricTemplates(false)
+      .then((res) => setTemplates((res.results || []).filter((t) => !t.archivedAt)))
+      .catch(() => {
+        setTemplates([]);
+        setTemplatesError("Could not load saved rubrics.");
+      });
+  }, []);
+
+  const loadPreview = useCallback(() => {
+    setPreviewLoading(true);
+    setPreviewError(null);
+    return resolveRubric({ jobId: jobId ?? undefined })
+      .then((resolved) => setPreview(resolved))
+      .catch(() => {
+        setPreview(null);
+        setPreviewError("Could not load the default rubric preview.");
+      })
+      .finally(() => setPreviewLoading(false));
+  }, [jobId]);
 
   useEffect(() => {
-    if (!canEdit) {
+    void loadTemplates();
+  }, [loadTemplates]);
+
+  useEffect(() => {
+    if (!sectionEnabled) {
+      void loadPreview();
+    }
+  }, [sectionEnabled, loadPreview]);
+
+  useEffect(() => {
+    if (!canManage) {
       onValidityChange?.(null);
       return;
     }
     onValidityChange?.(validationError);
-  }, [canEdit, validationError, onValidityChange]);
-
-  const loadTemplates = useCallback(async () => {
-    setTemplatesLoading(true);
-    setTemplatesError(null);
-    try {
-      const res = await listRubricTemplates(false);
-      setTemplates(res.results || []);
-    } catch (err: unknown) {
-      setTemplatesError((err as Error)?.message || "Could not load rubric templates.");
-    } finally {
-      setTemplatesLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!canEdit) return;
-    void loadTemplates();
-  }, [canEdit, loadTemplates]);
-
-  const loadPreview = useCallback(async () => {
-    setPreviewLoading(true);
-    setPreviewError(null);
-    try {
-      const resolved = await resolveRubric({ jobId: jobId || null, roundType: null });
-      setPreviewName(resolved.templateName);
-      setPreviewCriteria(resolved.criteria || []);
-    } catch (err: unknown) {
-      setPreviewError((err as Error)?.message || "Could not load the default rubric preview.");
-      setPreviewName(null);
-      setPreviewCriteria([]);
-    } finally {
-      setPreviewLoading(false);
-    }
-  }, [jobId]);
-
-  useEffect(() => {
-    if (sectionOn) return;
-    void loadPreview();
-  }, [sectionOn, loadPreview]);
+  }, [canManage, validationError, onValidityChange]);
 
   const usedRoundTypes = useMemo(() => {
     const set = new Set<string>();
     for (const row of value) {
-      if (row.roundType) set.add(row.roundType);
+      const rt = row.roundType ?? null;
+      set.add(rt === null ? "__default__" : rt);
     }
     return set;
   }, [value]);
 
-  const setToggle = (nextOn: boolean) => {
-    if (!canEdit) return;
+  const handleToggle = (nextOn: boolean) => {
     if (nextOn) {
-      if (value.length > 0) return;
-      if (stash.length > 0) {
-        onChange(stash);
-        setStash([]);
+      if (stashedRows?.length) {
+        onChange(stashedRows);
+        setStashedRows(null);
       } else {
         onChange([{ roundType: null }]);
       }
       return;
     }
-    if (value.length === 0) return;
-    setStash(value);
-    onChange([]);
+    if (value.length > 0) {
+      setStashedRows(value);
+      onChange([]);
+    }
   };
 
   const updateRow = (index: number, patch: Partial<RubricAssignment>) => {
@@ -144,350 +152,373 @@ export default function JobRubricSection({
   };
 
   const removeRow = (index: number) => {
-    onChange(value.filter((_, i) => i !== index));
+    const next = value.filter((_, i) => i !== index);
+    onChange(next.length ? next : []);
+    if (!next.length) setStashedRows(null);
   };
 
   const addRow = () => {
+    if (value.length >= MAX_RUBRIC_ASSIGNMENTS) return;
     onChange([...value, { roundType: null }]);
   };
 
-  const updateCustomCriteria = (rowIndex: number, criteria: EditorCriterion[]) => {
-    updateRow(rowIndex, {
-      criteria: criteria.map(({ key, label, weight, scaleMin, scaleMax }) => ({
-        key,
-        label,
-        weight,
-        scaleMin,
-        scaleMax,
-      })),
-      templateId: null,
-    });
+  const handleRubricPick = (index: number, pick: string) => {
+    if (!pick) {
+      updateRow(index, { templateId: null, criteria: null });
+      return;
+    }
+    if (pick === RUBRIC_CUSTOM) {
+      updateRow(index, {
+        templateId: null,
+        criteria: [{ key: "criterion", label: "", weight: 0, scaleMin: 1, scaleMax: 5 }],
+      });
+      return;
+    }
+    updateRow(index, { templateId: pick, criteria: null });
   };
 
-  const previewLine = (
-    <div className="mt-2 rounded-md border border-defaultborder/40 bg-gray-50/80 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/[0.04]">
-      {previewLoading ? (
-        <div className="animate-pulse space-y-2" aria-hidden="true">
-          <div className="h-3 w-40 rounded bg-gray-200 dark:bg-white/10" />
-          <div className="flex gap-2">
-            <div className="h-6 w-20 rounded bg-gray-200 dark:bg-white/10" />
-            <div className="h-6 w-24 rounded bg-gray-200 dark:bg-white/10" />
-          </div>
+  const updateCriterion = (
+    rowIndex: number,
+    criterionIndex: number,
+    patch: Partial<RubricCriterion>,
+    keyFrozen: boolean
+  ) => {
+    const row = value[rowIndex];
+    const criteria = [...(row.criteria || [])];
+    const current = { ...criteria[criterionIndex], ...patch };
+    if (!keyFrozen && patch.label !== undefined) {
+      current.key = slugifyLabel(patch.label);
+    }
+    criteria[criterionIndex] = current;
+    updateRow(rowIndex, { criteria });
+  };
+
+  const addCriterion = (rowIndex: number) => {
+    const row = value[rowIndex];
+    const criteria = [...(row.criteria || [])];
+    criteria.push({
+      key: "criterion",
+      label: "",
+      weight: 0,
+      scaleMin: 1,
+      scaleMax: 5,
+    });
+    updateRow(rowIndex, { criteria });
+  };
+
+  const removeCriterion = (rowIndex: number, criterionIndex: number) => {
+    const row = value[rowIndex];
+    const criteria = (row.criteria || []).filter((_, i) => i !== criterionIndex);
+    updateRow(rowIndex, { criteria: criteria.length ? criteria : null });
+  };
+
+  const promoteToTemplate = async (rowIndex: number, criteria: RubricCriterion[]) => {
+    const result = await Swal.fire({
+      title: "Save as reusable template",
+      input: "text",
+      inputLabel: "Template name",
+      inputPlaceholder: "e.g. Engineering panel rubric",
+      showCancelButton: true,
+      confirmButtonText: "Save template",
+      inputValidator: (v) => (!v?.trim() ? "Name is required." : undefined),
+    });
+    if (!result.isConfirmed || !result.value?.trim()) return;
+
+    try {
+      const created = await createRubricTemplate({
+        name: result.value.trim(),
+        criteria,
+        appliesTo: {},
+      });
+      await loadTemplates();
+      onChange(
+        value.map((row, i) =>
+          i === rowIndex ? { roundType: row.roundType, templateId: created.id, criteria: null } : row
+        )
+      );
+      await Swal.fire({
+        icon: "success",
+        title: "Template saved",
+        text: `"${created.name}" is now available in the rubric list.`,
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    } catch {
+      await Swal.fire({ icon: "error", title: "Save failed", text: "Could not create the template." });
+    }
+  };
+
+  const previewBlock = (
+    <div className="mt-2 rounded-lg border border-defaultborder/60 bg-gray-50/80 p-3 text-sm dark:border-white/10 dark:bg-white/[0.03]">
+      <p className="text-xs font-medium uppercase tracking-wide text-defaulttextcolor/50 dark:text-white/50">
+        Default rubric preview
+      </p>
+      {previewLoading && (
+        <div className="mt-2 animate-pulse space-y-2">
+          <div className="h-4 w-2/3 rounded bg-gray-200 dark:bg-white/10" />
+          <div className="h-6 w-full rounded bg-gray-200 dark:bg-white/10" />
         </div>
-      ) : previewError ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-danger">{previewError}</span>
-          <button type="button" className="ti-btn ti-btn-light !py-1 !text-xs" onClick={() => void loadPreview()}>
+      )}
+      {!previewLoading && previewError && (
+        <div className="mt-2">
+          <p className="text-danger text-xs">{previewError}</p>
+          <button type="button" className="ti-btn ti-btn-light mt-2 !text-xs" onClick={() => void loadPreview()}>
             Retry
           </button>
         </div>
-      ) : (
+      )}
+      {!previewLoading && !previewError && preview && (
         <>
-          <p className="text-defaulttextcolor/80 dark:text-white/80">
-            Default rubric: <span className="font-medium text-defaulttextcolor dark:text-white">{previewName}</span>
-          </p>
-          {previewCriteria.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {previewCriteria.map((c) => (
-                <span
-                  key={c.key}
-                  className="inline-flex rounded-full border border-defaultborder/50 bg-white px-2 py-0.5 text-xs tabular-nums dark:border-white/15 dark:bg-transparent"
-                >
-                  {c.label} {c.weight}%
-                </span>
-              ))}
-            </div>
-          )}
+          <p className="mt-1 font-medium text-defaulttextcolor dark:text-white">{preview.templateName}</p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {(preview.criteria || []).map((c) => (
+              <span
+                key={c.key}
+                className="rounded-md bg-white px-2 py-0.5 text-xs tabular-nums text-defaulttextcolor/80 shadow-sm dark:bg-white/10 dark:text-white/80"
+              >
+                {c.label} {c.weight}%
+              </span>
+            ))}
+          </div>
         </>
       )}
     </div>
   );
 
   return (
-    <section className="box mb-4">
-      <div className="box-header">
-        <h3 className="box-title text-base">Interview scoring</h3>
-      </div>
-      <div className="box-body space-y-4">
-        {canEdit ? (
-          <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
+    <section className="mt-6 border-t border-gray-200 pt-6 dark:border-defaultborder/10">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-base font-semibold text-defaulttextcolor dark:text-white">Interview scoring</h3>
+          <p className="mt-1 text-xs text-defaulttextcolor/60 dark:text-white/60">
+            Override which rubric each interview round uses for this job. Leave off to inherit the global default.
+          </p>
+        </div>
+        {canManage && (
+          <label className="inline-flex shrink-0 cursor-pointer items-center gap-2 text-sm">
             <input
               type="checkbox"
               className="ti-form-checkbox"
-              checked={sectionOn}
-              onChange={(e) => setToggle(e.target.checked)}
+              checked={sectionEnabled}
+              onChange={(e) => handleToggle(e.target.checked)}
             />
-            Set interview scoring for this job
+            Use job-specific rubrics
           </label>
-        ) : (
-          <p className="text-sm text-defaulttextcolor/70 dark:text-white/70">
-            Interview scoring for this job (read-only)
-          </p>
         )}
+      </div>
 
-        {!sectionOn && previewLine}
+      {!sectionEnabled && previewBlock}
 
-        {!sectionOn && stash.length > 0 && canEdit && (
-          <p className="text-xs text-defaulttextcolor/60 dark:text-white/60">
-            Turning this off removes {stash.length} assignment{stash.length === 1 ? "" : "s"} when you save the job.
-          </p>
-        )}
+      {canManage && !sectionEnabled && stashedRows && stashedRows.length > 0 && (
+        <p className="mt-2 text-xs text-warning">
+          Turning this off removes {stashedRows.length} assignment{stashedRows.length === 1 ? "" : "s"} when you save
+          the job.
+        </p>
+      )}
 
-        {sectionOn && canEdit && (
-          <>
-            {validationError && (
-              <p role="alert" className="text-sm text-danger">
-                {validationError}
-              </p>
-            )}
+      {canManage && sectionEnabled && (
+        <div className="mt-4 space-y-4">
+          {validationError && !value.some((row) => errorTargetsRow(validationError, row.roundType ?? null)) && (
+            <p className="text-xs text-danger" role="alert">{validationError}</p>
+          )}
+          {templatesError && <p className="text-xs text-danger">{templatesError}</p>}
 
-            {templatesError && (
-              <p className="text-xs text-danger">
-                {templatesError}{" "}
-                <button type="button" className="underline" onClick={() => void loadTemplates()}>
-                  Retry
-                </button>
-              </p>
-            )}
+          {value.map((row, index) => {
+            const roundKey = row.roundType ?? null;
+            const rowError = errorTargetsRow(validationError, roundKey) ? validationError : null;
+            const criteria = row.criteria || [];
+            const criteriaErr = criteria.length ? criteriaWeightError(criteria) : null;
+            const weightTotal = criteria.reduce((sum, c) => sum + (Number(c.weight) || 0), 0);
 
-            <div className="space-y-4">
-              {value.map((row, index) => {
-                const roundOptions = INTERVIEW_ROUND_TYPE_OPTIONS.filter(
-                  (opt) => opt.value === row.roundType || !usedRoundTypes.has(opt.value)
-                );
-                const rubricValue = rowRubricSelectValue(row);
-                const customCriteria = (Array.isArray(row.criteria) ? row.criteria : []).map((c) => ({
-                  ...c,
-                  keyFrozen: Boolean(String(c.label || "").trim()),
-                }));
-                const customWeightError = customCriteria.length ? criteriaWeightError(customCriteria) : null;
-                const customWeightTotal = customCriteria.reduce((sum, c) => sum + (Number(c.weight) || 0), 0);
-
-                return (
-                  <div
-                    key={`assignment-${index}`}
-                    className="rounded-lg border border-defaultborder/70 p-3 dark:border-white/10"
-                  >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                      <div className="min-w-0 flex-1">
-                        <label htmlFor={`rubric-round-${index}`} className="form-label mb-1 block text-sm font-medium">
-                          Round
-                        </label>
-                        <select
-                          id={`rubric-round-${index}`}
-                          className="form-select w-full text-sm"
-                          value={row.roundType ?? ""}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            updateRow(index, { roundType: v ? (v as InterviewRoundType) : null });
-                          }}
-                        >
-                          <option value="">Any round (job default)</option>
-                          {roundOptions.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <label htmlFor={`rubric-pick-${index}`} className="form-label mb-1 block text-sm font-medium">
-                          Rubric
-                        </label>
-                        <select
-                          id={`rubric-pick-${index}`}
-                          className="form-select w-full text-sm"
-                          value={rubricValue}
-                          disabled={templatesLoading}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            if (!v) {
-                              updateRow(index, { templateId: null, criteria: null });
-                              return;
-                            }
-                            if (v === CUSTOM_RUBRIC_VALUE) {
-                              updateRow(index, {
-                                templateId: null,
-                                criteria: [
-                                  {
-                                    key: "criterion",
-                                    label: "",
-                                    weight: 0,
-                                    scaleMin: 1,
-                                    scaleMax: 5,
-                                  },
-                                ],
-                              });
-                              return;
-                            }
-                            updateRow(index, { templateId: v, criteria: null });
-                          }}
-                        >
-                          <option value="" disabled>
-                            Choose a rubric…
+            return (
+              <div
+                key={`rubric-row-${index}`}
+                className="rounded-lg border border-defaultborder/70 p-3 dark:border-white/10"
+              >
+                <div className="flex flex-col gap-3 sm:grid sm:grid-cols-12 sm:items-end">
+                  <div className="sm:col-span-4">
+                    <label className="form-label mb-1 block text-xs font-medium" htmlFor={`rubric-round-${index}`}>
+                      Round
+                    </label>
+                    <select
+                      id={`rubric-round-${index}`}
+                      className="form-select w-full min-h-[44px] text-sm"
+                      value={roundKey ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        updateRow(index, { roundType: v ? (v as InterviewRoundType) : null });
+                      }}
+                    >
+                      <option value="" disabled={usedRoundTypes.has("__default__") && roundKey !== null}>
+                        Any round
+                      </option>
+                      {INTERVIEW_ROUND_TYPE_OPTIONS.map((opt) => {
+                        const key = opt.value;
+                        const taken = usedRoundTypes.has(key) && row.roundType !== opt.value;
+                        if (taken) return null;
+                        return (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
                           </option>
-                          {templates.map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.name}
-                            </option>
-                          ))}
-                          <option value={CUSTOM_RUBRIC_VALUE}>Custom for this job</option>
-                        </select>
-                      </div>
-                      <button
-                        type="button"
-                        className="ti-btn ti-btn-light !text-xs sm:mb-0.5"
-                        onClick={() => removeRow(index)}
-                        disabled={value.length <= 1}
-                      >
-                        Remove row
-                      </button>
-                    </div>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  <div className="sm:col-span-6">
+                    <label className="form-label mb-1 block text-xs font-medium" htmlFor={`rubric-pick-${index}`}>
+                      Rubric
+                    </label>
+                    <select
+                      id={`rubric-pick-${index}`}
+                      className="form-select w-full min-h-[44px] text-sm"
+                      value={rubricSelectValue(row)}
+                      onChange={(e) => handleRubricPick(index, e.target.value)}
+                    >
+                      <option value="" disabled>Select a rubric</option>
+                      {templates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                      <option value={RUBRIC_CUSTOM}>Custom for this job</option>
+                    </select>
+                  </div>
+                  <div className="sm:col-span-2 flex sm:justify-end">
+                    <button
+                      type="button"
+                      className="ti-btn ti-btn-light !text-xs min-h-[44px]"
+                      onClick={() => removeRow(index)}
+                      disabled={value.length <= 1}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
 
-                    {rubricValue === CUSTOM_RUBRIC_VALUE && (
-                      <div className="mt-4 space-y-2">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-sm font-medium">Custom criteria</p>
-                          <p className="text-xs tabular-nums text-defaulttextcolor/70 dark:text-white/70">
-                            Weight total: <span className="font-semibold">{customWeightTotal}%</span>
-                          </p>
-                        </div>
-                        <p className="text-xs text-defaulttextcolor/60 dark:text-white/60">
-                          The criterion key is derived from the label when you add a row, then frozen. Stored ratings
-                          reference the key — rename the label, never the key.
-                        </p>
-                        {customWeightError && <p className="text-xs text-danger">{customWeightError}</p>}
-                        <div className="overflow-x-auto rounded-lg border border-defaultborder/70 dark:border-white/10">
-                          <table className="min-w-full text-sm">
-                            <thead className="bg-gray-50 dark:bg-white/5">
-                              <tr>
-                                <th className="px-2 py-2 text-start font-medium">Label</th>
-                                <th className="px-2 py-2 text-start font-medium">Key</th>
-                                <th className="px-2 py-2 text-start font-medium">Weight %</th>
-                                <th className="px-2 py-2 text-start font-medium">Min</th>
-                                <th className="px-2 py-2 text-start font-medium">Max</th>
-                                <th className="px-2 py-2" />
+                {rowError && (
+                  <p className="mt-2 text-xs text-danger" role="alert">{rowError}</p>
+                )}
+
+                {rubricSelectValue(row) === RUBRIC_CUSTOM && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs text-defaulttextcolor/60 dark:text-white/60">
+                      The criterion key is derived from the label when you add a row, then frozen. Stored ratings
+                      reference the key — rename the label, never the key.
+                    </p>
+                    {criteriaErr && <p className="text-xs text-danger">{criteriaErr}</p>}
+                    <div className="overflow-x-auto rounded-lg border border-defaultborder/70 dark:border-white/10">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-gray-50 dark:bg-white/5">
+                          <tr>
+                            <th className="px-2 py-2 text-start font-medium">Label</th>
+                            <th className="px-2 py-2 text-start font-medium">Key</th>
+                            <th className="px-2 py-2 text-start font-medium">Weight %</th>
+                            <th className="px-2 py-2 text-start font-medium">Min</th>
+                            <th className="px-2 py-2 text-start font-medium">Max</th>
+                            <th className="px-2 py-2" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {criteria.map((c, ci) => {
+                            const frozen = Boolean(c.label?.trim());
+                            return (
+                              <tr key={`${c.key}-${ci}`} className="border-t border-defaultborder/50 dark:border-white/10">
+                                <td className="px-2 py-2">
+                                  <input
+                                    type="text"
+                                    aria-label={`Criterion ${ci + 1} label`}
+                                    className="form-control min-h-[44px] !rounded-md text-sm"
+                                    value={c.label}
+                                    onChange={(e) =>
+                                      updateCriterion(index, ci, { label: e.target.value }, frozen)
+                                    }
+                                  />
+                                </td>
+                                <td className="px-2 py-2 text-xs text-defaulttextcolor/60 dark:text-white/60">
+                                  {c.key}
+                                </td>
+                                <td className="px-2 py-2">
+                                  <input
+                                    type="number"
+                                    aria-label={`Criterion ${ci + 1} weight`}
+                                    className="form-control !w-20 min-h-[44px] !rounded-md text-sm tabular-nums"
+                                    value={c.weight}
+                                    onChange={(e) =>
+                                      updateCriterion(index, ci, { weight: Number(e.target.value) }, frozen)
+                                    }
+                                  />
+                                </td>
+                                <td className="px-2 py-2">
+                                  <input
+                                    type="number"
+                                    aria-label={`Criterion ${ci + 1} scale min`}
+                                    className="form-control !w-16 min-h-[44px] !rounded-md text-sm tabular-nums"
+                                    value={c.scaleMin}
+                                    onChange={(e) =>
+                                      updateCriterion(index, ci, { scaleMin: Number(e.target.value) }, frozen)
+                                    }
+                                  />
+                                </td>
+                                <td className="px-2 py-2">
+                                  <input
+                                    type="number"
+                                    aria-label={`Criterion ${ci + 1} scale max`}
+                                    className="form-control !w-16 min-h-[44px] !rounded-md text-sm tabular-nums"
+                                    value={c.scaleMax}
+                                    onChange={(e) =>
+                                      updateCriterion(index, ci, { scaleMax: Number(e.target.value) }, frozen)
+                                    }
+                                  />
+                                </td>
+                                <td className="px-2 py-2">
+                                  <button
+                                    type="button"
+                                    className="text-xs text-danger hover:underline"
+                                    onClick={() => removeCriterion(index, ci)}
+                                    disabled={criteria.length <= 1}
+                                  >
+                                    Remove
+                                  </button>
+                                </td>
                               </tr>
-                            </thead>
-                            <tbody>
-                              {customCriteria.map((criterion, cIndex) => (
-                                <tr
-                                  key={`${criterion.key}-${cIndex}`}
-                                  className="border-t border-defaultborder/50 dark:border-white/10"
-                                >
-                                  <td className="px-2 py-2">
-                                    <input
-                                      type="text"
-                                      aria-label={`Criterion ${cIndex + 1} label`}
-                                      className="form-control !rounded-md !py-1 text-sm"
-                                      value={criterion.label}
-                                      onChange={(e) => {
-                                        const next = [...customCriteria];
-                                        const rowCrit = { ...next[cIndex], label: e.target.value };
-                                        if (!rowCrit.keyFrozen) {
-                                          rowCrit.key = slugifyLabel(e.target.value);
-                                        }
-                                        next[cIndex] = rowCrit;
-                                        updateCustomCriteria(index, next);
-                                      }}
-                                    />
-                                  </td>
-                                  <td className="px-2 py-2 text-xs text-defaulttextcolor/60 dark:text-white/60">
-                                    {criterion.key}
-                                  </td>
-                                  <td className="px-2 py-2">
-                                    <input
-                                      type="number"
-                                      aria-label={`Criterion ${cIndex + 1} weight`}
-                                      className="form-control !w-20 !min-h-11 !rounded-md !py-1 text-sm tabular-nums"
-                                      value={criterion.weight}
-                                      onChange={(e) => {
-                                        const next = [...customCriteria];
-                                        next[cIndex] = { ...next[cIndex], weight: Number(e.target.value) };
-                                        updateCustomCriteria(index, next);
-                                      }}
-                                    />
-                                  </td>
-                                  <td className="px-2 py-2">
-                                    <input
-                                      type="number"
-                                      aria-label={`Criterion ${cIndex + 1} scale min`}
-                                      className="form-control !w-16 !min-h-11 !rounded-md !py-1 text-sm"
-                                      value={criterion.scaleMin}
-                                      onChange={(e) => {
-                                        const next = [...customCriteria];
-                                        next[cIndex] = { ...next[cIndex], scaleMin: Number(e.target.value) };
-                                        updateCustomCriteria(index, next);
-                                      }}
-                                    />
-                                  </td>
-                                  <td className="px-2 py-2">
-                                    <input
-                                      type="number"
-                                      aria-label={`Criterion ${cIndex + 1} scale max`}
-                                      className="form-control !w-16 !min-h-11 !rounded-md !py-1 text-sm"
-                                      value={criterion.scaleMax}
-                                      onChange={(e) => {
-                                        const next = [...customCriteria];
-                                        next[cIndex] = { ...next[cIndex], scaleMax: Number(e.target.value) };
-                                        updateCustomCriteria(index, next);
-                                      }}
-                                    />
-                                  </td>
-                                  <td className="px-2 py-2">
-                                    <button
-                                      type="button"
-                                      className="text-xs text-danger hover:underline"
-                                      onClick={() => {
-                                        const next = customCriteria.filter((_, i) => i !== cIndex);
-                                        updateCustomCriteria(index, next);
-                                      }}
-                                      disabled={customCriteria.length <= 1}
-                                    >
-                                      Remove
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                        <button
-                          type="button"
-                          className="ti-btn ti-btn-light !text-xs"
-                          onClick={() => {
-                            updateCustomCriteria(index, [
-                              ...customCriteria,
-                              {
-                                key: "criterion",
-                                label: "",
-                                weight: 0,
-                                scaleMin: 1,
-                                scaleMax: 5,
-                                keyFrozen: false,
-                              },
-                            ]);
-                          }}
-                        >
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs tabular-nums text-defaulttextcolor/70 dark:text-white/70">
+                        Weight total: <span className="font-semibold">{weightTotal}%</span>
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" className="ti-btn ti-btn-light !text-xs" onClick={() => addCriterion(index)}>
                           Add criterion
                         </button>
+                        <button
+                          type="button"
+                          className="ti-btn ti-btn-secondary !text-xs"
+                          disabled={Boolean(criteriaErr)}
+                          onClick={() => void promoteToTemplate(index, criteria)}
+                        >
+                          Save as reusable template
+                        </button>
                       </div>
-                    )}
+                    </div>
                   </div>
-                );
-              })}
-            </div>
+                )}
+              </div>
+            );
+          })}
 
-            {value.length < MAX_RUBRIC_ASSIGNMENTS && (
-              <button type="button" className="ti-btn ti-btn-light !text-xs" onClick={addRow}>
-                Add assignment row
-              </button>
-            )}
-          </>
-        )}
+          {value.length < MAX_RUBRIC_ASSIGNMENTS && (
+            <button type="button" className="ti-btn ti-btn-light !text-xs" onClick={addRow}>
+              Add round assignment
+            </button>
+          )}
+        </div>
+      )}
 
-        {sectionOn && !canEdit && previewLine}
-      </div>
+      {!canManage && previewBlock}
     </section>
   );
 }
