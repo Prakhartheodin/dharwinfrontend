@@ -7,7 +7,8 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Swal from 'sweetalert2'
 import TiptapEditor from '@/shared/data/forms/form-editors/tiptapeditor'
-import { createJob, createJobTemplate, getJobTemplate, listJobTemplates, COMPANY_SIZE_BUCKETS, type CreateJobPayload } from '@/shared/lib/api/jobs'
+import { createJob, createJobTemplate, getJobTemplate, listJobTemplates, COMPANY_SIZE_BUCKETS, type CreateJobPayload, type RubricAssignment } from '@/shared/lib/api/jobs'
+import JobRubricSection from '@/shared/components/interview/JobRubricSection'
 import { ROUTES } from '@/shared/lib/constants'
 import { normalizeTipTapHtmlFromApi } from '@/shared/lib/tiptapHtml'
 import { resolveTemplateVars, type TemplateVarContext } from '@/shared/lib/ats/templateVars'
@@ -29,6 +30,8 @@ const CreateJob = () => {
   const [jobDescription, setJobDescription] = useState('')
   const [requirements, setRequirements] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [rubricAssignments, setRubricAssignments] = useState<RubricAssignment[]>([])
+  const [rubricError, setRubricError] = useState<string | null>(null)
   
   // Form state
   const [formData, setFormData] = useState({
@@ -259,6 +262,10 @@ const CreateJob = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (rubricError) {
+      Swal.fire({ icon: 'error', title: 'Validation', text: rubricError })
+      return
+    }
     if (!formData.jobTitle?.trim() || !formData.organisationName?.trim() || !formData.location?.trim() || !formData.jobType?.value || !jobDescription?.trim()) {
       Swal.fire({ icon: 'error', title: 'Validation', text: 'Please fill in required fields: Job Title, Organisation Name, Location, Job Type, and Job Description.' })
       return
@@ -333,6 +340,10 @@ const CreateJob = () => {
           ? { applicationDeadline: new Date(formData.applicationDeadline).toISOString() }
           : {}),
         status: formData.status?.value || 'Active',
+        // Omitted entirely when the job has no rubrics of its own: sending an empty array is
+        // a write the backend gates on interview access, and a job-only user creating an
+        // ordinary job must not hit a 403 for a section they never touched (audit J11).
+        ...(rubricAssignments.length ? { rubricAssignments } : {}),
       }
       await createJob(payload)
       await Swal.fire({ icon: 'success', title: 'Job Created', text: 'The job has been created successfully.' })
@@ -878,6 +889,12 @@ const CreateJob = () => {
                   </div>
                 )}
 
+                <JobRubricSection
+                  value={rubricAssignments}
+                  onChange={setRubricAssignments}
+                  onValidityChange={setRubricError}
+                />
+
                 {/* Form Actions */}
                 <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-gray-200 dark:border-defaultborder/10">
                   <Link
@@ -889,7 +906,7 @@ const CreateJob = () => {
                   <button
                     type="submit"
                     className="ti-btn ti-btn-primary"
-                    disabled={submitting}
+                    disabled={submitting || Boolean(rubricError)}
                   >
                     <i className="ri-save-line font-semibold align-middle me-1"></i>
                     {submitting ? 'Creating...' : 'Create Job'}
