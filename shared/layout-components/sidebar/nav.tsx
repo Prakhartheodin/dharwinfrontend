@@ -194,6 +194,16 @@ export const MenuItems: any = [
       },
 
       {
+    icon: InterviewsIcon,
+    title: "Interview Rubrics",
+        type: "link",
+    path: "/ats/interview-rubrics",
+        active: false,
+        selected: false,
+        dirchange: false,
+      },
+
+      {
     icon: OffersPlacementIcon,
     title: "Offers & Placement",
         type: "link",

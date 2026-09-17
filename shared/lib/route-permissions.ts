@@ -103,6 +103,10 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/courses": "candidate.courses:",
   "/ats/recruiters": "ats.recruiters:",
   "/ats/interviews": "ats.interviews:",
+  // Reuses the interviews permission domain on purpose: whoever manages interviews
+  // manages the rubric they are scored against. A settings.* route would need a new
+  // permission string end to end.
+  "/ats/interview-rubrics": "ats.interviews:",
   "/ats/offers-placement": "ats.offers:",
   "/ats/pre-boarding": "ats.pre-boarding:",
   "/ats/onboarding": "ats.onboarding:",
