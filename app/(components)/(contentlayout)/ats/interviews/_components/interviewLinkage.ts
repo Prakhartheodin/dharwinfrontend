@@ -250,3 +250,26 @@ export function preselectApplicationId(
   const byTitle = apps.filter((a) => (a.job?.title ?? '').trim().toLowerCase() === title)
   return byTitle.length === 1 ? jobApplicationRecordId(byTitle[0]) : ''
 }
+
+/**
+ * A round's short display name for a table cell or a badge.
+ *
+ * The round-history endpoint returns a server-built `roundName` and that is what the
+ * history panel renders. This exists because the interviews LIST returns raw meetings
+ * with no `roundName`. Keep the two consistent: "Round N — qualifier".
+ */
+export function formatRoundBadge(round?: InterviewRound | null): string | null {
+  if (!round) return null
+  const index = Number(round.index)
+  const hasIndex = Number.isFinite(index) && index > 0
+  const label = String(round.label || '').trim()
+  const typeLabel = round.type
+    ? INTERVIEW_ROUND_TYPE_OPTIONS.find((o) => o.value === round.type)?.label || round.type
+    : ''
+  const qualifier = label || typeLabel
+
+  if (hasIndex && qualifier) return `Round ${index} — ${qualifier}`
+  if (hasIndex) return `Round ${index}`
+  if (qualifier) return qualifier
+  return null
+}

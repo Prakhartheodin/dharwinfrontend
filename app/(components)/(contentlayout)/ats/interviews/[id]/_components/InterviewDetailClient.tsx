@@ -26,7 +26,7 @@ import InterviewLinkageModal, {
   type InterviewLinkageTarget,
 } from "../../_components/InterviewLinkageModal";
 import { InterviewConsentBadge } from "../../_components/InterviewConsentBadge";
-import { linkageActions, offersLinkAction } from "../../_components/interviewLinkage";
+import { formatRoundBadge, linkageActions, offersLinkAction } from "../../_components/interviewLinkage";
 import InterviewDetailResultPanel from "./InterviewDetailResultPanel";
 import {
   INTERVIEW_DETAIL_TAB_LABELS,
@@ -253,9 +253,16 @@ export default function InterviewDetailClient({
             <i className="ri-arrow-left-line me-1.5 align-middle" aria-hidden />
             Interviews
           </Link>
-          <h1 className="mt-2 text-xl font-semibold text-defaulttextcolor dark:text-white sm:text-2xl">
-            {meeting.title}
-          </h1>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-semibold text-defaulttextcolor dark:text-white sm:text-2xl">
+              {meeting.title}
+            </h1>
+            {formatRoundBadge(meeting.round) && (
+              <span className="inline-flex items-center rounded-md bg-primary/[0.08] px-1.5 py-0.5 text-[0.65rem] font-medium text-primary dark:bg-primary/15">
+                {formatRoundBadge(meeting.round)}
+              </span>
+            )}
+          </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <InterviewLinkageBadge status={meeting.linkageStatus} />
             <InterviewConsentBadge consents={meeting.participantConsents} />
