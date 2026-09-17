@@ -57,10 +57,16 @@ export interface MeetingAgentRef {
   email?: string;
 }
 
-/** D4 round types — must match backend src/constants/interviewLinkage.js INTERVIEW_ROUND_TYPES (Joi rejects others). */
+/**
+ * Round types — must match backend src/constants/interviewLinkage.js INTERVIEW_ROUND_TYPES.
+ * Joi rejects anything else with a 400 on the whole request, so this list can only grow
+ * AFTER the backend that accepts the new value is deployed.
+ */
 export type InterviewRoundType =
   | 'screening'
   | 'technical'
+  | 'panel'
+  | 'hr'
   | 'behavioral'
   | 'hiring_manager'
   | 'culture'

@@ -15,6 +15,8 @@ import { formatDualZone, getViewerTimezone } from "@/shared/lib/timezone";
 const ROUND_TYPE_LABELS: Record<string, string> = {
   screening: "Screening",
   technical: "Technical",
+  panel: "Panel",
+  hr: "HR",
   behavioral: "Behavioral",
   hiring_manager: "Hiring manager",
   culture: "Culture",

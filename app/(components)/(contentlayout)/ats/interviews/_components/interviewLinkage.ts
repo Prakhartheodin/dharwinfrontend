@@ -13,6 +13,8 @@ import { jobApplicationRecordId } from '@/shared/lib/ats/offer-application-eligi
 export const INTERVIEW_ROUND_TYPE_OPTIONS: ReadonlyArray<{ value: InterviewRoundType; label: string }> = [
   { value: 'screening', label: 'Screening' },
   { value: 'technical', label: 'Technical' },
+  { value: 'panel', label: 'Panel' },
+  { value: 'hr', label: 'HR' },
   { value: 'behavioral', label: 'Behavioral' },
   { value: 'hiring_manager', label: 'Hiring manager' },
   { value: 'culture', label: 'Culture' },
