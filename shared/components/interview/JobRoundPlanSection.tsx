@@ -44,6 +44,35 @@ function rubricSelectValue(row: InterviewRoundPlanRow): string {
   return "";
 }
 
+/** Display name for a round type, from the one list that already holds them. */
+function roundTypeLabel(roundType: InterviewRoundType | null): string {
+  if (!roundType) return "any round";
+  return INTERVIEW_ROUND_TYPE_OPTIONS.find((o) => o.value === roundType)?.label ?? roundType;
+}
+
+/**
+ * Whether a saved rubric is offerable for this round.
+ *
+ * "Applies to round type" on the rubric means what it says: set it, and the rubric belongs
+ * to that round type only; leave it unset and the rubric is generic, so every round may use
+ * it. Without this the Screening round listed the Technical rubric and vice versa, and
+ * picking the wrong one is silent — the round simply gets scored against the wrong criteria.
+ *
+ * The rubric this row already holds stays visible regardless, even if archived or no longer
+ * matching: dropping it would blank the select and discard a saved choice on the next save.
+ * A round with no type chosen yet cannot be filtered against, so it sees everything.
+ */
+export function rubricOfferableForRow(
+  template: RubricTemplate,
+  row: InterviewRoundPlanRow
+): boolean {
+  if (template.id === row.templateId) return true;
+  if (template.archivedAt) return false;
+  if (!row.roundType) return true;
+  const appliesTo = template.appliesTo?.roundType ?? null;
+  return appliesTo === null || appliesTo === row.roundType;
+}
+
 function RoundRubricPreview({
   jobId,
   row,
@@ -369,6 +398,27 @@ export default function JobRoundPlanSection({
             const rowError = errorTargetsRow(validationError, row) ? validationError : null;
             const duplicateTypeCount = row.roundType ? roundTypeCounts.get(row.roundType) || 0 : 0;
             const roundLabel = (row.label || "").trim() || `Round ${index + 1}`;
+            const offerableRubrics = templates.filter((t) => rubricOfferableForRow(t, row));
+            /**
+             * The rubric this row holds is offered only because it is already selected — it
+             * belongs to a different round type. Surfaced rather than silently swapped: the
+             * recruiter may have changed the round type after choosing the rubric, and only
+             * they know which of the two was the mistake.
+             */
+            const selectedRubric = row.templateId
+              ? offerableRubrics.find((t) => t.id === row.templateId) ?? null
+              : null;
+            const mismatchedRubric =
+              selectedRubric &&
+              row.roundType &&
+              (selectedRubric.appliesTo?.roundType ?? null) !== null &&
+              selectedRubric.appliesTo?.roundType !== row.roundType
+                ? selectedRubric
+                : null;
+            /** Excludes the kept-for-continuity selection, so zero means "genuinely nothing fits". */
+            const savedRubricCount = offerableRubrics.filter(
+              (t) => !t.archivedAt && t.id !== row.templateId
+            ).length;
 
             return (
               <div key={row.key} className="rounded-lg border border-defaultborder/70 p-3 dark:border-white/10">
@@ -448,16 +498,34 @@ export default function JobRoundPlanSection({
                         onChange={(e) => handleRubricPick(index, e.target.value)}
                       >
                         <option value="" disabled>Select a rubric</option>
-                        {templates
-                          .filter((t) => !t.archivedAt || t.id === row.templateId)
-                          .map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.name}
-                              {t.archivedAt ? " (archived)" : ""}
-                            </option>
-                          ))}
+                        {offerableRubrics.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                            {t.archivedAt ? " (archived)" : ""}
+                            {/* Named in the option itself, so the reason it is listed is
+                                readable without opening the rubric. */}
+                            {!t.archivedAt && (t.appliesTo?.roundType ?? null) === null
+                              ? " (any round)"
+                              : ""}
+                          </option>
+                        ))}
                         <option value={RUBRIC_CUSTOM}>Define for this round</option>
                       </select>
+                      {mismatchedRubric && (
+                        <p className="mt-1 text-xs text-warning">
+                          {mismatchedRubric.name} applies to{" "}
+                          {roundTypeLabel(mismatchedRubric.appliesTo?.roundType ?? null)}, not this
+                          round. It is kept so nothing is lost silently — pick another rubric to
+                          replace it.
+                        </p>
+                      )}
+                      {!mismatchedRubric && row.roundType && savedRubricCount === 0 && (
+                        <p className="mt-1 text-xs text-textmuted dark:text-white/55">
+                          No saved rubric applies to this round type. Define one for this round, or
+                          clear &ldquo;Applies to round type&rdquo; on a rubric to make it usable by
+                          every round.
+                        </p>
+                      )}
                     </div>
                     <div className="sm:col-span-1 flex sm:justify-end">
                       <button
