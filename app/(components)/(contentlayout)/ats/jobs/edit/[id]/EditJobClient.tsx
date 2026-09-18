@@ -15,9 +15,9 @@ import {
   createJobTemplate,
   COMPANY_SIZE_BUCKETS,
   type UpdateJobPayload,
-  type RubricAssignment,
+  type InterviewRoundPlanRow,
 } from '@/shared/lib/api/jobs'
-import JobRubricSection from '@/shared/components/interview/JobRubricSection'
+import JobRoundPlanSection from '@/shared/components/interview/JobRoundPlanSection'
 import { ROUTES } from '@/shared/lib/constants'
 import { normalizeTipTapHtmlFromApi } from '@/shared/lib/tiptapHtml'
 import { YmdFilterDateInput } from '@/shared/components/filters/YmdFilterDateInput'
@@ -112,9 +112,10 @@ export default function EditJobClient() {
   const [jobDescription, setJobDescription] = useState('')
   const [requirements, setRequirements] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [rubricAssignments, setRubricAssignments] = useState<RubricAssignment[]>([])
-  const [loadedRubricAssignments, setLoadedRubricAssignments] = useState<RubricAssignment[]>([])
-  const [rubricError, setRubricError] = useState<string | null>(null)
+  const [interviewRounds, setInterviewRounds] = useState<InterviewRoundPlanRow[]>([])
+  const [loadedInterviewRounds, setLoadedInterviewRounds] = useState<InterviewRoundPlanRow[]>([])
+  const [roundPlanErrorMsg, setRoundPlanErrorMsg] = useState<string | null>(null)
+  const [hasLegacyRubrics, setHasLegacyRubrics] = useState(false)
   const [loading, setLoading] = useState(true)
   const [formData, setFormData] = useState({
     jobTitle: '',
@@ -318,8 +319,9 @@ export default function EditJobClient() {
             : '',
           education: '',
         })
-        setRubricAssignments(job.rubricAssignments ?? [])
-        setLoadedRubricAssignments(job.rubricAssignments ?? [])
+        setInterviewRounds(job.interviewRounds ?? [])
+        setLoadedInterviewRounds(job.interviewRounds ?? [])
+        setHasLegacyRubrics((job.rubricAssignments?.length ?? 0) > 0)
         // Decode entity-encoded payloads (xss-clean middleware may return `&lt;p&gt;…`)
         // and split the appended Requirements & Qualifications block back out, so
         // the editor displays clean description + requirements separately. Without
@@ -391,8 +393,8 @@ export default function EditJobClient() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (rubricError) {
-      Swal.fire({ icon: 'error', title: 'Validation', text: rubricError })
+    if (roundPlanErrorMsg) {
+      Swal.fire({ icon: 'error', title: 'Validation', text: roundPlanErrorMsg })
       return
     }
     if (!jobId || jobId === '_' || !formData.jobTitle?.trim() || !formData.organisationName?.trim() || !formData.location?.trim() || !formData.jobType?.value || !jobDescription?.trim()) {
@@ -413,13 +415,15 @@ export default function EditJobClient() {
       Swal.fire({ icon: 'error', title: 'Validation', text: `Founded must be a year between 1800 and ${new Date().getFullYear()}.` })
       return
     }
-    if (loadedRubricAssignments.length > 0 && rubricAssignments.length === 0) {
-      const ok = window.confirm(
-        `This removes ${loadedRubricAssignments.length} interview scoring assignment${
-          loadedRubricAssignments.length === 1 ? '' : 's'
-        } from this job. Future interviews will use the default rubric. Interviews already scheduled keep the rubric they were created with.`
-      )
-      if (!ok) return
+    if (loadedInterviewRounds.length > 0 && interviewRounds.length === 0) {
+      const ok = await Swal.fire({
+        icon: 'warning',
+        title: 'Remove all interview rounds?',
+        text: 'This job will no longer have a set round sequence. Candidates already part-way through keep the sequence they started on.',
+        showCancelButton: true,
+        confirmButtonText: 'Remove rounds',
+      })
+      if (!ok.isConfirmed) return
     }
     setSubmitting(true)
     try {
@@ -456,8 +460,8 @@ export default function EditJobClient() {
       }
       const vacanciesNum = vacancies.value
 
-      const rubricsChanged =
-        JSON.stringify(rubricAssignments) !== JSON.stringify(loadedRubricAssignments)
+      const roundsChanged =
+        JSON.stringify(interviewRounds) !== JSON.stringify(loadedInterviewRounds)
 
       const payload: UpdateJobPayload = {
         title: formData.jobTitle.trim(),
@@ -491,7 +495,7 @@ export default function EditJobClient() {
         // On edit an empty array is a real instruction ("remove this job's rubrics"), so it
         // is sent — unlike on create. Skipped when unchanged, so a plain title edit does not
         // need interview access (audit J11).
-        ...(rubricsChanged ? { rubricAssignments } : {}),
+        ...(roundsChanged ? { interviewRounds } : {}),
       }
       await updateJob(jobId, payload)
       await Swal.fire({ icon: 'success', title: 'Job Updated', text: 'The job has been updated successfully.' })
@@ -967,17 +971,23 @@ export default function EditJobClient() {
                       </section>
                     </div>
                   )}
-                  <JobRubricSection
-                    value={rubricAssignments}
-                    onChange={setRubricAssignments}
+                  {interviewRounds.length === 0 && hasLegacyRubrics && (
+                    <p className="mb-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+                      This job still uses the older per-round-type scoring setup, which keeps working. Adding rounds here
+                      replaces it for every round scheduled from now on.
+                    </p>
+                  )}
+                  <JobRoundPlanSection
+                    value={interviewRounds}
+                    onChange={setInterviewRounds}
                     jobId={jobId}
-                    onValidityChange={setRubricError}
+                    onValidityChange={setRoundPlanErrorMsg}
                   />
                   <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-gray-200 dark:border-defaultborder/10">
                     <Link href="/ats/jobs" className="ti-btn ti-btn-secondary">
                       Cancel
                     </Link>
-                    <button type="submit" className="ti-btn ti-btn-primary" disabled={submitting || Boolean(rubricError)}>
+                    <button type="submit" className="ti-btn ti-btn-primary" disabled={submitting || Boolean(roundPlanErrorMsg)}>
                       <i className="ri-save-line font-semibold align-middle me-1"></i>
                       {submitting ? 'Saving...' : 'Save Changes'}
                     </button>

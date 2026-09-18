@@ -7,8 +7,8 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Swal from 'sweetalert2'
 import TiptapEditor from '@/shared/data/forms/form-editors/tiptapeditor'
-import { createJob, createJobTemplate, getJobTemplate, listJobTemplates, COMPANY_SIZE_BUCKETS, type CreateJobPayload, type RubricAssignment } from '@/shared/lib/api/jobs'
-import JobRubricSection from '@/shared/components/interview/JobRubricSection'
+import { createJob, createJobTemplate, getJobTemplate, listJobTemplates, COMPANY_SIZE_BUCKETS, type CreateJobPayload, type InterviewRoundPlanRow } from '@/shared/lib/api/jobs'
+import JobRoundPlanSection from '@/shared/components/interview/JobRoundPlanSection'
 import { ROUTES } from '@/shared/lib/constants'
 import { normalizeTipTapHtmlFromApi } from '@/shared/lib/tiptapHtml'
 import { resolveTemplateVars, type TemplateVarContext } from '@/shared/lib/ats/templateVars'
@@ -30,8 +30,8 @@ const CreateJob = () => {
   const [jobDescription, setJobDescription] = useState('')
   const [requirements, setRequirements] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [rubricAssignments, setRubricAssignments] = useState<RubricAssignment[]>([])
-  const [rubricError, setRubricError] = useState<string | null>(null)
+  const [interviewRounds, setInterviewRounds] = useState<InterviewRoundPlanRow[]>([])
+  const [roundPlanErrorMsg, setRoundPlanErrorMsg] = useState<string | null>(null)
   
   // Form state
   const [formData, setFormData] = useState({
@@ -262,8 +262,8 @@ const CreateJob = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (rubricError) {
-      Swal.fire({ icon: 'error', title: 'Validation', text: rubricError })
+    if (roundPlanErrorMsg) {
+      Swal.fire({ icon: 'error', title: 'Validation', text: roundPlanErrorMsg })
       return
     }
     if (!formData.jobTitle?.trim() || !formData.organisationName?.trim() || !formData.location?.trim() || !formData.jobType?.value || !jobDescription?.trim()) {
@@ -343,7 +343,7 @@ const CreateJob = () => {
         // Omitted entirely when the job has no rubrics of its own: sending an empty array is
         // a write the backend gates on interview access, and a job-only user creating an
         // ordinary job must not hit a 403 for a section they never touched (audit J11).
-        ...(rubricAssignments.length ? { rubricAssignments } : {}),
+        ...(interviewRounds.length ? { interviewRounds } : {}),
       }
       await createJob(payload)
       await Swal.fire({ icon: 'success', title: 'Job Created', text: 'The job has been created successfully.' })
@@ -889,10 +889,10 @@ const CreateJob = () => {
                   </div>
                 )}
 
-                <JobRubricSection
-                  value={rubricAssignments}
-                  onChange={setRubricAssignments}
-                  onValidityChange={setRubricError}
+                <JobRoundPlanSection
+                  value={interviewRounds}
+                  onChange={setInterviewRounds}
+                  onValidityChange={setRoundPlanErrorMsg}
                 />
 
                 {/* Form Actions */}
@@ -906,7 +906,7 @@ const CreateJob = () => {
                   <button
                     type="submit"
                     className="ti-btn ti-btn-primary"
-                    disabled={submitting || Boolean(rubricError)}
+                    disabled={submitting || Boolean(roundPlanErrorMsg)}
                   >
                     <i className="ri-save-line font-semibold align-middle me-1"></i>
                     {submitting ? 'Creating...' : 'Create Job'}
