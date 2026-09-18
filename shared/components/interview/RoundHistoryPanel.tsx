@@ -8,6 +8,7 @@ import {
   type RoundEvaluation,
 } from "@/shared/lib/api/meetings";
 import { formatDualZone, getViewerTimezone } from "@/shared/lib/timezone";
+import RoundProgressChip from "./RoundProgressChip";
 
 export type RoundHistoryPanelProps = {
   applicationId: string;
@@ -223,10 +224,18 @@ export default function RoundHistoryPanel({
           <p className="text-base font-semibold text-defaulttextcolor dark:text-white">{candidateName}</p>
         )}
         {jobTitle && <p className="text-sm text-defaulttextcolor/70 dark:text-white/70">{jobTitle}</p>}
+        {/* Renders nothing when no plan is in force, which is the normal state of every
+            application that predates the round plan. */}
+        <div className="mt-2 empty:mt-0">
+          <RoundProgressChip progress={data?.progress} size="md" showSteps />
+        </div>
         {summary && (
           <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4 tabular-nums">
             <div>
-              <dt className="text-defaulttextcolor/50 dark:text-white/50">Rounds</dt>
+              {/* "held", not "Rounds": it counts rounds that happened, while the chip above
+                  counts rounds planned. The two legitimately differ whenever an extra round
+                  was added or a planned one has not happened yet. */}
+              <dt className="text-defaulttextcolor/50 dark:text-white/50">Rounds held</dt>
               <dd className="font-medium text-defaulttextcolor dark:text-white">{summary.roundCount}</dd>
             </div>
             <div>

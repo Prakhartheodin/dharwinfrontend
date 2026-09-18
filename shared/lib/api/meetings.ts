@@ -116,6 +116,12 @@ export interface RoundProgress {
   heldCount: number;
   passedCount: number;
   offPlanCount: number;
+  /**
+   * Planned rows still to finish, counted per ROW — two Technical rounds need two results.
+   * A held round with no result yet still counts. Zero once rejected, because the process
+   * stopped and nothing remains to run.
+   */
+  remainingCount: number;
   isComplete: boolean;
   rejectedAt: { key: string; label: string; index: number } | null;
   nextRound: { key: string; label: string; roundType: InterviewRoundType | null; index: number } | null;
