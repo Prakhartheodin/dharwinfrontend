@@ -83,6 +83,7 @@ export type RubricEvaluationFormProps = {
   onSaved?: (evaluation: InterviewEvaluation) => void;
   hideSaveButton?: boolean;
   saveRef?: React.MutableRefObject<(() => Promise<void>) | null>;
+  readOnly?: boolean;
 };
 
 export default function RubricEvaluationForm({
@@ -91,6 +92,7 @@ export default function RubricEvaluationForm({
   onSaved,
   hideSaveButton = false,
   saveRef,
+  readOnly = false,
 }: RubricEvaluationFormProps) {
   const { user } = useAuth();
   const userId = String(user?.id || "");
@@ -157,6 +159,8 @@ export default function RubricEvaluationForm({
   const preview = useMemo(() => previewWeightedScore(criteria, ratings), [criteria, ratings]);
 
   const isObsidian = variant === "obsidian";
+  const inputsDisabled = readOnly;
+  const showSaveButton = !hideSaveButton && !readOnly;
 
   const ratingButtonClass = (active: boolean) => {
     const base =
@@ -329,7 +333,7 @@ export default function RubricEvaluationForm({
                         type="button"
                         aria-pressed={active}
                         aria-label={`${criterion.label}: ${value}`}
-                        disabled={entry.notApplicable}
+                        disabled={inputsDisabled || entry.notApplicable}
                         onClick={() => setRating(criterion.key, value)}
                         className={ratingButtonClass(active)}
                       >
@@ -341,6 +345,7 @@ export default function RubricEvaluationForm({
                 <button
                   type="button"
                   aria-pressed={entry.notApplicable}
+                  disabled={inputsDisabled}
                   onClick={() => toggleNa(criterion.key)}
                   className={`ms-1 inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border px-2 text-xs font-medium ${
                     entry.notApplicable
@@ -369,6 +374,7 @@ export default function RubricEvaluationForm({
           maxLength={2000}
           value={comment}
           onChange={(e) => setComment(e.target.value)}
+          disabled={inputsDisabled}
           placeholder="What stood out, concerns, follow-up questions..."
           className={notesFieldClass}
         />
@@ -380,7 +386,7 @@ export default function RubricEvaluationForm({
         </p>
       )}
 
-      {!hideSaveButton && (
+      {showSaveButton && (
         <div className="flex justify-end">
           <button
             type="button"

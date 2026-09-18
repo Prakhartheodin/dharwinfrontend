@@ -20,11 +20,13 @@ import type { InterviewLinkageTarget } from "../../_components/InterviewLinkageM
 export default function InterviewDetailResultPanel({
   meeting,
   meetingId,
+  readOnly = false,
   onSaved,
   onRequestLink,
 }: {
   meeting: Meeting;
   meetingId: string;
+  readOnly?: boolean;
   onSaved: () => void | Promise<void>;
   onRequestLink: (reason: NonNullable<InterviewLinkageTarget["reason"]>) => void;
 }) {
@@ -252,7 +254,9 @@ export default function InterviewDetailResultPanel({
             {(["pending", "selected", "rejected"] as const).map((value) => (
               <label
                 key={value}
-                className={`flex min-h-[2.75rem] cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${
+                className={`flex min-h-[2.75rem] items-center gap-3 rounded-lg border p-3 transition-colors ${
+                  readOnly ? "" : "cursor-pointer"
+                } ${
                   selected === value
                     ? "border-primary bg-primary/5 dark:bg-primary/10"
                     : "border-defaultborder hover:bg-gray-50 dark:border-defaultborder/10 dark:hover:bg-black/20"
@@ -264,6 +268,7 @@ export default function InterviewDetailResultPanel({
                   value={value}
                   checked={selected === value}
                   onChange={() => setSelected(value)}
+                  disabled={readOnly}
                   className="ti-form-radio"
                 />
                 <span className="font-medium capitalize text-defaulttextcolor dark:text-white">
@@ -276,7 +281,7 @@ export default function InterviewDetailResultPanel({
 
         {recordId && (
           <div className="border-t border-defaultborder pt-5 dark:border-defaultborder/10">
-            <RubricEvaluationForm meetingId={recordId} />
+            <RubricEvaluationForm meetingId={recordId} readOnly={readOnly} />
           </div>
         )}
 
@@ -294,6 +299,7 @@ export default function InterviewDetailResultPanel({
           </p>
         )}
 
+        {!readOnly && (
         <div className="flex flex-wrap justify-end gap-2 border-t border-defaultborder pt-4 dark:border-defaultborder/10">
           {/* Before Move to Offer, because it is the quieter of the two choices at this point
               and the recruiter should read it before committing to an offer. Secondary
@@ -331,6 +337,7 @@ export default function InterviewDetailResultPanel({
             {busy ? "Saving…" : "Save result"}
           </button>
         </div>
+        )}
       </div>
     </>
   );

@@ -26,6 +26,6 @@ export function visibleInterviewDetailTabs(input: TabAccessInput): InterviewDeta
   const tabs: InterviewDetailTab[] = ["overview", "recording"];
   if (input.canReadTranscript) tabs.push("transcript");
   if (input.canReadSummary) tabs.push("summary");
-  if (input.canManageResult) tabs.push("result");
+  tabs.push("result"); // GET /evaluations needs interviews.read only
   return tabs;
 }

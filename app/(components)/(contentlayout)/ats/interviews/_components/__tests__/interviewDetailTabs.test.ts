@@ -12,14 +12,14 @@ describe("interviewDetailTabs", () => {
     expect(parseInterviewDetailTab("result")).toBe("result");
   });
 
-  it("hides transcript, summary, and result without permission", () => {
+  it("hides transcript and summary without permission but keeps result read-only", () => {
     expect(
       visibleInterviewDetailTabs({
         canReadTranscript: false,
         canReadSummary: false,
         canManageResult: false,
       })
-    ).toEqual(["overview", "recording"]);
+    ).toEqual(["overview", "recording", "result"]);
   });
 
   it("shows result tab for managers", () => {

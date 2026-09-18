@@ -41,6 +41,7 @@ import {
   visibleInterviewDetailTabs,
   type InterviewDetailTab,
 } from "./interviewDetailTabs";
+import Seo from "@/shared/layout-components/seo/seo";
 
 function apiMessage(err: unknown, fallback: string): string {
   const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -229,6 +230,22 @@ export default function InterviewDetailClient({
     [meetingId, router, searchParams, tabs]
   );
 
+  const onTabKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      const i = tabs.indexOf(tab);
+      let next: number | null = null;
+      if (e.key === "ArrowRight") next = (i + 1) % tabs.length;
+      else if (e.key === "ArrowLeft") next = (i - 1 + tabs.length) % tabs.length;
+      else if (e.key === "Home") next = 0;
+      else if (e.key === "End") next = tabs.length - 1;
+      if (next === null) return;
+      e.preventDefault();
+      selectTab(tabs[next]);
+      document.getElementById(`interview-tab-${tabs[next]}`)?.focus();
+    },
+    [selectTab, tab, tabs]
+  );
+
   const handleCopyLink = useCallback(async () => {
     const url = buildInterviewJoinUrl(
       { publicMeetingUrl: meeting?.publicMeetingUrl, meetingId: meeting?.meetingId || "" },
@@ -297,17 +314,22 @@ export default function InterviewDetailClient({
 
   if (loading) {
     return (
+      <>
+        <Seo title={meeting?.title ? `${meeting.title} — Interview` : "Interview"} />
       <div className="box custom-box">
         <div className="box-body flex min-h-[16rem] flex-col items-center justify-center py-12" role="status">
           <div className="inline-block h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           <p className="mt-3 text-sm text-defaulttextcolor/70">Loading interview…</p>
         </div>
       </div>
+      </>
     );
   }
 
   if (error || !meeting) {
     return (
+      <>
+        <Seo title={meeting?.title ? `${meeting.title} — Interview` : "Interview"} />
       <div className="box custom-box">
         <div className="box-body p-6">
           <p className="text-danger">{error || "Interview not found"}</p>
@@ -316,6 +338,7 @@ export default function InterviewDetailClient({
           </Link>
         </div>
       </div>
+      </>
     );
   }
 
@@ -328,6 +351,7 @@ export default function InterviewDetailClient({
 
   return (
     <>
+      <Seo title={meeting?.title ? `${meeting.title} — Interview` : "Interview"} />
       {confirmDialog}
     <div className="box custom-box overflow-hidden rounded-2xl border border-defaultborder/70 shadow-sm">
       <div className="box-header flex flex-col gap-4 border-b border-defaultborder/80 bg-gradient-to-br from-primary/[0.06] via-transparent to-transparent px-4 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6">
@@ -412,6 +436,7 @@ export default function InterviewDetailClient({
             className="flex flex-nowrap gap-1 overflow-x-auto scrollbar-thin sm:gap-2"
             aria-label="Interview sections"
             role="tablist"
+            onKeyDown={onTabKeyDown}
           >
             {tabs.map((t) => (
               <button
@@ -421,6 +446,7 @@ export default function InterviewDetailClient({
                 id={`interview-tab-${t}`}
                 aria-controls={`interview-panel-${t}`}
                 aria-selected={tab === t}
+                tabIndex={tab === t ? 0 : -1}
                 onClick={() => selectTab(t)}
                 className={tabButtonClass(tab === t)}
               >
@@ -436,6 +462,7 @@ export default function InterviewDetailClient({
               id="interview-panel-overview"
               role="tabpanel"
               aria-labelledby="interview-tab-overview"
+              tabIndex={0}
               className="space-y-4"
             >
               <div className="grid gap-4 lg:grid-cols-2">
@@ -454,6 +481,12 @@ export default function InterviewDetailClient({
                       <dt className="text-defaulttextcolor/60">Type</dt>
                       <dd className="font-medium">{meeting.interviewType || "—"}</dd>
                     </div>
+                    {meeting.rubricSnapshot?.templateName && (
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-defaulttextcolor/60">Rubric</dt>
+                        <dd className="max-w-[60%] text-end font-medium">{meeting.rubricSnapshot.templateName}</dd>
+                      </div>
+                    )}
                     {jobLabel && (
                       <div className="flex justify-between gap-4">
                         <dt className="text-defaulttextcolor/60">Role</dt>
@@ -475,9 +508,11 @@ export default function InterviewDetailClient({
                       <span className="font-medium text-end">{meeting.candidate?.name || "Not assigned"}</span>
                     </li>
                     <li className="flex justify-between gap-3">
-                      <span className="text-defaulttextcolor/60">Host</span>
+                      <span className="text-defaulttextcolor/60">{(meeting.hosts?.length ?? 0) > 1 ? "Hosts" : "Host"}</span>
                       <span className="font-medium text-end">
-                        {meeting.hosts?.[0]?.name || meeting.hosts?.[0]?.email || "—"}
+                        {meeting.hosts?.length
+                          ? meeting.hosts.map((h) => h.name || h.email).filter(Boolean).join(", ")
+                          : "—"}
                       </span>
                     </li>
                     <li className="flex justify-between gap-3">
@@ -544,6 +579,13 @@ export default function InterviewDetailClient({
                 </section>
               )}
 
+              {meeting.description?.trim() && (
+                <section className="rounded-xl border border-defaultborder/60 p-4">
+                  <h2 className="text-sm font-semibold text-defaulttextcolor">Description</h2>
+                  <p className="mt-2 whitespace-pre-wrap text-sm text-defaulttextcolor/80">{meeting.description}</p>
+                </section>
+              )}
+
               {meeting.notes?.trim() && (
                 <section className="rounded-xl border border-defaultborder/60 p-4">
                   <h2 className="text-sm font-semibold text-defaulttextcolor">Notes</h2>
@@ -554,7 +596,12 @@ export default function InterviewDetailClient({
           )}
 
           {tab === "recording" && (
-            <div id="interview-panel-recording" role="tabpanel" aria-labelledby="interview-tab-recording">
+            <div
+              id="interview-panel-recording"
+              role="tabpanel"
+              aria-labelledby="interview-tab-recording"
+              tabIndex={0}
+            >
               {hasCompletedRecording ? (
                 <RecordingPlayer meetingId={meetingId} initialRecording={recordings[0] ?? null} />
               ) : (
@@ -574,6 +621,7 @@ export default function InterviewDetailClient({
               id="interview-panel-transcript"
               role="tabpanel"
               aria-labelledby="interview-tab-transcript"
+              tabIndex={0}
               className="rounded-xl border border-defaultborder/60 p-4"
             >
               {!canTranscript ? (
@@ -597,6 +645,7 @@ export default function InterviewDetailClient({
               id="interview-panel-summary"
               role="tabpanel"
               aria-labelledby="interview-tab-summary"
+              tabIndex={0}
               className="rounded-xl border border-defaultborder/60 p-4"
             >
               {!canSummary ? (
@@ -642,16 +691,18 @@ export default function InterviewDetailClient({
             </div>
           )}
 
-          {tab === "result" && canManageResult && (
+          {tab === "result" && (
             <div
               id="interview-panel-result"
               role="tabpanel"
               aria-labelledby="interview-tab-result"
+              tabIndex={0}
               className="rounded-xl border border-defaultborder/60 p-4 sm:p-6"
             >
               <InterviewDetailResultPanel
                 meeting={meeting}
                 meetingId={meetingId}
+                readOnly={!canManageResult}
                 onSaved={loadMeeting}
                 onRequestLink={(reason) => openLinkage(reason)}
               />
