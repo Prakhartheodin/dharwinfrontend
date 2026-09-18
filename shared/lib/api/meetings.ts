@@ -82,6 +82,46 @@ export interface InterviewRound {
   index?: number;
   type?: InterviewRoundType;
   label?: string | null;
+  /**
+   * The plan row this round fills. Null for a round held with no plan in force, and for an
+   * ad-hoc round outside the plan — both legitimate, and neither blocks completion.
+   */
+  planKey?: string | null;
+}
+
+/** One row of an application's round plan, with what happened on it. */
+export interface RoundProgressRow {
+  key: string;
+  label: string;
+  roundType: InterviewRoundType | null;
+  /** 1-based position in the plan. NOT Meeting.round.index, which is a different number. */
+  index: number;
+  meetingId: string | null;
+  status: string | null;
+  interviewResult: string | null;
+  state: "passed" | "rejected" | "pending" | "unscheduled";
+}
+
+/**
+ * How far an application is through its round plan. Derived server-side in
+ * interviewRoundProgress.service.js and returned whole — never recomputed on the client,
+ * or the five surfaces that show it drift apart.
+ *
+ * `hasPlan: false` means no plan is in force. Every caller must then fall back to its
+ * pre-plan behaviour rather than rendering "0 of 0" or hiding an action.
+ */
+export interface RoundProgress {
+  hasPlan: boolean;
+  total: number;
+  heldCount: number;
+  passedCount: number;
+  offPlanCount: number;
+  isComplete: boolean;
+  rejectedAt: { key: string; label: string; index: number } | null;
+  nextRound: { key: string; label: string; roundType: InterviewRoundType | null; index: number } | null;
+  rows: RoundProgressRow[];
+  /** Server-built sentence. Empty when hasPlan is false. */
+  label: string;
 }
 
 /** `verified*` = evaluation-eligible; `legacy_title_candidate` needs human confirmation; missing = `unlinked`. */
@@ -682,6 +722,7 @@ export interface InterviewRoundHistory {
     evaluationCount: number;
     averageWeightedScore: number | null;
   };
+  progress: RoundProgress;
   rounds: InterviewRoundHistoryEntry[];
 }
 

@@ -71,6 +71,8 @@ export interface Job {
   updatedAt?: string;
   /** This job's interview rubrics. Empty/absent = inherit the global rubric. */
   rubricAssignments?: RubricAssignment[];
+  /** Ordered interview round plan. Empty/absent = no fixed sequence. */
+  interviewRounds?: InterviewRoundPlanRow[];
 }
 
 export function isExternalJob(job: { jobOrigin?: string }): boolean {
@@ -215,6 +217,7 @@ export interface CreateJobPayload {
   status?: string;
   /** This job's interview rubrics. Empty/absent = inherit the global rubric. */
   rubricAssignments?: RubricAssignment[];
+  interviewRounds?: InterviewRoundPlanRow[];
 }
 
 export async function createJob(payload: CreateJobPayload): Promise<Job> {
@@ -238,6 +241,7 @@ export interface UpdateJobPayload {
   status?: string;
   /** This job's interview rubrics. Empty/absent = inherit the global rubric. */
   rubricAssignments?: RubricAssignment[];
+  interviewRounds?: InterviewRoundPlanRow[];
 }
 
 export async function updateJob(id: string, payload: UpdateJobPayload): Promise<Job> {
@@ -873,6 +877,102 @@ export function rubricAssignmentsError(
       if (reason) return `${label}: ${reason}`;
     }
   }
+  return null;
+}
+
+/* ----------------------------------------------------------------------- *
+ * Per-job interview ROUND PLAN.
+ *
+ * Backend: Job.interviewRounds, validated by roundPlanError in
+ * src/constants/interviewRoundPlan.js. This is the write target that replaces
+ * rubricAssignments (above), which the backend still READS as its fallback rung.
+ *
+ * Sending this key needs interview management access — a job-only user gets 403
+ * rubric_requires_interview_access, the same code as the old field.
+ * ----------------------------------------------------------------------- */
+
+/** A job can plan at most this many rounds. Mirrors MAX_PLANNED_ROUNDS. */
+export const MAX_PLANNED_ROUNDS = 12;
+
+export interface InterviewRoundPlanRow {
+  /**
+   * Stable and FROZEN once the row exists. Meeting.round.planKey stores it and the
+   * application's plan snapshot repeats it, so changing a key orphans every round already
+   * held against this row. Never re-derive it from the label.
+   */
+  key: string;
+  /** What the recruiter calls this round, e.g. "Technical 2". Shown everywhere. */
+  label: string;
+  /** Optional. May repeat across rows — that is the point of the ordered list. */
+  roundType: InterviewRoundType | null;
+  /** Set => reuse this saved rubric. Mutually exclusive with `criteria`. */
+  templateId?: string | null;
+  /** Set => this round's own criteria. Mutually exclusive with `templateId`. */
+  criteria?: RubricCriterion[] | null;
+}
+
+/** A plan key that cannot collide with a sibling's. Mirrors nextPlanKey. */
+export function nextPlanKey(taken: Set<string>): string {
+  for (let n = 1; n <= MAX_PLANNED_ROUNDS * 4; n += 1) {
+    const candidate = `round_${n}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+  return `round_${Date.now()}`.slice(0, 40);
+}
+
+/**
+ * Mirrors backend roundPlanError.
+ *
+ * Duplicated on purpose so the job form can block its own Save before a round trip; the
+ * backend stays the authority. If the rule changes, change both. The messages are kept
+ * word-for-word identical, so a user who somehow reaches the server-side error reads the
+ * same sentence rather than a second, differently-worded one.
+ *
+ * Deliberately DIFFERENT from rubricAssignmentsError in one respect: a round type may
+ * repeat. Two Technical rounds at different bars is why this field exists.
+ */
+export function roundPlanError(
+  rounds: InterviewRoundPlanRow[] | null | undefined
+): string | null {
+  if (rounds == null) return null;
+  if (!Array.isArray(rounds)) return "Interview rounds must be a list.";
+  if (rounds.length === 0) return null;
+  if (rounds.length > MAX_PLANNED_ROUNDS) {
+    return `A job can plan at most ${MAX_PLANNED_ROUNDS} interview rounds.`;
+  }
+
+  const seenKeys = new Set<string>();
+
+  for (let i = 0; i < rounds.length; i += 1) {
+    const row = rounds[i];
+    if (!row || typeof row !== "object") return `Round ${i + 1} must be an object.`;
+
+    const name = (row.label || "").trim() || `Round ${i + 1}`;
+
+    const key = (row.key || "").trim();
+    if (!key) return `${name} needs an internal key.`;
+    if (!/^[a-z0-9_-]{1,40}$/.test(key)) {
+      return `${name} has an invalid internal key. Use lower-case letters, numbers, hyphens or underscores.`;
+    }
+    if (seenKeys.has(key)) return `Two rounds share the internal key "${key}".`;
+    seenKeys.add(key);
+
+    const label = (row.label || "").trim();
+    if (!label) return `Round ${i + 1} needs a name.`;
+    if (label.length > 80) return `${name}: the name is too long (80 characters maximum).`;
+
+    const hasTemplate = Boolean(row.templateId);
+    const hasCriteria = Array.isArray(row.criteria) && row.criteria.length > 0;
+    if (hasTemplate === hasCriteria) {
+      return `${name} needs either a saved rubric or its own criteria — not both, and not neither.`;
+    }
+
+    if (hasCriteria) {
+      const reason = criteriaWeightError(row.criteria as RubricCriterion[]);
+      if (reason) return `${name}: ${reason}`;
+    }
+  }
+
   return null;
 }
 
