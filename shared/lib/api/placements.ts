@@ -1,6 +1,7 @@
 "use client";
 
 import { apiClient } from "@/shared/lib/api/client";
+import type { CtcBreakdown } from "@/shared/lib/api/offers";
 
 export type PlacementStatus = "Pending" | "Onboarding" | "Joined" | "Deferred" | "Cancelled";
 export type PreBoardingStatus = "Pending" | "In Progress" | "Completed";
@@ -30,6 +31,24 @@ export interface ItAccess {
   notes?: string;
 }
 
+export interface PlacementOnboardingTask {
+  _id?: string;
+  title: string;
+  required: boolean;
+  done: boolean;
+  doneAt?: string | null;
+  order: number;
+}
+
+/** PATCH body items for pre-boarding / onboarding checklists (backend taskPatchSchema). */
+export interface PlacementTaskPatch {
+  _id: string;
+  title?: string;
+  required?: boolean;
+  done?: boolean;
+  order?: number;
+}
+
 export interface PlacementActorRef {
   _id?: string;
   name?: string;
@@ -44,7 +63,10 @@ export interface Placement {
     offerCode?: string;
     status?: string;
     joiningDate?: string | null;
-    ctcBreakdown?: Record<string, number>;
+    ctcBreakdown?: CtcBreakdown;
+    compensationNarrative?: string | null;
+    compensationType?: string;
+    jobType?: string;
   };
   job: { _id: string; title?: string; organisation?: { name: string } };
   candidate: { _id: string; fullName?: string; email?: string; phoneNumber?: string; employeeId?: string };
@@ -59,6 +81,7 @@ export interface Placement {
   backgroundVerification?: BackgroundVerification;
   assetAllocation?: AssetAllocation[];
   itAccess?: ItAccess[];
+  onboardingTasks?: PlacementOnboardingTask[];
   notes?: string | null;
   /** Filled when status was set to Deferred */
   deferredBy?: PlacementActorRef | null;
@@ -112,6 +135,7 @@ export interface UpdatePlacementPayload {
   backgroundVerification?: Partial<BackgroundVerification>;
   assetAllocation?: AssetAllocation[];
   itAccess?: ItAccess[];
+  onboardingTasks?: PlacementTaskPatch[];
 }
 
 export async function updatePlacement(id: string, payload: UpdatePlacementPayload): Promise<Placement> {

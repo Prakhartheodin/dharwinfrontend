@@ -6,6 +6,7 @@ import pipelineStyles from '../ats-pipeline-list.module.css'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import { listPlacements, updatePlacement, getPlacementById } from '@/shared/lib/api/placements'
 import type { Placement, BGVStatus } from '@/shared/lib/api/placements'
+import { getOfferById, type CtcBreakdown } from '@/shared/lib/api/offers'
 import { getPlacementStatusActorSummary } from '@/shared/lib/ats/placementActorText'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 import Link from 'next/link'
@@ -76,6 +77,42 @@ function workflowChipClass(status: string): string {
   if (status === 'In Progress') return 'bg-warning/10 text-warning'
   return 'bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400'
 }
+
+const KYC_DOCS_ACTION_LABEL = 'Identity documents (KYC)'
+
+function formatPlacementCompAmount(amount: number, currency?: string): string {
+  const cur = (currency || 'USD').toUpperCase()
+  try {
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: cur, maximumFractionDigits: 0 }).format(amount)
+  } catch {
+    return `${amount.toLocaleString('en-IN')} ${cur}`
+  }
+}
+
+function placementOfferHasCtc(cb?: CtcBreakdown | null): boolean {
+  if (!cb) return false
+  return [cb.gross, cb.base, cb.hra, cb.specialAllowances, cb.otherAllowances].some((n) => typeof n === 'number' && n > 0)
+}
+
+function placementOfferHasCompensationSnapshot(offer?: Placement['offer'] | null): boolean {
+  if (!offer) return false
+  if (placementOfferHasCtc(offer.ctcBreakdown)) return true
+  return Boolean(offer.compensationNarrative?.trim())
+}
+
+function resolvePlacementOfferId(offer?: Placement['offer'] | string | null): string | undefined {
+  if (!offer) return undefined
+  if (typeof offer === 'string') return offer
+  return offer._id
+}
+
+const PLACEMENT_CTC_ROWS: { key: keyof CtcBreakdown; label: string }[] = [
+  { key: 'base', label: 'Base' },
+  { key: 'hra', label: 'HRA' },
+  { key: 'specialAllowances', label: 'Special allowances' },
+  { key: 'otherAllowances', label: 'Other allowances' },
+  { key: 'gross', label: 'Gross (annual)' },
+]
 
 type RowModel = {
   rowId: string
@@ -343,6 +380,38 @@ const PreBoarding = () => {
         router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
       })
   }, [canView, searchParams, router, pathname, openEdit])
+
+  useEffect(() => {
+    if (!editModal) return
+    const offerId = resolvePlacementOfferId(editModal.offer)
+    if (!offerId) return
+    if (placementOfferHasCompensationSnapshot(editModal.offer)) return
+
+    let cancelled = false
+    getOfferById(offerId)
+      .then((full) => {
+        if (cancelled) return
+        setEditModal((prev) => {
+          if (!prev) return prev
+          if (resolvePlacementOfferId(prev.offer) !== offerId) return prev
+          return {
+            ...prev,
+            offer: {
+              ...prev.offer,
+              ctcBreakdown: full.ctcBreakdown,
+              compensationNarrative: full.compensationNarrative,
+              compensationType: full.compensationType,
+              jobType: full.jobType,
+            },
+          }
+        })
+      })
+      .catch(() => {})
+
+    return () => {
+      cancelled = true
+    }
+  }, [editModal])
 
   const closeEdit = useCallback(() => {
     setEditModal(null)
@@ -684,11 +753,11 @@ const PreBoarding = () => {
                               type="button"
                               className={`${ROW_BTN_COMPACT} ti-btn-light flex-1 max-2xl:flex-none`}
                               onClick={() => openDocumentsForPlacement(row.placement, setError, setDocumentsCandidate)}
-                              aria-label="Manage candidate documents"
-                              title="Documents"
+                              aria-label={KYC_DOCS_ACTION_LABEL}
+                              title={KYC_DOCS_ACTION_LABEL}
                             >
                               <i className="ri-file-list-3-line text-[0.95rem] align-middle" aria-hidden />
-                              <span className={pipelineStyles.pipelineNavLabel}>Documents</span>
+                              <span className={pipelineStyles.pipelineNavLabel}>{KYC_DOCS_ACTION_LABEL}</span>
                             </button>
                           </div>
                         </article>
@@ -808,11 +877,11 @@ const PreBoarding = () => {
                                     type="button"
                                     className={`${ROW_BTN_COMPACT} ti-btn-light`}
                                     onClick={() => openDocumentsForPlacement(row.placement, setError, setDocumentsCandidate)}
-                                    aria-label="Manage candidate documents"
-                                    title="Documents"
+                                    aria-label={KYC_DOCS_ACTION_LABEL}
+                                    title={KYC_DOCS_ACTION_LABEL}
                                   >
                                     <i className="ri-file-list-3-line text-[0.95rem] align-middle" aria-hidden />
-                                    <span className={pipelineStyles.pipelineNavLabel}>Documents</span>
+                                    <span className={pipelineStyles.pipelineNavLabel}>{KYC_DOCS_ACTION_LABEL}</span>
                                   </button>
                                 </div>
                               </td>
@@ -931,9 +1000,62 @@ const PreBoarding = () => {
 
                   <div className={`overflow-hidden ${pipelineStyles.tableCard}`}>
                     <div className="border-b border-slate-200/90 bg-slate-50/90 px-4 py-2.5 dark:border-white/10 dark:bg-slate-900/50 sm:px-5">
+                      <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Compensation (from accepted offer)</h3>
+                      <p className="mb-0 mt-0.5 text-xs text-slate-500 dark:text-slate-400">Read-only snapshot from the linked offer letter.</p>
+                    </div>
+                    <div className="p-4 sm:p-5">
+                      {(() => {
+                        const cb = editModal.offer?.ctcBreakdown
+                        const narrative = editModal.offer?.compensationNarrative?.trim()
+                        if (!placementOfferHasCtc(cb)) {
+                          if (narrative) {
+                            return (
+                              <p className="mb-0 whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-200">{narrative}</p>
+                            )
+                          }
+                          if (editModal.offer?.compensationType === 'unpaid') {
+                            return (
+                              <p className="mb-0 text-sm text-slate-700 dark:text-slate-200">Unpaid role (per accepted offer)</p>
+                            )
+                          }
+                          return (
+                            <>
+                              <p className="mb-0 text-sm text-slate-500 dark:text-slate-400">—</p>
+                              <p className="mb-0 mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                Compensation is set on the offer letter; edit in Offers &amp; placement.
+                              </p>
+                            </>
+                          )
+                        }
+                        const currency = cb?.currency
+                        const rows = PLACEMENT_CTC_ROWS.filter(({ key }) => {
+                          const v = cb?.[key]
+                          return typeof v === 'number' && v > 0
+                        })
+                        return (
+                          <dl className="mb-0 space-y-1.5 text-sm text-slate-700 dark:text-slate-200">
+                            {rows.map(({ key, label }) => (
+                              <div key={key} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                                <dt className="text-slate-500 dark:text-slate-400">{label}</dt>
+                                <dd className="mb-0 font-medium tabular-nums">
+                                  {formatPlacementCompAmount(cb![key] as number, currency)}
+                                </dd>
+                              </div>
+                            ))}
+                          </dl>
+                        )
+                      })()}
+                    </div>
+                  </div>
+
+                  <div className={`overflow-hidden ${pipelineStyles.tableCard}`}>
+                    <div className="border-b border-slate-200/90 bg-slate-50/90 px-4 py-2.5 dark:border-white/10 dark:bg-slate-900/50 sm:px-5">
                       <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Background verification (BGV)</h3>
                       <p className="mb-0 mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                         Track BGV status and notes before join date.
+                      </p>
+                      <p className="mb-0 mt-1 text-xs italic text-slate-500 dark:text-slate-400">
+                        Manual tracker for background checks. This is not automated government KYC.
                       </p>
                     </div>
                     <div className="p-4 sm:p-5">

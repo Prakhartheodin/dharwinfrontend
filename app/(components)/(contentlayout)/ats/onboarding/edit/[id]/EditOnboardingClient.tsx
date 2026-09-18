@@ -14,7 +14,7 @@ import {
 } from '@/shared/lib/api/employees'
 import { createPosition, getAllPositions } from '@/shared/lib/api/positions'
 import { createDepartment, listDepartments, type Department } from '@/shared/lib/api/departments'
-import type { Placement } from '@/shared/lib/api/placements'
+import type { Placement, PlacementOnboardingTask } from '@/shared/lib/api/placements'
 import { listJobApplications, type JobApplication } from '@/shared/lib/api/jobApplications'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 import Swal from 'sweetalert2'
@@ -118,6 +118,43 @@ function initialsFromDisplayName(name: string): string {
   return t.slice(0, 2).toUpperCase()
 }
 
+
+const ORIENTATION_ONBOARDING_TASK_DEFAULTS: { title: string; order: number }[] = [
+  { title: 'Orientation session scheduled', order: 0 },
+  { title: 'Policies / handbook acknowledged (HR confirmed)', order: 1 },
+]
+
+function generateMongoObjectId(): string {
+  const bytes = new Uint8Array(12)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+function resolveOnboardingTasksForEdit(
+  fromApi: PlacementOnboardingTask[] | undefined
+): PlacementOnboardingTask[] {
+  if (Array.isArray(fromApi) && fromApi.length > 0) {
+    return [...fromApi].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  }
+  return ORIENTATION_ONBOARDING_TASK_DEFAULTS.map((t) => ({
+    _id: generateMongoObjectId(),
+    title: t.title,
+    required: true,
+    done: false,
+    order: t.order,
+  }))
+}
+
+function onboardingTasksToPatch(tasks: PlacementOnboardingTask[]) {
+  return tasks.map((t) => ({
+    _id: t._id || generateMongoObjectId(),
+    title: t.title,
+    required: t.required,
+    done: t.done,
+    order: t.order,
+  }))
+}
+
 function formatSidebarJoining(iso: string): string {
   if (!iso?.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return '—'
   const d = new Date(`${iso}T12:00:00`)
@@ -176,6 +213,8 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
   const [candidateName, setCandidateName] = useState('')
   /** Offer/placement → job applications → referral; surfaced as dropdown option when needed. */
   const [atsAppliedJobTitle, setAtsAppliedJobTitle] = useState('')
+  const [orientationJoiningDate, setOrientationJoiningDate] = useState('')
+  const [onboardingTasks, setOnboardingTasks] = useState<PlacementOnboardingTask[]>([])
 
   useEffect(() => {
     if (!placementId || placementId === '_') {
@@ -255,6 +294,10 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
         } else {
           nextPositionId = posId || ''
         }
+        setOrientationJoiningDate(
+          placement.joiningDate ? String(placement.joiningDate).slice(0, 10) : ''
+        )
+        setOnboardingTasks(resolveOnboardingTasksForEdit(placement.onboardingTasks))
         const joiningSlice = placement.joiningDate
           ? String(placement.joiningDate).slice(0, 10)
           : ''
@@ -461,6 +504,7 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
         if (form.placementStatus === 'Joined' && !form.preBoardingStatusComplete) {
           placementUpdates.preboardingGateBypass = true
         }
+        placementUpdates.onboardingTasks = onboardingTasksToPatch(onboardingTasks)
         await updatePlacement(placementId, placementUpdates)
       }
       router.push('/ats/onboarding')
@@ -675,6 +719,91 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
                             )}
 
                             <div className="min-h-0 flex-1 space-y-8">
+                              
+                              <section aria-labelledby="onboarding-orientation-joining">
+                                <div className="mb-4 flex items-baseline gap-2">
+                                  <h3
+                                    id="onboarding-orientation-joining"
+                                    className="text-[0.7rem] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400"
+                                  >
+                                    Orientation
+                                  </h3>
+                                  <span
+                                    className="hidden h-px min-w-[2rem] flex-1 bg-slate-200 dark:bg-white/10 sm:block"
+                                    aria-hidden
+                                  />
+                                </div>
+                                <div className="rounded-lg border border-slate-200/80 bg-slate-50/50 px-4 py-3 dark:border-white/10 dark:bg-slate-900/40">
+                                  <p className="form-label mb-1" id="onboarding-joining-target-label">
+                                    Joining date (orientation target)
+                                  </p>
+                                  <p
+                                    className="mb-0 text-sm font-medium tabular-nums text-slate-900 dark:text-slate-100"
+                                    aria-labelledby="onboarding-joining-target-label"
+                                  >
+                                    {formatSidebarJoining(orientationJoiningDate)}
+                                  </p>
+                                  <p className="mb-0 mt-2 text-[0.8125rem] leading-snug text-slate-500 dark:text-slate-400">
+                                    Set on the accepted offer in{' '}
+                                    <Link href="/ats/offers-placement" className="text-primary hover:underline">
+                                      Offers &amp; placement
+                                    </Link>
+                                    .
+                                  </p>
+                                </div>
+                              </section>
+
+                              <section
+                                className="border-t border-slate-200/80 pt-8 dark:border-white/10"
+                                aria-labelledby="onboarding-compliance-checklist"
+                              >
+                                <div className="mb-4 flex items-baseline gap-2">
+                                  <h3
+                                    id="onboarding-compliance-checklist"
+                                    className="text-[0.7rem] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400"
+                                  >
+                                    Compliance &amp; orientation checklist
+                                  </h3>
+                                  <span
+                                    className="hidden h-px min-w-[2rem] flex-1 bg-slate-200 dark:bg-white/10 sm:block"
+                                    aria-hidden
+                                  />
+                                </div>
+                                <ul className="space-y-3" role="list">
+                                  {onboardingTasks.map((task) => {
+                                    const taskKey = task._id || String(task.order)
+                                    return (
+                                      <li key={taskKey}>
+                                        <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700 dark:text-slate-200">
+                                          <input
+                                            type="checkbox"
+                                            className="mt-1"
+                                            checked={task.done}
+                                            onChange={(e) => {
+                                              const done = e.target.checked
+                                              setOnboardingTasks((prev) =>
+                                                prev.map((t) =>
+                                                  (t._id || String(t.order)) === taskKey ? { ...t, done } : t
+                                                )
+                                              )
+                                            }}
+                                          />
+                                          <span>
+                                            {task.title}
+                                            {task.required ? (
+                                              <span className="ms-1 text-danger" aria-hidden="true">*</span>
+                                            ) : null}
+                                          </span>
+                                        </label>
+                                      </li>
+                                    )
+                                  })}
+                                </ul>
+                                <p className="mb-0 mt-3 text-[0.8125rem] leading-snug text-slate-500 dark:text-slate-400">
+                                  Required items must be checked before onboarding is considered complete.
+                                </p>
+                              </section>
+
                               <section aria-labelledby="hrms-section-org">
                                 <div className="mb-4 flex items-baseline gap-2">
                                   <h3

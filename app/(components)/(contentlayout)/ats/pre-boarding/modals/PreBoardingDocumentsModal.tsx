@@ -260,11 +260,14 @@ const PreBoardingDocumentsModal: React.FC<Props> = ({ candidateId, candidateName
           <span className="mt-0.5 inline-block h-9 w-0.5 shrink-0 rounded-full bg-primary" aria-hidden />
           <div className="min-w-0 flex-1">
             <h4 id="preb-docs-title" className="mb-0.5 text-base font-semibold text-slate-800 dark:text-slate-100">
-              Documents
+              Identity documents (KYC)
             </h4>
             <p className="mb-0 text-sm text-slate-500 dark:text-slate-400">
               {candidateName}
               <span className="text-slate-400 dark:text-slate-500"> · attached to candidate profile</span>
+            </p>
+            <p className="mb-0 mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Upload or request Aadhar, PAN, and other ID proofs; HR verifies them here (separate from BGV).
             </p>
           </div>
           <button
