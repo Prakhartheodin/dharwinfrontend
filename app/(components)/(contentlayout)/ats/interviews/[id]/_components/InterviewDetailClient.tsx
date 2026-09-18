@@ -14,6 +14,9 @@ import {
   type MeetingTranscriptResponse,
   type MeetingRecording,
 } from "@/shared/lib/api/meetings";
+import { isMongoObjectId } from "@/shared/lib/api/employees";
+import { getJobById } from "@/shared/lib/api/jobs";
+import { formatDualZone, getViewerTimezone } from "@/shared/lib/timezone";
 import {
   canReadInterviewSummary,
   canReadInterviewTranscript,
@@ -83,6 +86,8 @@ export default function InterviewDetailClient({
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [linkageTarget, setLinkageTarget] = useState<InterviewLinkageTarget | null>(null);
+  const [resolvedJobTitle, setResolvedJobTitle] = useState<string | null>(null);
+  const [viewerTz, setViewerTz] = useState("UTC");
 
   const canTranscript = canReadInterviewTranscript(permissions ?? [], isPlatformSuperUser);
   const canSummary = canReadInterviewSummary(permissions ?? [], isPlatformSuperUser);
@@ -94,11 +99,19 @@ export default function InterviewDetailClient({
     try {
       const m = await getMeeting(meetingId);
       setMeeting(m);
-      const recs = await getMeetingRecordings(meetingId);
-      setRecordings(recs);
     } catch (e) {
       setError(apiMessage(e, "Could not load interview"));
       setMeeting(null);
+      setRecordings([]);
+      setLoading(false);
+      return;
+    }
+    // Recordings are secondary: the Recording tab has its own empty state, and a failure here
+    // must never take the interview down with it.
+    try {
+      setRecordings(await getMeetingRecordings(meetingId));
+    } catch {
+      setRecordings([]);
     } finally {
       setLoading(false);
     }
@@ -107,6 +120,32 @@ export default function InterviewDetailClient({
   useEffect(() => {
     void loadMeeting();
   }, [loadMeeting]);
+
+  // jobPosition holds a job id on every interview scheduled since the linkage work; only
+  // legacy rows carry a title string. Resolve the id once so the UI never prints hex.
+  useEffect(() => {
+    const pos = (meeting?.jobPosition || "").trim();
+    if (!pos || !isMongoObjectId(pos)) {
+      setResolvedJobTitle(null);
+      return;
+    }
+    let cancelled = false;
+    getJobById(pos)
+      .then((job) => {
+        if (!cancelled) setResolvedJobTitle(job?.title?.trim() || null);
+      })
+      .catch(() => {
+        // Deleted job, or no jobs.read. Fall through to an absent row — never the raw id.
+        if (!cancelled) setResolvedJobTitle(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [meeting?.jobPosition]);
+
+  useEffect(() => {
+    setViewerTz(getViewerTimezone());
+  }, []);
 
   const loadTranscript = useCallback(async () => {
     if (!canTranscript) return;
@@ -237,11 +276,10 @@ export default function InterviewDetailClient({
 
   const interviewResult = meeting.interviewResult || "pending";
   const scheduledLabel = meeting.scheduledAt
-    ? new Date(meeting.scheduledAt).toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
+    ? formatDualZone(meeting.scheduledAt, meeting.timezone || "UTC", viewerTz)
     : "Not scheduled";
+  const rawJobPosition = (meeting.jobPosition || "").trim();
+  const jobLabel = resolvedJobTitle || (isMongoObjectId(rawJobPosition) ? "" : rawJobPosition);
 
   return (
     <div className="box custom-box overflow-hidden rounded-2xl border border-defaultborder/70 shadow-sm">
@@ -349,10 +387,10 @@ export default function InterviewDetailClient({
                       <dt className="text-defaulttextcolor/60">Type</dt>
                       <dd className="font-medium">{meeting.interviewType || "—"}</dd>
                     </div>
-                    {meeting.jobPosition && (
+                    {jobLabel && (
                       <div className="flex justify-between gap-4">
                         <dt className="text-defaulttextcolor/60">Role</dt>
-                        <dd className="max-w-[60%] text-end font-medium">{meeting.jobPosition}</dd>
+                        <dd className="max-w-[60%] text-end font-medium">{jobLabel}</dd>
                       </div>
                     )}
                     <div className="flex justify-between gap-4">
