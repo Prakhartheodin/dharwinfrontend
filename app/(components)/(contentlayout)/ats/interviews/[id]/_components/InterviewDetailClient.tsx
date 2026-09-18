@@ -511,7 +511,7 @@ export default function InterviewDetailClient({
                       <span className="text-defaulttextcolor/60">{(meeting.hosts?.length ?? 0) > 1 ? "Hosts" : "Host"}</span>
                       <span className="font-medium text-end">
                         {meeting.hosts?.length
-                          ? meeting.hosts.map((h) => h.name || h.email).filter(Boolean).join(", ")
+                          ? meeting.hosts.map((h) => h.nameOrRole || h.email).filter(Boolean).join(", ")
                           : "—"}
                       </span>
                     </li>

@@ -564,28 +564,6 @@ export default function InterviewsClient() {
     [editUsers]
   )
 
-  const openEditModal = useCallback((id: string) => {
-    setEditMeetingId(id)
-    setEditOpenNonce((n) => n + 1)
-    setEditMeeting(null)
-    setEditError(null)
-    setEditLoading(true)
-    if (!editUsersLoadedRef.current) void loadEditUsers()
-    ;(window as any).HSOverlay?.open(document.querySelector('#edit-interview-modal'))
-  }, [loadEditUsers])
-
-  // Deep link from the interview detail page: open the edit modal for one interview, then strip
-  // the param so a refresh does not reopen it.
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (!permissionsLoaded || !canEdit) return
-    const id = new URLSearchParams(window.location.search).get('editId')
-    if (!id) return
-    openEditModal(id)
-    try { router.replace('/ats/interviews', { scroll: false }) } catch { /* ignore */ }
-  }, [permissionsLoaded, canEdit, openEditModal, router])
-
-
   /** Preline binds overlays/dropdowns during autoInit; client pages that mount toolbars after layout need a refresh. */
   const refreshPrelineDom = useCallback(() => {
     try {
@@ -623,6 +601,32 @@ export default function InterviewsClient() {
     },
     [ensurePrelineLoaded, refreshPrelineDom]
   )
+
+  /**
+   * Opens through openHsOverlay rather than HSOverlay.open directly: on a cold load — a pasted
+   * ?editId= link, a hard refresh — Preline has not bound the overlay yet and a raw open is a
+   * silent no-op. openHsOverlay imports Preline first when it is missing, then re-runs autoInit.
+   */
+  const openEditModal = useCallback((id: string) => {
+    setEditMeetingId(id)
+    setEditOpenNonce((n) => n + 1)
+    setEditMeeting(null)
+    setEditError(null)
+    setEditLoading(true)
+    if (!editUsersLoadedRef.current) void loadEditUsers()
+    openHsOverlay('#edit-interview-modal')
+  }, [loadEditUsers, openHsOverlay])
+
+  // Deep link from the interview detail page: open the edit modal for one interview, then strip
+  // the param so a refresh does not reopen it.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!permissionsLoaded || !canEdit) return
+    const id = new URLSearchParams(window.location.search).get('editId')
+    if (!id) return
+    openEditModal(id)
+    try { router.replace('/ats/interviews', { scroll: false }) } catch { /* ignore */ }
+  }, [permissionsLoaded, canEdit, openEditModal, router])
 
   /** Shared by initial mount and "Schedule Interview" so the candidate list is fresh and auth/permissions are ready.
    *  Concurrent callers (mount effect + prefill effect) share the in-flight promise to avoid duplicate API hits. */
