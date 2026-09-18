@@ -298,7 +298,10 @@ export function formatRoundBadge(round?: InterviewRound | null): string | null {
     : ''
   const qualifier = label || typeLabel
 
-  if (hasIndex && qualifier) return `Round ${index} — ${qualifier}`
+  // A plan row's label is often the literal "Round N", which produced "Round 4 — Round 4".
+  const qualifierIsIndex =
+    qualifier.replace(/\s+/g, ' ').trim().toLowerCase() === `round ${index}`
+  if (hasIndex && qualifier && !qualifierIsIndex) return `Round ${index} — ${qualifier}`
   if (hasIndex) return `Round ${index}`
   if (qualifier) return qualifier
   return null

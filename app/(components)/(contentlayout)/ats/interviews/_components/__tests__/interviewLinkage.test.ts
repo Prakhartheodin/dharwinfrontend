@@ -4,6 +4,7 @@ import {
   applicationIdsByJobId,
   buildScheduleLinkageFields,
   formatScheduleRoundOptionLabel,
+  formatRoundBadge,
   linkageActions,
   linkageBadge,
   offersLinkAction,
@@ -85,6 +86,19 @@ describe('offersLinkAction', () => {
   it('hides it for verified interviews and interviews without a candidate', () => {
     expect(offersLinkAction({ linkageStatus: 'verified_manual', candidateId: CAND, applicationId: APP_A })).toBe(false)
     expect(offersLinkAction({ linkageStatus: 'unlinked', candidateId: '' })).toBe(false)
+  })
+})
+
+describe('formatRoundBadge', () => {
+  it('does not repeat the index when the label already is "Round N"', () => {
+    expect(formatRoundBadge({ index: 4, label: 'Round 4' } as any)).toBe('Round 4')
+    expect(formatRoundBadge({ index: 4, label: ' round  4 ' } as any)).toBe('Round 4')
+  })
+  it('keeps a real qualifier', () => {
+    expect(formatRoundBadge({ index: 2, label: 'Tech screen' } as any)).toBe('Round 2 — Tech screen')
+  })
+  it('falls back to the type label', () => {
+    expect(formatRoundBadge({ index: 1, type: 'hr' } as any)).toBe('Round 1 — HR')
   })
 })
 
