@@ -646,6 +646,111 @@ export async function parsePublicResume(jobId: string, resume: File): Promise<Pu
   );
 }
 
+/**
+ * Progress events from the streaming parse. `result` is authoritative and always last on success;
+ * everything before it is a preview the UI may show and must be willing to discard.
+ */
+export type PublicResumeParseSection = "experiences" | "qualifications" | "socialLinks";
+
+export type PublicResumeParseStreamEvent =
+  | { type: "stage"; stage: "extracting" | "reading" | PublicResumeParseSection; chars?: number }
+  | { type: "field"; field: "fullName" | "email" | "phoneNumber" | "countryCode"; value: string }
+  | { type: "skill"; name: string }
+  | { type: "item"; section: PublicResumeParseSection; label: string }
+  | ({ type: "result" } & PublicResumeParseResponse)
+  | { type: "error"; message: string };
+
+/**
+ * Parse a resume over Server-Sent Events, reporting progress as the model writes.
+ *
+ * Falls back to the buffered endpoint when the streaming route is missing (404) or the browser
+ * cannot expose a response body stream, so a frontend deployed ahead of its backend still works —
+ * it just shows no progress. Resolves with the same payload `parsePublicResume` returns.
+ */
+export async function parsePublicResumeStream(
+  jobId: string | null,
+  resume: File,
+  onEvent: (event: PublicResumeParseStreamEvent) => void,
+  signal?: AbortSignal
+): Promise<PublicResumeParseResponse> {
+  const buffered = () => (jobId ? parsePublicResume(jobId, resume) : parsePublicResumeOnboard(resume));
+
+  const formData = new FormData();
+  formData.append("resume", resume);
+  const headers = publicApiHeaders();
+  const path = jobId ? `/public/jobs/${jobId}/parse-resume/stream` : "/public/parse-resume/stream";
+
+  let response: Response;
+  try {
+    response = await fetch(`${normalizeApiBase()}${path}`, {
+      method: "POST",
+      body: formData,
+      headers,
+      credentials: "include",
+      signal,
+    });
+  } catch (err) {
+    if (signal?.aborted) throw err;
+    releaseCaptchaTokenIfSent(headers);
+    return buffered();
+  }
+
+  releaseCaptchaTokenIfSent(headers);
+
+  // No streaming route on this backend yet, or no readable body: fall back rather than fail.
+  if (response.status === 404 || !response.body) {
+    return buffered();
+  }
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => "");
+    throw new Error(message || `Resume parsing failed (${response.status}).`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let carry = "";
+  let result: PublicResumeParseResponse | null = null;
+
+  const consumeFrame = (frame: string) => {
+    const data = frame
+      .split("\n")
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trim())
+      .join("");
+    if (!data) return;
+    let event: PublicResumeParseStreamEvent;
+    try {
+      event = JSON.parse(data) as PublicResumeParseStreamEvent;
+    } catch {
+      return; // A malformed frame is skipped; the `result` event decides the outcome.
+    }
+    if (event.type === "result") {
+      const { type: _type, ...payload } = event;
+      result = payload as PublicResumeParseResponse;
+    }
+    onEvent(event);
+  };
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    carry += decoder.decode(value, { stream: true });
+    let split = carry.indexOf("\n\n");
+    while (split !== -1) {
+      consumeFrame(carry.slice(0, split));
+      carry = carry.slice(split + 2);
+      split = carry.indexOf("\n\n");
+    }
+  }
+  if (carry.trim()) consumeFrame(carry);
+
+  if (!result) {
+    throw new Error("Resume parsing ended early. You can fill in the form manually.");
+  }
+  return result;
+}
+
 /** Candidate onboarding — same parse shape as job apply, without a job id. */
 export async function parsePublicResumeOnboard(resume: File): Promise<PublicResumeParseResponse> {
   const formData = new FormData();
@@ -869,8 +974,11 @@ export function rubricAssignmentsError(
     const label = roundType ? `the ${roundType} round` : "rounds with no specific rubric";
     const hasTemplate = Boolean(row.templateId);
     const hasCriteria = Array.isArray(row.criteria) && row.criteria.length > 0;
-    if (hasTemplate === hasCriteria) {
-      return `${label} needs either a saved rubric or its own criteria — not both, and not neither.`;
+    if (hasTemplate && hasCriteria) {
+      return `${label}: use either a saved rubric or custom criteria for this round, not both.`;
+    }
+    if (!hasTemplate && !hasCriteria) {
+      return `${label}: choose a saved rubric or define criteria for this round.`;
     }
     if (hasCriteria) {
       const reason = criteriaWeightError(row.criteria as RubricCriterion[]);
@@ -963,8 +1071,11 @@ export function roundPlanError(
 
     const hasTemplate = Boolean(row.templateId);
     const hasCriteria = Array.isArray(row.criteria) && row.criteria.length > 0;
-    if (hasTemplate === hasCriteria) {
-      return `${name} needs either a saved rubric or its own criteria — not both, and not neither.`;
+    if (hasTemplate && hasCriteria) {
+      return `${name}: use either a saved rubric or custom criteria for this round, not both.`;
+    }
+    if (!hasTemplate && !hasCriteria) {
+      return `${name}: choose a saved rubric or define criteria for this round.`;
     }
 
     if (hasCriteria) {

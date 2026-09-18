@@ -94,6 +94,8 @@ export default function CandidateOnboardPage() {
     setSuggestedQualifications,
     suggestedSocialLinks,
     setSuggestedSocialLinks,
+    parseActivity,
+    streamingSkills,
     markFieldEdited,
     runParse,
     retryParse,
@@ -442,6 +444,8 @@ export default function CandidateOnboardPage() {
                 onResumeSelected={handleResumeSelected}
                 parseStatus={parseStatus}
                 parseMessage={parseMessage}
+                parseActivity={parseActivity}
+                streamingSkills={streamingSkills}
                 suggestedSkills={suggestedSkills}
                 suggestedExperiences={suggestedExperiences}
                 suggestedQualifications={suggestedQualifications}

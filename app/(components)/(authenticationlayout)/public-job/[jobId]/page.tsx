@@ -25,6 +25,23 @@ import {
 import { PublicApplyCoverLetterField } from "@/shared/components/ats/PublicApplyCoverLetterField";
 import { usePublicApplyCaptcha } from "@/shared/hooks/usePublicApplyCaptcha";
 import { usePublicResumeParse } from "@/shared/hooks/usePublicResumeParse";
+import { useModalBehavior } from "@/shared/hooks/useModalBehavior";
+import ConfirmDiscardDialog from "@/shared/components/ConfirmDiscardDialog";
+import {
+  FieldError,
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_REGEX,
+  PasswordRulesList,
+  PrefilledBadge,
+  confirmReplaceParsedDetails,
+  fieldBorderClass,
+  fieldErrorSummary,
+  focusFirstInvalidField,
+  hasFieldErrors,
+  type ApplyFieldErrors,
+  type ApplyFieldKey,
+} from "@/shared/components/ats/publicApplyFormFields";
+
 import { getPhoneCountry, getPhoneValidationError } from "@/shared/lib/phoneCountries";
 import { isPublicResumeFile, PUBLIC_RESUME_FORMAT_MESSAGE } from "@/shared/lib/publicApplyResume";
 import {
@@ -32,9 +49,15 @@ import {
   JOB_DESCRIPTION_PROSE_CLASS,
 } from "@/shared/lib/ats/jobDescriptionHtml";
 
-const PASSWORD_MIN_LENGTH = 8;
-/** Matches backend `custom.validation.js` password rules. */
-const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)/;
+/** DOM ids so a failed submit can move focus to the first field that needs attention. */
+const APPLY_FIELD_INPUT_ID: Record<ApplyFieldKey, string> = {
+  fullName: "public-job-apply-fullName",
+  email: "public-job-apply-email",
+  phoneNumber: "public-job-apply-phone",
+  resume: "public-job-apply-resume",
+  password: "public-job-apply-password",
+  confirmPassword: "public-job-apply-confirmPassword",
+};
 
 function getApplySubmissionErrorMessage(error: unknown): string {
   if (isAxiosError(error) && !error.response) {
@@ -90,6 +113,7 @@ export default function PublicJobDetailsPage() {
   const [emailExists, setEmailExists] = useState(false);
   const [checkingEmail, setCheckingEmail] = useState(false);
   const [formError, setFormError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<ApplyFieldErrors>({});
 
   const resumeInputRef = useRef<HTMLInputElement>(null);
   const coverLetterInputRef = useRef<HTMLInputElement>(null);
@@ -116,13 +140,44 @@ export default function PublicJobDetailsPage() {
     setSuggestedQualifications,
     suggestedSocialLinks,
     setSuggestedSocialLinks,
+    prefilledFields,
+    parseActivity,
+    streamingSkills,
     markFieldEdited,
     runParse,
     retryParse,
     resetParseState,
     getSubmitSkills,
     getSubmitProfileArrays,
-  } = usePublicResumeParse(jobId, { onCaptchaTokenConsumed: rotateCaptchaToken });
+  } = usePublicResumeParse(jobId, {
+    onCaptchaTokenConsumed: rotateCaptchaToken,
+    confirmReplaceDetails: confirmReplaceParsedDetails,
+  });
+
+  const closeApplyModal = () => {
+    resetParseState();
+    setFieldErrors({});
+    setFormError("");
+    setApplyModalOpen(false);
+  };
+
+  // A half-filled application is worth confirming before it is thrown away, and an in-flight
+  // submit must not be dismissable at all — the request would continue with the UI gone.
+  const applyFormDirty = Boolean(
+    fullName || email || phoneNumber || password || confirmPassword || resume || coverLetter || documents.length
+  );
+  const {
+    containerRef: applyModalRef,
+    backdropProps: applyBackdropProps,
+    requestClose: requestCloseApplyModal,
+    confirmDiscardOpen,
+    confirmDiscard,
+    cancelDiscard,
+  } = useModalBehavior({
+    isOpen: applyModalOpen && !applying,
+    onClose: closeApplyModal,
+    isDirty: applyFormDirty,
+  });
 
   const prefillTargets = {
     fullName,
@@ -210,6 +265,11 @@ export default function PublicJobDetailsPage() {
     }
   };
 
+  /** Clears one field's error as soon as the user starts correcting it. */
+  const clearFieldError = (key: ApplyFieldKey) => {
+    setFieldErrors((prev) => (prev[key] ? { ...prev, [key]: undefined } : prev));
+  };
+
   const handleResumeSelected = (file: File) => {
     if (!isPublicResumeFile(file)) {
       void Swal.fire({
@@ -231,6 +291,7 @@ export default function PublicJobDetailsPage() {
     }
 
     setResume(file);
+    clearFieldError("resume");
     if (entryMode === "ai") {
       void runParse(file, prefillTargets);
     }
@@ -278,39 +339,48 @@ export default function PublicJobDetailsPage() {
     setDocuments(files);
   };
 
-  const validateForm = (): string | null => {
+  /**
+   * Collects every problem at once and keys it by field, so each message can sit next to the input
+   * it belongs to instead of being funnelled into one banner above a form that scrolls.
+   */
+  const validateForm = (): ApplyFieldErrors => {
+    const errors: ApplyFieldErrors = {};
     if (!fullName.trim() || fullName.trim().length < 2) {
-      return "Please enter your full name (at least 2 characters).";
+      errors.fullName = "Enter your full name (at least 2 characters).";
     }
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      return "Please enter a valid email address.";
+      errors.email = "Enter a valid email address, for example name@example.com.";
     }
     const phoneError = getPhoneValidationError(phoneNumber, countryCode);
     if (phoneError) {
-      return phoneError;
-    }
-    if (password.length < PASSWORD_MIN_LENGTH) {
-      return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
-    }
-    if (!PASSWORD_REGEX.test(password)) {
-      return "Password must contain at least one uppercase letter and one number.";
-    }
-    if (password !== confirmPassword) {
-      return "Passwords do not match.";
+      errors.phoneNumber = phoneError;
     }
     if (!resume) {
-      return "Please upload your resume.";
+      errors.resume = "Upload your resume to continue.";
     }
-    return null;
+    // Skipped entirely when the email already has an account — those inputs are not rendered.
+    if (!emailExists) {
+      if (password.length < PASSWORD_MIN_LENGTH) {
+        errors.password = `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
+      } else if (!PASSWORD_REGEX.test(password)) {
+        errors.password = "Add at least one uppercase letter and one number.";
+      }
+      if (password !== confirmPassword) {
+        errors.confirmPassword = "Both passwords must match.";
+      }
+    }
+    return errors;
   };
 
   const handleApplySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError("");
 
-    const validationError = validateForm();
-    if (validationError) {
-      setFormError(validationError);
+    const errors = validateForm();
+    setFieldErrors(errors);
+    if (hasFieldErrors(errors)) {
+      setFormError(fieldErrorSummary(errors));
+      focusFirstInvalidField(errors, APPLY_FIELD_INPUT_ID);
       return;
     }
 
@@ -563,17 +633,27 @@ export default function PublicJobDetailsPage() {
 
         {/* Apply Modal */}
         {applyModalOpen && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto"
+            {...applyBackdropProps}
+          >
+            <div
+              ref={applyModalRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="public-job-apply-title"
+              className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            >
               <div className="sticky top-0 z-20 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-6 flex justify-between items-center">
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Apply for {job.title}</h2>
+                <h2 id="public-job-apply-title" className="text-2xl font-bold text-gray-900 dark:text-white">
+                  Apply for {job.title}
+                </h2>
                 <button
                   type="button"
-                  onClick={() => {
-                    resetParseState();
-                    setApplyModalOpen(false);
-                  }}
-                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl"
+                  onClick={requestCloseApplyModal}
+                  // Closing mid-submit would leave the upload running with no UI to report the result.
+                  disabled={applying}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-2xl text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-white/10 dark:hover:text-gray-200"
                   aria-label="Close apply form"
                 >
                   ×
@@ -606,6 +686,10 @@ export default function PublicJobDetailsPage() {
                   onResumeSelected={handleResumeSelected}
                   parseStatus={parseStatus}
                   parseMessage={parseMessage}
+                  parseActivity={parseActivity}
+                  streamingSkills={streamingSkills}
+                  resumeInputId="public-job-apply-resume"
+                  resumeInvalid={Boolean(fieldErrors.resume)}
                   suggestedSkills={suggestedSkills}
                   suggestedExperiences={suggestedExperiences}
                   suggestedQualifications={suggestedQualifications}
@@ -621,6 +705,7 @@ export default function PublicJobDetailsPage() {
                 <div>
                   <label htmlFor="public-job-apply-fullName" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Full Name <span className="text-red-500">*</span>
+                    <PrefilledBadge show={prefilledFields.has("fullName")} />
                   </label>
                   <input
                     id="public-job-apply-fullName"
@@ -628,18 +713,23 @@ export default function PublicJobDetailsPage() {
                     value={fullName}
                     onChange={(e) => {
                       markFieldEdited("fullName");
+                      clearFieldError("fullName");
                       setFullName(e.target.value);
                     }}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
+                    aria-invalid={fieldErrors.fullName ? true : undefined}
+                    aria-describedby={fieldErrors.fullName ? "public-job-apply-fullName-error" : undefined}
+                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white ${fieldBorderClass(Boolean(fieldErrors.fullName))}`}
                     placeholder="John Doe"
                     minLength={2}
                     required
                   />
+                  <FieldError id="public-job-apply-fullName-error" message={fieldErrors.fullName} />
                 </div>
 
                 <div>
                   <label htmlFor="public-job-apply-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Email <span className="text-red-500">*</span>
+                    <PrefilledBadge show={prefilledFields.has("email")} />
                   </label>
                   <input
                     id="public-job-apply-email"
@@ -647,33 +737,48 @@ export default function PublicJobDetailsPage() {
                     value={email}
                     onChange={(e) => {
                       markFieldEdited("email");
+                      clearFieldError("email");
                       setEmail(e.target.value);
                     }}
                     autoComplete="email"
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
+                    aria-invalid={fieldErrors.email ? true : undefined}
+                    aria-describedby={
+                      [
+                        fieldErrors.email ? "public-job-apply-email-error" : null,
+                        emailExists ? "public-job-apply-email-exists" : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" ") || undefined
+                    }
+                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white ${fieldBorderClass(Boolean(fieldErrors.email))}`}
                     placeholder="john@example.com"
                     required
                   />
+                  <FieldError id="public-job-apply-email-error" message={fieldErrors.email} />
                   {checkingEmail && (
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Checking…</p>
+                    <p className="mt-1 text-xs text-slate-600 dark:text-gray-400">Checking…</p>
                   )}
                   {emailExists && (
                     <div
+                      id="public-job-apply-email-exists"
                       role="status"
                       aria-live="polite"
-                      className="mt-2 flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-gray-700 dark:text-gray-200"
+                      className="mt-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-3 text-sm text-gray-700 dark:text-gray-200"
                     >
-                      <i className="ri-information-line mt-0.5 text-primary" aria-hidden />
-                      <span className="flex-1">
-                        You already have an account with this email.{" "}
-                        <button
-                          type="button"
-                          onClick={goToLoginForJob}
-                          className="font-semibold text-primary hover:underline"
-                        >
-                          Log in to apply
-                        </button>
-                      </span>
+                      <p className="flex items-start gap-2">
+                        <i className="ri-information-line mt-0.5 text-primary" aria-hidden />
+                        <span className="flex-1">
+                          You already have an account with this email, so there is no password to set —
+                          sign in and your application will carry on from there.
+                        </span>
+                      </p>
+                      <button
+                        type="button"
+                        onClick={goToLoginForJob}
+                        className="mt-2 w-full rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 sm:w-auto"
+                      >
+                        Log in to apply
+                      </button>
                     </div>
                   )}
                 </div>
@@ -681,6 +786,7 @@ export default function PublicJobDetailsPage() {
                 <div>
                   <label htmlFor="public-job-apply-phone" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Phone Number <span className="text-red-500">*</span>
+                    <PrefilledBadge show={prefilledFields.has("phoneNumber")} />
                   </label>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
                     <div className="w-full shrink-0 sm:w-44">
@@ -700,80 +806,122 @@ export default function PublicJobDetailsPage() {
                       value={phoneNumber}
                       onChange={(e) => {
                         markFieldEdited("phoneNumber");
+                        clearFieldError("phoneNumber");
                         setPhoneNumber(e.target.value);
                       }}
-                      className="min-w-0 flex-1 w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
+                      aria-invalid={fieldErrors.phoneNumber ? true : undefined}
+                      aria-describedby={fieldErrors.phoneNumber ? "public-job-apply-phone-error" : undefined}
+                      className={`min-w-0 flex-1 w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white ${fieldBorderClass(Boolean(fieldErrors.phoneNumber))}`}
                       placeholder={getPhoneCountry(countryCode).placeholder}
                       maxLength={getPhoneCountry(countryCode).maxLength}
                       inputMode="numeric"
                       required
                     />
                   </div>
+                  <FieldError id="public-job-apply-phone-error" message={fieldErrors.phoneNumber} />
                 </div>
 
                 {entryMode === "manual" ? (
-                  <PublicApplyResumeUploadField
-                    resume={resume}
-                    resumeInputRef={resumeInputRef}
-                    onResumeSelected={handleResumeSelected}
-                    inputId="public-job-apply-resume"
-                  />
+                  <div>
+                    <PublicApplyResumeUploadField
+                      resume={resume}
+                      resumeInputRef={resumeInputRef}
+                      onResumeSelected={handleResumeSelected}
+                      inputId="public-job-apply-resume"
+                      invalid={Boolean(fieldErrors.resume)}
+                    />
+                    <FieldError id="public-job-apply-resume-error" message={fieldErrors.resume} />
+                  </div>
                 ) : null}
 
-                <div>
-                  <label htmlFor="public-job-apply-password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Password <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="public-job-apply-password"
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full py-2 pl-4 pr-11 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
-                      placeholder="Min 8 chars, 1 uppercase letter, 1 number"
-                      autoComplete="new-password"
-                      minLength={PASSWORD_MIN_LENGTH}
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 dark:hover:bg-white/10 dark:hover:text-gray-200"
-                      aria-label={showPassword ? "Hide password" : "Show password"}
-                      title={showPassword ? "Hide password" : "Show password"}
-                    >
-                      <i className={`text-xl ${showPassword ? "ri-eye-off-line" : "ri-eye-line"}`} aria-hidden />
-                    </button>
-                  </div>
-                </div>
+                {/*
+                  Hidden once we know the email already has an account: asking someone to create a
+                  password for an account they already own is a dead end, and these were previously
+                  left on screen still marked `required`.
+                */}
+                {!emailExists ? (
+                  <>
+                    <div>
+                      <label htmlFor="public-job-apply-password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Password <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          id="public-job-apply-password"
+                          type={showPassword ? "text" : "password"}
+                          value={password}
+                          onChange={(e) => {
+                            clearFieldError("password");
+                            setPassword(e.target.value);
+                          }}
+                          aria-invalid={fieldErrors.password ? true : undefined}
+                          aria-describedby="public-job-apply-password-rules"
+                          className={`w-full py-2 pl-4 pr-11 border rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white ${fieldBorderClass(Boolean(fieldErrors.password))}`}
+                          placeholder="Create a password"
+                          autoComplete="new-password"
+                          minLength={PASSWORD_MIN_LENGTH}
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 dark:hover:bg-white/10 dark:hover:text-gray-200"
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                          title={showPassword ? "Hide password" : "Show password"}
+                        >
+                          <i className={`text-xl ${showPassword ? "ri-eye-off-line" : "ri-eye-line"}`} aria-hidden />
+                        </button>
+                      </div>
+                      {/* Persistent, not a placeholder — the rules used to vanish on the first keystroke. */}
+                      <PasswordRulesList id="public-job-apply-password-rules" value={password} />
+                      <FieldError id="public-job-apply-password-error" message={fieldErrors.password} />
+                    </div>
 
-                <div>
-                  <label htmlFor="public-job-apply-confirmPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Confirm Password <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="public-job-apply-confirmPassword"
-                      type={showConfirmPassword ? "text" : "password"}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full py-2 pl-4 pr-11 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
-                      placeholder="Re-enter password"
-                      autoComplete="new-password"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 dark:hover:bg-white/10 dark:hover:text-gray-200"
-                      aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
-                      title={showConfirmPassword ? "Hide password" : "Show password"}
-                    >
-                      <i className={`text-xl ${showConfirmPassword ? "ri-eye-off-line" : "ri-eye-line"}`} aria-hidden />
-                    </button>
-                  </div>
-                </div>
+                    <div>
+                      <label htmlFor="public-job-apply-confirmPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Confirm Password <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          id="public-job-apply-confirmPassword"
+                          type={showConfirmPassword ? "text" : "password"}
+                          value={confirmPassword}
+                          onChange={(e) => {
+                            clearFieldError("confirmPassword");
+                            setConfirmPassword(e.target.value);
+                          }}
+                          // Checked on blur rather than per keystroke, so it does not shout mid-typing.
+                          onBlur={() => {
+                            if (confirmPassword && confirmPassword !== password) {
+                              setFieldErrors((prev) => ({ ...prev, confirmPassword: "Both passwords must match." }));
+                            }
+                          }}
+                          aria-invalid={fieldErrors.confirmPassword ? true : undefined}
+                          aria-describedby={
+                            fieldErrors.confirmPassword ? "public-job-apply-confirmPassword-error" : undefined
+                          }
+                          className={`w-full py-2 pl-4 pr-11 border rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white ${fieldBorderClass(Boolean(fieldErrors.confirmPassword))}`}
+                          placeholder="Re-enter password"
+                          autoComplete="new-password"
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 dark:hover:bg-white/10 dark:hover:text-gray-200"
+                          aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                          title={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                        >
+                          <i className={`text-xl ${showConfirmPassword ? "ri-eye-off-line" : "ri-eye-line"}`} aria-hidden />
+                        </button>
+                      </div>
+                      <FieldError
+                        id="public-job-apply-confirmPassword-error"
+                        message={fieldErrors.confirmPassword}
+                      />
+                    </div>
+                  </>
+                ) : null}
 
                 {entryMode === "ai" ? (
                   <PublicApplyOptionalProfileDetails
@@ -798,10 +946,14 @@ export default function PublicJobDetailsPage() {
                 />
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label
+                    htmlFor="public-job-apply-documents"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                  >
                     Additional Documents (Optional - Max 5 files)
                   </label>
                   <input
+                    id="public-job-apply-documents"
                     ref={documentsInputRef}
                     type="file"
                     accept=".pdf,.docx,.jpg,.jpeg,.png"
@@ -810,17 +962,21 @@ export default function PublicJobDetailsPage() {
                     className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
                   />
                   {documents.length > 0 && (
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                    <p className="text-sm text-slate-600 dark:text-gray-400 mt-1">
                       {documents.length} file(s) selected
                     </p>
                   )}
                 </div>
 
-                <div className="flex gap-3 pt-4">
+                {/*
+                  Sticky so the primary action stays reachable — this form runs well past the fold
+                  once the AI profile editor is expanded.
+                */}
+                <div className="sticky bottom-0 -mx-6 -mb-6 flex gap-3 border-t border-gray-200 bg-white px-6 py-4 dark:border-gray-700 dark:bg-gray-800">
                   <button
                     type="button"
-                    onClick={() => setApplyModalOpen(false)}
-                    className="flex-1 px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                    onClick={requestCloseApplyModal}
+                    className="flex-1 px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={applying}
                   >
                     Cancel
@@ -836,15 +992,28 @@ export default function PublicJobDetailsPage() {
                   ) : (
                     <button
                       type="submit"
-                      className="flex-1 px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex flex-1 items-center justify-center gap-2 px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition disabled:opacity-50 disabled:cursor-not-allowed"
                       disabled={applying}
+                      aria-busy={applying}
                     >
-                      {applying ? "Submitting…" : "Submit Application"}
+                      {applying ? (
+                        <>
+                          <i className="ri-loader-4-line animate-spin motion-reduce:animate-none" aria-hidden />
+                          Submitting…
+                        </>
+                      ) : (
+                        "Submit Application"
+                      )}
                     </button>
                   )}
                 </div>
               </form>
             </div>
+            <ConfirmDiscardDialog
+              open={confirmDiscardOpen}
+              onConfirm={confirmDiscard}
+              onCancel={cancelDiscard}
+            />
           </div>
         )}
       </div>

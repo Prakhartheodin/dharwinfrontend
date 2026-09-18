@@ -4,6 +4,8 @@ import { useCallback, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import {
   parsePublicResume,
+  parsePublicResumeStream,
+  type PublicResumeParseStreamEvent,
   type PublicApplyExperience,
   type PublicApplyQualification,
   type PublicApplySocialLink,
@@ -21,6 +23,52 @@ import { isPublicResumeFile, PUBLIC_RESUME_FORMAT_MESSAGE } from "@/shared/lib/p
 
 export type PublicResumeParseUiStatus = "idle" | "parsing" | "prefill_ready" | "parse_failed";
 export type PublicApplyEntryMode = "manual" | "ai";
+
+/** Human label per streamed field, used by the live narration line. */
+const PARSE_FIELD_LABEL: Record<string, string> = {
+  fullName: "name",
+  email: "email",
+  phoneNumber: "phone number",
+  countryCode: "country",
+};
+
+/** What the parse says it is doing when it reaches each stage. */
+const PARSE_STAGE_LABEL: Record<string, string> = {
+  extracting: "Reading your resume…",
+  reading: "Looking for your details…",
+  experiences: "Reading your work experience…",
+  qualifications: "Reading your education…",
+  socialLinks: "Looking for your links…",
+};
+
+/** How each streamed entry is announced. */
+const PARSE_ITEM_VERB: Record<string, string> = {
+  experiences: "Added experience",
+  qualifications: "Added education",
+  socialLinks: "Added link",
+};
+
+/**
+ * Turn one stream event into the line shown while parsing, so the wait narrates what is actually
+ * happening ("Filling in your name…") instead of sitting on one static sentence.
+ * Returns null for events that should leave the current line alone.
+ */
+export function describeParseEvent(event: PublicResumeParseStreamEvent): string | null {
+  switch (event.type) {
+    case "stage":
+      return PARSE_STAGE_LABEL[event.stage] ?? null;
+    case "field": {
+      const label = PARSE_FIELD_LABEL[event.field];
+      return label ? `Found your ${label} — filling it in…` : null;
+    }
+    case "skill":
+      return `Adding skill: ${event.name}`;
+    case "item":
+      return `${PARSE_ITEM_VERB[event.section]}: ${event.label}`;
+    default:
+      return null;
+  }
+}
 
 export type PublicResumePrefillTargets = {
   fullName: string;
@@ -87,10 +135,18 @@ function sanitizeSocialLinksForSubmit(rows: PublicApplySocialLink[]): PublicAppl
 
 type UsePublicResumeParseOptions = {
   onCaptchaTokenConsumed?: () => void;
+  /**
+   * Asked before a different resume overwrites details parsed from a previous one. Resolve false
+   * to keep what is already on the form. Omitted means replace without asking (the old behaviour).
+   * Injected rather than called here so this hook stays free of UI.
+   */
+  confirmReplaceDetails?: () => Promise<boolean>;
 };
 
 export function usePublicResumeParse(jobId: string, options?: UsePublicResumeParseOptions) {
-  const [entryMode, setEntryMode] = useState<PublicApplyEntryMode>("manual");
+  // AI by default: uploading a resume is the path that fills the form for the candidate, so it is
+  // the one to offer first. "Continue manually" stays one click away.
+  const [entryMode, setEntryMode] = useState<PublicApplyEntryMode>("ai");
   const [parseStatus, setParseStatus] = useState<PublicResumeParseUiStatus>("idle");
   const [parseMessage, setParseMessage] = useState<string | null>(null);
   const [suggestedSkills, setSuggestedSkills] = useState<PublicResumeParseSkill[]>([]);
@@ -98,15 +154,73 @@ export function usePublicResumeParse(jobId: string, options?: UsePublicResumePar
   const [suggestedQualifications, setSuggestedQualifications] = useState<PublicApplyQualification[]>([]);
   const [suggestedSocialLinks, setSuggestedSocialLinks] = useState<PublicApplySocialLink[]>([]);
   const [parseResultStatus, setParseResultStatus] = useState<PublicResumeParseStatus | null>(null);
+  /**
+   * Which contact fields this parse actually filled, so each input can say so beside its label.
+   * A banner reading "we prefilled some fields" leaves the user to diff the whole form from memory.
+   */
+  const [prefilledFields, setPrefilledFields] = useState<Set<string>>(() => new Set());
+  /** What the parse is doing right now, narrated from the stream events. */
+  const [parseActivity, setParseActivity] = useState<string | null>(null);
+  /**
+   * Skill names as the model writes them, shown as chips while parsing. A preview only —
+   * `suggestedSkills` from the final result is what gets submitted.
+   */
+  const [streamingSkills, setStreamingSkills] = useState<string[]>([]);
 
   const lastParsedKeyRef = useRef<string | null>(null);
   const parseGenerationRef = useRef(0);
   const editedFieldsRef = useRef<Set<string>>(new Set());
   const pendingFileRef = useRef<File | null>(null);
+  /**
+   * Whether a previous parse left details the user could have edited. Held in a ref so `runParse`
+   * can read it without taking the suggestion arrays as dependencies.
+   */
+  const hasParsedDetailsRef = useRef(false);
 
   const markFieldEdited = useCallback((field: string) => {
     editedFieldsRef.current.add(field);
+    // Once the user touches a field it is theirs, so drop the "from resume" marker.
+    setPrefilledFields((prev) => {
+      if (!prev.has(field)) return prev;
+      const next = new Set(prev);
+      next.delete(field);
+      return next;
+    });
   }, []);
+
+  /**
+   * Write one streamed field straight into the form, so an input fills the moment the model
+   * finishes writing it rather than all of them landing together at the end.
+   *
+   * Uses the same guards as {@link applyPrefill}: never touch a field the user has typed in, and
+   * never overwrite one that already has a value. `editedFieldsRef` is a ref, so a field the user
+   * starts editing mid-parse is respected immediately even though `targets` was captured earlier.
+   */
+  const applyStreamedField = useCallback(
+    (field: string, value: string, targets: PublicResumePrefillTargets) => {
+      if (editedFieldsRef.current.has(field)) return;
+
+      if (field === "fullName") {
+        if (targets.fullName.trim()) return;
+        targets.setFullName(value);
+      } else if (field === "email") {
+        if (targets.email.trim()) return;
+        targets.setEmail(value);
+      } else if (field === "phoneNumber") {
+        if (targets.phoneNumber.trim()) return;
+        targets.setPhoneNumber(value);
+      } else if (field === "countryCode") {
+        targets.setCountryCode(value);
+        // The country dropdown is a supporting control, not a field the badge should claim.
+        return;
+      } else {
+        return;
+      }
+
+      setPrefilledFields((prev) => (prev.has(field) ? prev : new Set(prev).add(field)));
+    },
+    []
+  );
 
   const applyPrefill = useCallback(
     (
@@ -123,25 +237,36 @@ export function usePublicResumeParse(jobId: string, options?: UsePublicResumePar
       targets: PublicResumePrefillTargets
     ) => {
       const edited = editedFieldsRef.current;
+      const filled = new Set<string>();
       if (!edited.has("fullName") && !targets.fullName.trim() && fields.fullName) {
         targets.setFullName(fields.fullName);
+        filled.add("fullName");
       }
       if (!edited.has("email") && !targets.email.trim() && fields.email) {
         targets.setEmail(fields.email);
+        filled.add("email");
       }
       if (!edited.has("phoneNumber") && !targets.phoneNumber.trim() && fields.phoneNumber) {
         const normalized = parseStoredPhone(fields.phoneNumber, fields.countryCode ?? targets.countryCode);
         targets.setPhoneNumber(normalized.digits);
+        filled.add("phoneNumber");
         if (!edited.has("countryCode")) {
           targets.setCountryCode(normalized.countryCode);
         }
       } else if (!edited.has("countryCode") && fields.countryCode) {
         targets.setCountryCode(fields.countryCode);
       }
+      setPrefilledFields(filled);
       setSuggestedSkills(fields.skills || []);
       setSuggestedExperiences(fields.experiences || []);
       setSuggestedQualifications(fields.qualifications || []);
       setSuggestedSocialLinks(fields.socialLinks || []);
+      hasParsedDetailsRef.current = Boolean(
+        fields.skills?.length ||
+          fields.experiences?.length ||
+          fields.qualifications?.length ||
+          fields.socialLinks?.length
+      );
     },
     []
   );
@@ -167,14 +292,42 @@ export function usePublicResumeParse(jobId: string, options?: UsePublicResumePar
         return;
       }
 
+      // Swapping in a different resume replaces the parsed skills, experience, qualifications and
+      // social links wholesale — including anything the user edited — so confirm first. A retry
+      // (force) or a first parse has nothing to lose and never asks.
+      const replacesExistingDetails =
+        !force && lastParsedKeyRef.current !== null && lastParsedKeyRef.current !== key && hasParsedDetailsRef.current;
+      if (replacesExistingDetails && options?.confirmReplaceDetails) {
+        const proceed = await options.confirmReplaceDetails();
+        if (!proceed) return;
+        // The user may have picked another file while the prompt was open.
+        if (fileDedupeKey(pendingFileRef.current || file) !== key) return;
+      }
+
       const generation = ++parseGenerationRef.current;
       const captchaConfigured = getPublicCaptchaConfig().widgetConfigured;
       setParseStatus("parsing");
+      setStreamingSkills([]);
       setParseMessage(null);
       setParseResultStatus(null);
 
       try {
-        const result = await parsePublicResume(jobId, file);
+        const result = await parsePublicResumeStream(jobId, file, (event) => {
+          // A superseded parse must not keep narrating over the one the user is waiting on.
+          if (generation !== parseGenerationRef.current) return;
+          const line = describeParseEvent(event);
+          if (line) setParseActivity(line);
+          if (event.type === "field") {
+            applyStreamedField(event.field, event.value, targets);
+          }
+          if (event.type === "skill") {
+            setStreamingSkills((prev) =>
+              prev.some((name) => name.toLowerCase() === event.name.toLowerCase())
+                ? prev
+                : [...prev, event.name]
+            );
+          }
+        });
         if (generation !== parseGenerationRef.current) {
           return;
         }
@@ -195,10 +348,16 @@ export function usePublicResumeParse(jobId: string, options?: UsePublicResumePar
           setSuggestedExperiences([]);
           setSuggestedQualifications([]);
           setSuggestedSocialLinks([]);
+          setPrefilledFields(new Set());
+          setParseActivity(null);
+          setStreamingSkills([]);
+          hasParsedDetailsRef.current = false;
           return;
         }
 
         applyPrefill(result.fields, targets);
+        setParseActivity(null);
+        setStreamingSkills([]);
         setParseStatus("prefill_ready");
         if (result.status === "partial" && result.warnings?.length) {
           setParseMessage(result.warnings.join(" "));
@@ -215,13 +374,17 @@ export function usePublicResumeParse(jobId: string, options?: UsePublicResumePar
         setSuggestedExperiences([]);
         setSuggestedQualifications([]);
         setSuggestedSocialLinks([]);
+        setPrefilledFields(new Set());
+        setParseActivity(null);
+        setStreamingSkills([]);
+        hasParsedDetailsRef.current = false;
       } finally {
         if (captchaConfigured) {
           options?.onCaptchaTokenConsumed?.();
         }
       }
     },
-    [applyPrefill, jobId, options]
+    [applyPrefill, applyStreamedField, jobId, options]
   );
 
   const retryParse = useCallback(
@@ -236,13 +399,18 @@ export function usePublicResumeParse(jobId: string, options?: UsePublicResumePar
 
   const resetParseState = useCallback(() => {
     parseGenerationRef.current += 1;
-    setEntryMode("manual");
+    // Back to the default, so reopening the form offers the AI path again.
+    setEntryMode("ai");
     setParseStatus("idle");
     setParseMessage(null);
     setSuggestedSkills([]);
     setSuggestedExperiences([]);
     setSuggestedQualifications([]);
     setSuggestedSocialLinks([]);
+    setPrefilledFields(new Set());
+    setParseActivity(null);
+    setStreamingSkills([]);
+    hasParsedDetailsRef.current = false;
     setParseResultStatus(null);
     lastParsedKeyRef.current = null;
     pendingFileRef.current = null;
@@ -250,13 +418,11 @@ export function usePublicResumeParse(jobId: string, options?: UsePublicResumePar
   }, []);
 
   const changeEntryMode = useCallback((mode: PublicApplyEntryMode) => {
+    // Deliberately keeps the parsed suggestions when switching to manual. Discarding them here
+    // destroyed the user's resume data with no warning and no undo, and it was never needed:
+    // getSubmitSkills / getSubmitProfileArrays already return empty unless entryMode === "ai",
+    // so nothing parsed can leak into a manual submission. Switching back restores the review panel.
     setEntryMode(mode);
-    if (mode === "manual") {
-      setSuggestedSkills([]);
-      setSuggestedExperiences([]);
-      setSuggestedQualifications([]);
-      setSuggestedSocialLinks([]);
-    }
   }, []);
 
   const getSubmitSkills = useCallback((): PublicResumeParseSkill[] => {
@@ -289,6 +455,9 @@ export function usePublicResumeParse(jobId: string, options?: UsePublicResumePar
     suggestedSocialLinks,
     setSuggestedSocialLinks,
     parseResultStatus,
+    prefilledFields,
+    parseActivity,
+    streamingSkills,
     markFieldEdited,
     runParse,
     retryParse,

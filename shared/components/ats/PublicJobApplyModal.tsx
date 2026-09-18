@@ -19,12 +19,34 @@ import {
 import { PublicApplyCoverLetterField } from "@/shared/components/ats/PublicApplyCoverLetterField";
 import { usePublicApplyCaptcha } from "@/shared/hooks/usePublicApplyCaptcha";
 import { usePublicResumeParse } from "@/shared/hooks/usePublicResumeParse";
+import { useModalBehavior } from "@/shared/hooks/useModalBehavior";
+import ConfirmDiscardDialog from "@/shared/components/ConfirmDiscardDialog";
 import { getPhoneCountry, getPhoneValidationError } from "@/shared/lib/phoneCountries";
 import { isPublicResumeFile, PUBLIC_RESUME_FORMAT_MESSAGE } from "@/shared/lib/publicApplyResume";
+import {
+  FieldError,
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_REGEX,
+  PasswordRulesList,
+  PrefilledBadge,
+  confirmReplaceParsedDetails,
+  fieldBorderClass,
+  fieldErrorSummary,
+  focusFirstInvalidField,
+  hasFieldErrors,
+  type ApplyFieldErrors,
+  type ApplyFieldKey,
+} from "@/shared/components/ats/publicApplyFormFields";
 
-const PASSWORD_MIN_LENGTH = 8;
-/** Matches backend `custom.validation.js` password rules. */
-const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)/;
+/** DOM ids so a failed submit can move focus to the first field that needs attention. */
+const APPLY_FIELD_INPUT_ID: Record<ApplyFieldKey, string> = {
+  fullName: "public-apply-modal-fullName",
+  email: "public-apply-modal-email",
+  phoneNumber: "public-apply-modal-phone",
+  resume: "public-apply-modal-resume",
+  password: "public-apply-modal-password",
+  confirmPassword: "public-apply-modal-confirmPassword",
+};
 
 function getApplySubmissionErrorMessage(error: unknown): string {
   if (isAxiosError(error) && !error.response) {
@@ -73,6 +95,7 @@ export function PublicJobApplyModal({
   const router = useRouter();
   const [applying, setApplying] = useState(false);
   const [formError, setFormError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<ApplyFieldErrors>({});
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -109,13 +132,40 @@ export function PublicJobApplyModal({
     setSuggestedQualifications,
     suggestedSocialLinks,
     setSuggestedSocialLinks,
+    prefilledFields,
+    parseActivity,
+    streamingSkills,
     markFieldEdited,
     runParse,
     retryParse,
     resetParseState,
     getSubmitSkills,
     getSubmitProfileArrays,
-  } = usePublicResumeParse(jobId, { onCaptchaTokenConsumed: rotateCaptchaToken });
+  } = usePublicResumeParse(jobId, {
+    onCaptchaTokenConsumed: rotateCaptchaToken,
+    confirmReplaceDetails: confirmReplaceParsedDetails,
+  });
+
+  const closeModal = () => {
+    resetParseState();
+    setFieldErrors({});
+    setFormError("");
+    onClose();
+  };
+
+  // A half-filled application is worth confirming before it is thrown away, and an in-flight
+  // submit must not be dismissable at all — the request would continue with the UI gone.
+  const formDirty = Boolean(
+    fullName || email || phoneNumber || password || confirmPassword || resume || coverLetter || documents.length
+  );
+  const {
+    containerRef: modalRef,
+    backdropProps,
+    requestClose: requestCloseModal,
+    confirmDiscardOpen,
+    confirmDiscard,
+    cancelDiscard,
+  } = useModalBehavior({ isOpen: open && !applying, onClose: closeModal, isDirty: formDirty });
 
   const prefillTargets = {
     fullName,
@@ -126,6 +176,11 @@ export function PublicJobApplyModal({
     setEmail,
     setPhoneNumber,
     setCountryCode,
+  };
+
+  /** Clears one field's error as soon as the user starts correcting it. */
+  const clearFieldError = (key: ApplyFieldKey) => {
+    setFieldErrors((prev) => (prev[key] ? { ...prev, [key]: undefined } : prev));
   };
 
   const handleResumeSelected = (file: File) => {
@@ -149,6 +204,7 @@ export function PublicJobApplyModal({
     }
 
     setResume(file);
+    clearFieldError("resume");
     if (entryMode === "ai") {
       void runParse(file, prefillTargets);
     }
@@ -196,38 +252,41 @@ export function PublicJobApplyModal({
     setDocuments(files);
   };
 
-  const validateForm = (): string | null => {
+  /** Collects every problem at once and keys it by field, so each message sits next to its input. */
+  const validateForm = (): ApplyFieldErrors => {
+    const errors: ApplyFieldErrors = {};
     if (!fullName.trim() || fullName.trim().length < 2) {
-      return "Please enter your full name (at least 2 characters).";
+      errors.fullName = "Enter your full name (at least 2 characters).";
     }
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      return "Please enter a valid email address.";
+      errors.email = "Enter a valid email address, for example name@example.com.";
     }
     const phoneError = getPhoneValidationError(phoneNumber, countryCode);
     if (phoneError) {
-      return phoneError;
-    }
-    if (password.length < PASSWORD_MIN_LENGTH) {
-      return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
-    }
-    if (!PASSWORD_REGEX.test(password)) {
-      return "Password must contain at least one uppercase letter and one number.";
-    }
-    if (password !== confirmPassword) {
-      return "Passwords do not match.";
+      errors.phoneNumber = phoneError;
     }
     if (!resume) {
-      return "Please upload your resume.";
+      errors.resume = "Upload your resume to continue.";
     }
-    return null;
+    if (password.length < PASSWORD_MIN_LENGTH) {
+      errors.password = `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
+    } else if (!PASSWORD_REGEX.test(password)) {
+      errors.password = "Add at least one uppercase letter and one number.";
+    }
+    if (password !== confirmPassword) {
+      errors.confirmPassword = "Both passwords must match.";
+    }
+    return errors;
   };
 
   const handleApplySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError("");
-    const validationError = validateForm();
-    if (validationError) {
-      setFormError(validationError);
+    const errors = validateForm();
+    setFieldErrors(errors);
+    if (hasFieldErrors(errors)) {
+      setFormError(fieldErrorSummary(errors));
+      focusFirstInvalidField(errors, APPLY_FIELD_INPUT_ID);
       return;
     }
 
@@ -317,20 +376,25 @@ export function PublicJobApplyModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 overflow-y-auto">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white shadow-2xl dark:bg-gray-800">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 overflow-y-auto" {...backdropProps}>
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="public-apply-modal-title"
+        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white shadow-2xl dark:bg-gray-800"
+      >
         <div className="sticky top-0 z-20 flex items-center justify-between border-b border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white sm:text-2xl">Apply · {jobTitle}</h2>
+          <h2 id="public-apply-modal-title" className="text-xl font-bold text-gray-900 dark:text-white sm:text-2xl">
+            Apply · {jobTitle}
+          </h2>
           <button
             type="button"
-            onClick={() => {
-              if (!applying) {
-                resetParseState();
-                onClose();
-              }
-            }}
-            className="text-2xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-            aria-label="Close"
+            onClick={requestCloseModal}
+            // Closing mid-submit would leave the upload running with no UI to report the result.
+            disabled={applying}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-2xl text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-white/10 dark:hover:text-gray-200"
+            aria-label="Close apply form"
           >
             ×
           </button>
@@ -366,6 +430,10 @@ export function PublicJobApplyModal({
             onResumeSelected={handleResumeSelected}
             parseStatus={parseStatus}
             parseMessage={parseMessage}
+            parseActivity={parseActivity}
+            streamingSkills={streamingSkills}
+            resumeInputId="public-apply-modal-resume"
+            resumeInvalid={Boolean(fieldErrors.resume)}
             suggestedSkills={suggestedSkills}
             suggestedExperiences={suggestedExperiences}
             suggestedQualifications={suggestedQualifications}
@@ -381,6 +449,7 @@ export function PublicJobApplyModal({
           <div>
             <label htmlFor="public-apply-modal-fullName" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
               Full name <span className="text-red-500">*</span>
+              <PrefilledBadge show={prefilledFields.has("fullName")} />
             </label>
             <input
               id="public-apply-modal-fullName"
@@ -388,17 +457,22 @@ export function PublicJobApplyModal({
               value={fullName}
               onChange={(e) => {
                 markFieldEdited("fullName");
+                clearFieldError("fullName");
                 setFullName(e.target.value);
               }}
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-primary dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              aria-invalid={fieldErrors.fullName ? true : undefined}
+              aria-describedby={fieldErrors.fullName ? "public-apply-modal-fullName-error" : undefined}
+              className={`w-full rounded-lg border px-4 py-2 focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white ${fieldBorderClass(Boolean(fieldErrors.fullName))}`}
               placeholder="Your name"
               minLength={2}
               required
             />
+            <FieldError id="public-apply-modal-fullName-error" message={fieldErrors.fullName} />
           </div>
           <div>
             <label htmlFor="public-apply-modal-email" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
               Email <span className="text-red-500">*</span>
+              <PrefilledBadge show={prefilledFields.has("email")} />
             </label>
             <input
               id="public-apply-modal-email"
@@ -406,9 +480,12 @@ export function PublicJobApplyModal({
               value={email}
               onChange={(e) => {
                 markFieldEdited("email");
+                clearFieldError("email");
                 setEmail(e.target.value);
               }}
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-primary dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              aria-invalid={fieldErrors.email ? true : undefined}
+              aria-describedby={fieldErrors.email ? "public-apply-modal-email-error" : undefined}
+              className={`w-full rounded-lg border px-4 py-2 focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white ${fieldBorderClass(Boolean(fieldErrors.email))}`}
               placeholder="you@example.com"
               autoComplete="email"
               required
@@ -417,6 +494,7 @@ export function PublicJobApplyModal({
           <div>
             <label htmlFor="public-apply-modal-phone" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
               Phone <span className="text-red-500">*</span>
+              <PrefilledBadge show={prefilledFields.has("phoneNumber")} />
             </label>
             <div className="flex gap-2">
               <PhoneCountrySelect
@@ -434,23 +512,31 @@ export function PublicJobApplyModal({
                 value={phoneNumber}
                 onChange={(e) => {
                   markFieldEdited("phoneNumber");
+                  clearFieldError("phoneNumber");
                   setPhoneNumber(e.target.value);
                 }}
-                className="flex-1 min-w-0 rounded-lg border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-primary dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                aria-invalid={fieldErrors.phoneNumber ? true : undefined}
+                aria-describedby={fieldErrors.phoneNumber ? "public-apply-modal-phone-error" : undefined}
+                className={`flex-1 min-w-0 rounded-lg border px-4 py-2 focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white ${fieldBorderClass(Boolean(fieldErrors.phoneNumber))}`}
                 placeholder={getPhoneCountry(countryCode).placeholder}
                 maxLength={getPhoneCountry(countryCode).maxLength}
                 inputMode="numeric"
                 required
               />
             </div>
+            <FieldError id="public-apply-modal-phone-error" message={fieldErrors.phoneNumber} />
           </div>
           {entryMode === "manual" ? (
-            <PublicApplyResumeUploadField
-              resume={resume}
-              resumeInputRef={resumeInputRef}
-              onResumeSelected={handleResumeSelected}
-              inputId="public-apply-modal-resume"
-            />
+            <div>
+              <PublicApplyResumeUploadField
+                resume={resume}
+                resumeInputRef={resumeInputRef}
+                onResumeSelected={handleResumeSelected}
+                inputId="public-apply-modal-resume"
+                invalid={Boolean(fieldErrors.resume)}
+              />
+              <FieldError id="public-apply-modal-resume-error" message={fieldErrors.resume} />
+            </div>
           ) : null}
           <div>
             <label htmlFor="public-apply-modal-password" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -461,10 +547,15 @@ export function PublicJobApplyModal({
                 id="public-apply-modal-password"
                 type={showPassword ? "text" : "password"}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 py-2 pl-4 pr-11 focus:ring-2 focus:ring-primary dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                placeholder="Min 8 chars, 1 uppercase letter, 1 number"
+                onChange={(e) => {
+                  clearFieldError("password");
+                  setPassword(e.target.value);
+                }}
+                className={`w-full rounded-lg border py-2 pl-4 pr-11 focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white ${fieldBorderClass(Boolean(fieldErrors.password))}`}
+                placeholder="Create a password"
                 autoComplete="new-password"
+                aria-invalid={fieldErrors.password ? true : undefined}
+                aria-describedby="public-apply-modal-password-rules"
                 minLength={PASSWORD_MIN_LENGTH}
                 required
               />
@@ -478,6 +569,9 @@ export function PublicJobApplyModal({
                 <i className={`text-xl ${showPassword ? "ri-eye-off-line" : "ri-eye-line"}`} aria-hidden />
               </button>
             </div>
+            {/* Persistent, not a placeholder — the rules used to vanish on the first keystroke. */}
+            <PasswordRulesList id="public-apply-modal-password-rules" value={password} />
+            <FieldError id="public-apply-modal-password-error" message={fieldErrors.password} />
           </div>
           <div>
             <label htmlFor="public-apply-modal-confirmPassword" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -488,8 +582,20 @@ export function PublicJobApplyModal({
                 id="public-apply-modal-confirmPassword"
                 type={showConfirmPassword ? "text" : "password"}
                 value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 py-2 pl-4 pr-11 focus:ring-2 focus:ring-primary dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                onChange={(e) => {
+                  clearFieldError("confirmPassword");
+                  setConfirmPassword(e.target.value);
+                }}
+                onBlur={() => {
+                  if (confirmPassword && confirmPassword !== password) {
+                    setFieldErrors((prev) => ({ ...prev, confirmPassword: "Both passwords must match." }));
+                  }
+                }}
+                aria-invalid={fieldErrors.confirmPassword ? true : undefined}
+                aria-describedby={
+                  fieldErrors.confirmPassword ? "public-apply-modal-confirmPassword-error" : undefined
+                }
+                className={`w-full rounded-lg border py-2 pl-4 pr-11 focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white ${fieldBorderClass(Boolean(fieldErrors.confirmPassword))}`}
                 placeholder="Re-enter password"
                 autoComplete="new-password"
                 required
@@ -499,11 +605,12 @@ export function PublicJobApplyModal({
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 dark:hover:bg-white/10 dark:hover:text-gray-200"
                 aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
-                title={showConfirmPassword ? "Hide password" : "Show password"}
+                title={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
               >
                 <i className={`text-xl ${showConfirmPassword ? "ri-eye-off-line" : "ri-eye-line"}`} aria-hidden />
               </button>
             </div>
+            <FieldError id="public-apply-modal-confirmPassword-error" message={fieldErrors.confirmPassword} />
           </div>
           {entryMode === "ai" ? (
             <PublicApplyOptionalProfileDetails
@@ -526,10 +633,14 @@ export function PublicJobApplyModal({
             disabled={applying}
           />
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label
+              htmlFor="public-apply-modal-documents"
+              className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
               Additional documents (optional, max 5)
             </label>
             <input
+              id="public-apply-modal-documents"
               ref={documentsInputRef}
               type="file"
               accept=".pdf,.docx,.jpg,.jpeg,.png"
@@ -541,25 +652,35 @@ export function PublicJobApplyModal({
               <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{documents.length} file(s)</p>
             ) : null}
           </div>
-          <div className="flex gap-3 pt-2">
+          {/* Sticky so the primary action stays reachable on this long, scrolling form. */}
+          <div className="sticky bottom-0 -mx-6 -mb-6 flex gap-3 border-t border-gray-200 bg-white px-6 py-4 dark:border-gray-700 dark:bg-gray-800">
             <button
               type="button"
-              onClick={() => !applying && onClose()}
-              className="flex-1 rounded-lg border border-gray-300 px-6 py-3 text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+              onClick={requestCloseModal}
+              className="flex-1 rounded-lg border border-gray-300 px-6 py-3 text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
               disabled={applying}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex-1 rounded-lg bg-primary px-6 py-3 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={applying}
+              aria-busy={applying}
             >
-              {applying ? "Submitting…" : "Create account & apply"}
+              {applying ? (
+                <>
+                  <i className="ri-loader-4-line animate-spin motion-reduce:animate-none" aria-hidden />
+                  Submitting…
+                </>
+              ) : (
+                "Create account & apply"
+              )}
             </button>
           </div>
         </form>
       </div>
+      <ConfirmDiscardDialog open={confirmDiscardOpen} onConfirm={confirmDiscard} onCancel={cancelDiscard} />
     </div>
   );
 }
