@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/shared/contexts/auth-context";
+import { buildInterviewJoinUrl } from "@/shared/lib/join-room-url";
+import { useConfirm } from "@/shared/components/ui/useConfirm";
 import {
   getMeeting,
   getMeetingSummary,
@@ -13,6 +15,7 @@ import {
   type MeetingSummaryResponse,
   type MeetingTranscriptResponse,
   type MeetingRecording,
+  updateMeeting,
 } from "@/shared/lib/api/meetings";
 import { isMongoObjectId } from "@/shared/lib/api/employees";
 import { getJobById } from "@/shared/lib/api/jobs";
@@ -72,7 +75,7 @@ export default function InterviewDetailClient({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { permissions, isPlatformSuperUser } = useAuth();
+  const { permissions, isPlatformSuperUser, user } = useAuth();
   const manage = useFeaturePermissions("ats.interviews");
   const [tab, setTab] = useState<InterviewDetailTab>(() => parseInterviewDetailTab(initialTab));
   const [meeting, setMeeting] = useState<Meeting | null>(null);
@@ -92,6 +95,8 @@ export default function InterviewDetailClient({
   const canTranscript = canReadInterviewTranscript(permissions ?? [], isPlatformSuperUser);
   const canSummary = canReadInterviewSummary(permissions ?? [], isPlatformSuperUser);
   const canManageResult = Boolean(manage.canEdit);
+  const { confirm, confirmDialog } = useConfirm();
+  const [copied, setCopied] = useState(false);
 
   const loadMeeting = useCallback(async () => {
     setLoading(true);
@@ -200,10 +205,9 @@ export default function InterviewDetailClient({
       visibleInterviewDetailTabs({
         canReadTranscript: canTranscript,
         canReadSummary: canSummary,
-        hasRecording: hasCompletedRecording,
         canManageResult,
       }),
-    [canTranscript, canSummary, hasCompletedRecording, canManageResult]
+    [canTranscript, canSummary, canManageResult]
   );
 
   useEffect(() => {
@@ -212,6 +216,7 @@ export default function InterviewDetailClient({
 
   const selectTab = useCallback(
     (next: InterviewDetailTab) => {
+      if (!tabs.includes(next)) return;
       setTab(next);
       const params = new URLSearchParams(searchParams.toString());
       if (next === "overview") params.delete("tab");
@@ -221,8 +226,48 @@ export default function InterviewDetailClient({
         scroll: false,
       });
     },
-    [meetingId, router, searchParams]
+    [meetingId, router, searchParams, tabs]
   );
+
+  const handleCopyLink = useCallback(async () => {
+    const url = buildInterviewJoinUrl(
+      { publicMeetingUrl: meeting?.publicMeetingUrl, meetingId: meeting?.meetingId || "" },
+      { name: user?.name || user?.email?.split("@")[0], email: user?.email },
+      typeof window !== "undefined" ? window.location.origin : undefined
+    );
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // No clipboard permission (http origin, older browser): the button simply does not confirm.
+      // ponytail: add the temp-input fallback only if someone reports it.
+    }
+  }, [user, meeting?.meetingId, meeting?.publicMeetingUrl]);
+
+  const handleCancel = useCallback(async () => {
+    const ok = await confirm({
+      title: "Cancel interview?",
+      message: `Cancel this interview for ${meeting?.candidate?.name || "this candidate"}? The join link will be disabled.`,
+      confirmLabel: "Cancel interview",
+      cancelLabel: "Keep interview",
+      tone: "danger",
+    });
+    if (!ok) return;
+    try {
+      await updateMeeting(meetingId, { status: "cancelled" });
+      await loadMeeting();
+    } catch (e) {
+      await confirm({
+        title: "Could not cancel",
+        message: apiMessage(e, "Could not cancel this interview."),
+        confirmLabel: "Close",
+        tone: "danger",
+        hideCancel: true,
+      });
+    }
+  }, [confirm, loadMeeting, meeting?.candidate?.name, meetingId]);
 
   const openLinkage = useCallback(
     (reason?: InterviewLinkageTarget["reason"]) => {
@@ -282,6 +327,8 @@ export default function InterviewDetailClient({
   const jobLabel = resolvedJobTitle || (isMongoObjectId(rawJobPosition) ? "" : rawJobPosition);
 
   return (
+    <>
+      {confirmDialog}
     <div className="box custom-box overflow-hidden rounded-2xl border border-defaultborder/70 shadow-sm">
       <div className="box-header flex flex-col gap-4 border-b border-defaultborder/80 bg-gradient-to-br from-primary/[0.06] via-transparent to-transparent px-4 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6">
         <div className="min-w-0 flex-1">
@@ -326,6 +373,21 @@ export default function InterviewDetailClient({
               {interviewResult === "pending" ? "Record result" : "Update result"}
             </button>
           )}
+          {meeting.status?.toLowerCase() !== "cancelled" && (
+            <button type="button" className="ti-btn ti-btn-light min-h-[2.75rem] !text-sm" onClick={() => void handleCopyLink()}>
+              <i className={copied ? "ri-check-line me-1.5 align-middle text-success" : "ri-links-line me-1.5 align-middle"} aria-hidden />
+              {copied ? "Copied" : "Copy link"}
+            </button>
+          )}
+          {canManageResult && meeting.status?.toLowerCase() !== "cancelled" && (
+            <Link
+              href={`/ats/interviews?editId=${encodeURIComponent(meetingId)}`}
+              className="ti-btn ti-btn-light min-h-[2.75rem] !text-sm"
+            >
+              <i className="ri-pencil-line me-1.5 align-middle" aria-hidden />
+              Edit
+            </Link>
+          )}
           {showLinkActions &&
             linkageActions({
               candidateId: meeting.candidateId,
@@ -336,6 +398,11 @@ export default function InterviewDetailClient({
                 Link application
               </button>
             )}
+          {canManageResult && meeting.status?.toLowerCase() !== "cancelled" && (
+            <button type="button" className="ti-btn ti-btn-danger min-h-[2.75rem] !text-sm" onClick={() => void handleCancel()}>
+              Cancel interview
+            </button>
+          )}
         </div>
       </div>
 
@@ -435,19 +502,47 @@ export default function InterviewDetailClient({
                       ["transcript", "Transcript", canTranscript ? "View conversation" : "No access"],
                       ["summary", "Summary", canSummary ? "View AI recap" : "No access"],
                     ] as const
-                  ).map(([key, label, hint]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => selectTab(key)}
-                      className="flex min-h-[4.5rem] flex-col items-start rounded-lg border border-defaultborder/60 bg-white p-3 text-start transition-colors hover:border-primary/40 hover:bg-primary/[0.03] dark:bg-bodybg"
-                    >
-                      <span className="text-sm font-medium text-defaulttextcolor">{label}</span>
-                      <span className="mt-1 text-xs text-defaulttextcolor/60">{hint}</span>
-                    </button>
-                  ))}
+                  ).map(([key, label, hint]) => {
+                    const open = tabs.includes(key);
+                    const cls =
+                      "flex min-h-[4.5rem] flex-col items-start rounded-lg border border-defaultborder/60 p-3 text-start dark:bg-bodybg";
+                    return open ? (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => selectTab(key)}
+                        className={`${cls} bg-white transition-colors hover:border-primary/40 hover:bg-primary/[0.03]`}
+                      >
+                        <span className="text-sm font-medium text-defaulttextcolor">{label}</span>
+                        <span className="mt-1 text-xs text-defaulttextcolor/60">{hint}</span>
+                      </button>
+                    ) : (
+                      <div key={key} className={`${cls} bg-defaultbackground/40 opacity-60`} aria-disabled="true">
+                        <span className="text-sm font-medium text-defaulttextcolor">{label}</span>
+                        <span className="mt-1 text-xs text-defaulttextcolor/60">{hint}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </section>
+
+
+              {/* The round history was reachable only from the Applications list, so anyone who
+                  arrived at a single round had no route to the rest of the candidate's journey.
+                  Rendered only once the interview is linked — with no application there is no
+                  history to show. */}
+              {meeting.applicationId && (
+                <section className="rounded-xl border border-defaultborder/60 p-4">
+                  <h2 className="text-sm font-semibold text-defaulttextcolor">Round history</h2>
+                  <p className="mt-1 text-xs text-defaulttextcolor/60">
+                    Every round held against this application, with its evaluations.
+                  </p>
+                  <div className="mt-4">
+                    {/* Name and role are already in Participants above — passing them again duplicates them. */}
+                    <RoundHistoryPanel applicationId={String(meeting.applicationId)} variant="page" />
+                  </div>
+                </section>
+              )}
 
               {meeting.notes?.trim() && (
                 <section className="rounded-xl border border-defaultborder/60 p-4">
@@ -565,23 +660,10 @@ export default function InterviewDetailClient({
         </div>
       </div>
 
-      {/* The round history was reachable only from the Applications list, so anyone who
-          arrived at a single round had no route to the rest of the candidate's journey.
-          Rendered only once the interview is linked — with no application there is no
-          history to show. */}
-      {meeting?.applicationId && (
-        <div className="mt-4">
-          <RoundHistoryPanel
-            applicationId={String(meeting.applicationId)}
-            candidateName={meeting.candidate?.name || undefined}
-            jobTitle={meeting.jobPosition || undefined}
-          />
-        </div>
-      )}
-
       {linkageTarget && (
         <InterviewLinkageModal target={linkageTarget} onClose={() => setLinkageTarget(null)} onLinked={loadMeeting} />
       )}
     </div>
+    </>
   );
 }

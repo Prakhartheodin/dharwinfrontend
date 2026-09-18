@@ -18,7 +18,6 @@ export function parseInterviewDetailTab(value: string | null | undefined): Inter
 export interface TabAccessInput {
   canReadTranscript: boolean;
   canReadSummary: boolean;
-  hasRecording: boolean;
   canManageResult: boolean;
 }
 

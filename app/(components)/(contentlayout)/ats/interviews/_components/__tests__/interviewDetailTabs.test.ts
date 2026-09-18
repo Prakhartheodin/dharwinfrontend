@@ -17,7 +17,6 @@ describe("interviewDetailTabs", () => {
       visibleInterviewDetailTabs({
         canReadTranscript: false,
         canReadSummary: false,
-        hasRecording: true,
         canManageResult: false,
       })
     ).toEqual(["overview", "recording"]);
@@ -28,7 +27,6 @@ describe("interviewDetailTabs", () => {
       visibleInterviewDetailTabs({
         canReadTranscript: true,
         canReadSummary: true,
-        hasRecording: false,
         canManageResult: true,
       })
     ).toEqual(["overview", "recording", "transcript", "summary", "result"]);

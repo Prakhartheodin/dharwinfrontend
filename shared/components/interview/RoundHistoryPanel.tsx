@@ -14,6 +14,8 @@ export type RoundHistoryPanelProps = {
   applicationId: string;
   candidateName?: string;
   jobTitle?: string;
+  /** "modal" (default) clamps height and scrolls internally. "page" lets the page scroll. */
+  variant?: "modal" | "page";
 };
 
 function statusChipClass(status: string): string {
@@ -161,6 +163,7 @@ export default function RoundHistoryPanel({
   applicationId,
   candidateName,
   jobTitle,
+  variant = "modal",
 }: RoundHistoryPanelProps) {
   const [viewerTz, setViewerTz] = useState("UTC");
   const [data, setData] = useState<InterviewRoundHistory | null>(null);
@@ -218,7 +221,13 @@ export default function RoundHistoryPanel({
   const rounds = data?.rounds ?? [];
 
   return (
-    <div className="flex max-h-[min(80vh,40rem)] flex-col gap-4 overflow-y-auto overflow-x-hidden p-1">
+    <div
+      className={
+        variant === "page"
+          ? "flex flex-col gap-4 overflow-x-hidden"
+          : "flex max-h-[min(80vh,40rem)] flex-col gap-4 overflow-y-auto overflow-x-hidden p-1"
+      }
+    >
       <header className="space-y-1 border-b border-defaultborder/60 pb-3 dark:border-white/10">
         {candidateName && (
           <p className="text-base font-semibold text-defaulttextcolor dark:text-white">{candidateName}</p>
