@@ -4,10 +4,22 @@ import React from "react";
 import Select from "react-select";
 import { PHONE_COUNTRIES, DEFAULT_PHONE_COUNTRY } from "@/shared/lib/phoneCountries";
 
-const OPTIONS = PHONE_COUNTRIES.map((c) => ({
-  value: c.code,
-  label: c.label,
-}));
+/**
+ * Regional-indicator flag emoji have no glyph in the Windows system font, so Chrome falls back to
+ * rendering the two letters: "🇮🇳 India +91" displays as "IN India +91". Strip the flag and show
+ * plain text — consistent on every platform, and without the duplicated country code.
+ */
+const FLAG_EMOJI_PREFIX = /^[\u{1F1E6}-\u{1F1FF}]{2}\s*/u;
+
+const OPTIONS = PHONE_COUNTRIES.map((c) => {
+  const label = c.label.replace(FLAG_EMOJI_PREFIX, "");
+  return {
+    value: c.code,
+    label,
+    // Keep the ISO code searchable even though it is no longer displayed.
+    search: `${label} ${c.code}`.toLowerCase(),
+  };
+});
 
 interface PhoneCountrySelectProps {
   value: string;
@@ -53,8 +65,7 @@ export function PhoneCountrySelect({
         filterOption={(option, search) => {
           const input = search.trim().toLowerCase();
           if (!input) return true;
-          const label = (option.label ?? "").toLowerCase();
-          return label.includes(input);
+          return (option.data?.search ?? (option.label ?? "").toLowerCase()).includes(input);
         }}
         placeholder="Type to search..."
         classNamePrefix="react-select"
