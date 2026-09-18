@@ -1,10 +1,13 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
+  getRoundHistory,
   internalTransferEmployee,
   updateMeeting,
   type Meeting,
+  type RoundProgress,
   type UpdateMeetingPayload,
 } from "@/shared/lib/api/meetings";
 import { moveApplicationToOffer } from "@/shared/lib/api/jobApplications";
@@ -27,7 +30,51 @@ export default function InterviewDetailResultPanel({
 }) {
   const { confirm, confirmDialog } = useConfirm();
   const { canCreate: canMoveToOffer } = useFeaturePermissions("ats.offers");
+  // Scheduling a round is gated on interviews, not offers — the same split the interviews
+  // list already makes for these two actions.
+  const { canCreate: canScheduleInterviews } = useFeaturePermissions("ats.interviews");
   const recordId = String(meeting.id ?? meeting._id ?? meetingId);
+
+  const [roundPlan, setRoundPlan] = useState<RoundProgress | null>(null);
+
+  /**
+   * Read-only, and a failure is silent on purpose: this only decides whether an optional
+   * extra-round link appears. Move to Offer must never be hidden or delayed by it.
+   */
+  useEffect(() => {
+    const applicationId = meeting.applicationId ? String(meeting.applicationId) : "";
+    if (!applicationId) {
+      setRoundPlan(null);
+      return;
+    }
+    let cancelled = false;
+    getRoundHistory(applicationId)
+      .then((res) => {
+        if (!cancelled) setRoundPlan(res.progress?.hasPlan ? res.progress : null);
+      })
+      .catch(() => {
+        if (!cancelled) setRoundPlan(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [meeting.applicationId]);
+
+  /**
+   * Every planned round is booked and none was rejected, so the plan has nothing left to
+   * offer — this is the point at which a recruiter either moves to offer or decides one
+   * more conversation is needed. nextRound being null covers both "all passed" and "all
+   * held, some still unscored"; in the second case the extra round is still legitimate.
+   *
+   * Hidden while a planned row is still unbooked: that round should be scheduled as itself,
+   * from the plan, not as an off-plan extra.
+   */
+  const canAddExtraRound =
+    canScheduleInterviews &&
+    Boolean(meeting.applicationId) &&
+    Boolean(roundPlan) &&
+    !roundPlan?.rejectedAt &&
+    !roundPlan?.nextRound;
 
   const [selected, setSelected] = useState<"pending" | "selected" | "rejected">(
     meeting.interviewResult || "pending"
@@ -239,7 +286,32 @@ export default function InterviewDetailResultPanel({
           </p>
         )}
 
+        {canAddExtraRound && (
+          <p className="text-xs text-textmuted dark:text-white/55">
+            All {roundPlan?.total} planned{" "}
+            {roundPlan?.total === 1 ? "round is" : "rounds are"} booked. An extra round is not
+            counted towards the plan, so it will neither delay nor unlock Move to Offer.
+          </p>
+        )}
+
         <div className="flex flex-wrap justify-end gap-2 border-t border-defaultborder pt-4 dark:border-defaultborder/10">
+          {/* Before Move to Offer, because it is the quieter of the two choices at this point
+              and the recruiter should read it before committing to an offer. Secondary
+              styling for the same reason — one primary action per decision. The schedule
+              form opens on "Extra round, outside the plan" by itself, since no planned row
+              is left for it to preselect. */}
+          {canAddExtraRound && (
+            <Link
+              href={`/ats/interviews?openSchedule=1&applicationId=${encodeURIComponent(
+                String(meeting.applicationId)
+              )}${
+                meeting.candidateId ? `&candidateId=${encodeURIComponent(String(meeting.candidateId))}` : ""
+              }`}
+              className="ti-btn ti-btn-light min-h-[2.75rem] !px-5 !py-2 !text-sm"
+            >
+              Add another round
+            </Link>
+          )}
           {canMoveToOffer && meeting.interviewResult === "selected" && (
             <button
               type="button"
