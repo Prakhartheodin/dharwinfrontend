@@ -765,3 +765,44 @@ export async function getRoundHistory(applicationId: string): Promise<InterviewR
   });
   return res.data;
 }
+
+export type BiasRiskLevel = "low" | "medium" | "high";
+export type BiasCheckStatus = "pending" | "ready" | "skipped" | "failed";
+export type BiasFlagCategory = "protected_class" | "score_mismatch" | "vague_culture_fit";
+
+export interface InterviewBiasFlag {
+  category: BiasFlagCategory;
+  label: string;
+}
+
+export interface InterviewBiasEvidence {
+  quote: string;
+  utteranceId?: string | null;
+  source: "transcript" | "scorecard_comment";
+}
+
+export interface InterviewBiasCheck {
+  status: BiasCheckStatus | null;
+  skipReason: string | null;
+  skipReasonLabel: string | null;
+  riskLevel: BiasRiskLevel | null;
+  flags: InterviewBiasFlag[];
+  evidence: InterviewBiasEvidence[];
+  reasons: string[];
+  advisoryNotice: string;
+  model: string | null;
+  promptVersion: string | null;
+  analyzedAt: string | null;
+}
+
+/** Staff-only advisory bias report. Never returned on GET /meetings. */
+export async function getInterviewBiasCheck(id: string): Promise<InterviewBiasCheck> {
+  const { data } = await apiClient.get<InterviewBiasCheck>(`/meetings/${id}/bias-check`);
+  return data;
+}
+
+/** Re-enqueue analysis. Requires interviews.manage / evaluation.write. */
+export async function rerunInterviewBiasCheck(id: string): Promise<InterviewBiasCheck> {
+  const { data } = await apiClient.post<InterviewBiasCheck>(`/meetings/${id}/bias-check/rerun`);
+  return data;
+}

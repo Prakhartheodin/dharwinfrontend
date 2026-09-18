@@ -8,7 +8,7 @@ import { useAuth } from '@/shared/contexts/auth-context'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 import { buildInterviewJoinUrl } from '@/shared/lib/join-room-url'
 import { useTable, useSortBy } from 'react-table'
-import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, deleteMeeting, resendMeetingInvitations, exportInterviewsExcel, internalTransferEmployee, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload, type InterviewRound } from '@/shared/lib/api/meetings'
+import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, deleteMeeting, resendMeetingInvitations, exportInterviewsExcel, internalTransferEmployee, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload, type InterviewRound, type InterviewScorecard } from '@/shared/lib/api/meetings'
 import { getApiErrorMessage } from '@/shared/lib/api/client'
 import RubricEvaluationForm from '@/shared/components/interview/RubricEvaluationForm'
 import { buildInterviewExportParams, buildInterviewListParams } from '@/shared/lib/ats/interview-list-query'
@@ -29,6 +29,7 @@ import {
 } from '@/shared/lib/ats/applicationPipeline'
 import { wallClockToUtc, formatDualZone, getViewerTimezone, utcInstantToWallClock, listTimezones, normalizeTimezone, localDateKey, wallClockDateKey, formatDateInZone } from '@/shared/lib/timezone'
 import CreateInterviewModal, { type SchedulePrefill } from './CreateInterviewModal'
+import InterviewBiasPanel from './InterviewBiasPanel'
 import RecordingsModal from './RecordingsModal'
 import InterviewsFilterPanel from './InterviewsFilterPanel'
 import { detectOverlap } from './interviewOverlap'
@@ -257,6 +258,18 @@ function linkageTargetFromRow(row: InterviewTableRow, reason?: InterviewLinkageT
     linkageStatus: row.linkageStatus,
     reason,
   }
+}
+
+const scoredByLabel = (scorecard?: InterviewScorecard): string => {
+  const by = scorecard?.scoredBy
+  const name = by && typeof by === 'object' ? by.name || by.email : ''
+  const when = scorecard?.scoredAt
+    ? new Date(scorecard.scoredAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : ''
+  if (name && when) return `Scored by ${name} · ${when}`
+  if (name) return `Scored by ${name}`
+  if (when) return `Scored ${when}`
+  return ''
 }
 
 interface FilterState {
@@ -3028,13 +3041,22 @@ export default function InterviewsClient() {
                   </div>
 
                   {resultModalInterview?.id && (
-                    <div className="mt-6 border-t border-defaultborder pt-5 dark:border-defaultborder/10">
-                      <RubricEvaluationForm
-                        meetingId={resultModalInterview.id}
-                        hideSaveButton
-                        saveRef={saveEvaluationRef}
-                      />
-                    </div>
+                    <>
+                      <div className="mt-6 border-t border-defaultborder pt-5 dark:border-defaultborder/10">
+                        <RubricEvaluationForm
+                          meetingId={resultModalInterview.id}
+                          hideSaveButton
+                          saveRef={saveEvaluationRef}
+                        />
+                        {scoredByLabel(resultModalInterview.interviewScorecard) && (
+                          <p className="mt-2 text-xs text-defaulttextcolor/60 dark:text-white/60">
+                            <i className="ri-user-star-line me-1 align-middle"></i>
+                            {scoredByLabel(resultModalInterview.interviewScorecard)}
+                          </p>
+                        )}
+                      </div>
+                      <InterviewBiasPanel meetingId={resultModalInterview.id} canRerun={canEdit} />
+                    </>
                   )}
                 </>
               )}
