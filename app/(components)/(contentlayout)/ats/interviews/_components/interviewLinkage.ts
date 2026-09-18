@@ -108,6 +108,22 @@ export function offersLinkAction(row: {
 export const OFF_PLAN_ROUND = '__off_plan__'
 
 /**
+ * Label for one row in the Schedule Interview round dropdown.
+ * Prefers the recruiter-defined name; appends the rubric type so two Technical rows stay distinct.
+ */
+export function formatScheduleRoundOptionLabel(input: {
+  label?: string | null
+  roundType?: InterviewRoundType | null
+  index?: number
+}): string {
+  const name = String(input.label ?? '').trim() || (input.index != null && input.index > 0 ? `Round ${input.index}` : 'Round')
+  const typeLabel = input.roundType
+    ? INTERVIEW_ROUND_TYPE_OPTIONS.find((o) => o.value === input.roundType)?.label ?? input.roundType
+    : ''
+  return typeLabel ? `${name} (${typeLabel})` : name
+}
+
+/**
  * Linkage keys for POST /meetings. Only values the create schema accepts are included: Joi takes
  * `applicationId` as a 24-hex string only (never '' or null) and `round.type` from the D4 enum only.
  */

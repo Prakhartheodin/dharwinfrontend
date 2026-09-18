@@ -54,30 +54,30 @@ export interface RubricTemplatePayload {
  */
 export function criteriaWeightError(criteria: RubricCriterion[]): string | null {
   if (!Array.isArray(criteria) || criteria.length === 0) {
-    return "A rubric needs at least one criterion.";
+    return "Add at least one criterion.";
   }
   const keys = new Set<string>();
   let total = 0;
   for (const criterion of criteria) {
     const key = String(criterion?.key || "").trim();
-    if (!key) return "Every criterion needs a key.";
-    if (keys.has(key)) return `Duplicate criterion key: ${key}`;
+    if (!key) return "Each criterion needs a label.";
+    if (keys.has(key)) return `Two criteria share the same key (“${key}”). Change one of the labels.`;
     keys.add(key);
 
     const weight = Number(criterion?.weight);
     if (!Number.isInteger(weight) || weight < 0 || weight > RUBRIC_WEIGHT_TOTAL) {
-      return `Weight for "${key}" must be a whole number between 0 and ${RUBRIC_WEIGHT_TOTAL}.`;
+      return `Weight for “${key}” must be a whole number from 0 to ${RUBRIC_WEIGHT_TOTAL}.`;
     }
     total += weight;
 
     const scaleMin = Number(criterion?.scaleMin ?? 1);
     const scaleMax = Number(criterion?.scaleMax ?? 5);
     if (!Number.isInteger(scaleMin) || !Number.isInteger(scaleMax) || scaleMax <= scaleMin) {
-      return `Scale for "${key}" must be two whole numbers with the maximum above the minimum.`;
+      return `Score range for “${key}” must use whole numbers, with the maximum above the minimum.`;
     }
   }
   if (total !== RUBRIC_WEIGHT_TOTAL) {
-    return `Weights must add up to ${RUBRIC_WEIGHT_TOTAL}%. This rubric adds up to ${total}%.`;
+    return `Weights must total ${RUBRIC_WEIGHT_TOTAL}%. Yours add up to ${total}%.`;
   }
   return null;
 }

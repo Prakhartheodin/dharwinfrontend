@@ -415,10 +415,20 @@ export default function JobRoundPlanSection({
               selectedRubric.appliesTo?.roundType !== row.roundType
                 ? selectedRubric
                 : null;
-            /** Excludes the kept-for-continuity selection, so zero means "genuinely nothing fits". */
-            const savedRubricCount = offerableRubrics.filter(
-              (t) => !t.archivedAt && t.id !== row.templateId
-            ).length;
+            const hasRubricChoice =
+              Boolean(row.templateId) ||
+              (Array.isArray(row.criteria) && row.criteria.length > 0);
+            const applicableSavedRubrics = offerableRubrics.filter((t) => !t.archivedAt);
+            const invalidSelectedTemplate =
+              Boolean(row.templateId) &&
+              !mismatchedRubric &&
+              templates.length > 0 &&
+              (selectedRubric == null || Boolean(selectedRubric.archivedAt));
+            const noApplicableSavedRubrics =
+              Boolean(row.roundType) &&
+              !hasRubricChoice &&
+              !mismatchedRubric &&
+              applicableSavedRubrics.length === 0;
 
             return (
               <div key={row.key} className="rounded-lg border border-defaultborder/70 p-3 dark:border-white/10">
@@ -481,8 +491,8 @@ export default function JobRoundPlanSection({
                       </select>
                       {duplicateTypeCount > 1 && (
                         <p className="mt-1 text-xs text-textmuted dark:text-white/55">
-                          Another round uses this type. The round name is what tells them apart on the schedule form and
-                          in the candidate&rsquo;s history — give each one a distinct name.
+                          Another round uses this type. Give each round a distinct name so schedulers and candidates can
+                          tell them apart.
                         </p>
                       )}
                     </div>
@@ -512,18 +522,22 @@ export default function JobRoundPlanSection({
                         <option value={RUBRIC_CUSTOM}>Define for this round</option>
                       </select>
                       {mismatchedRubric && (
-                        <p className="mt-1 text-xs text-warning">
-                          {mismatchedRubric.name} applies to{" "}
-                          {roundTypeLabel(mismatchedRubric.appliesTo?.roundType ?? null)}, not this
-                          round. It is kept so nothing is lost silently — pick another rubric to
-                          replace it.
+                        <p className="mt-1 text-xs text-warning" role="status">
+                          {mismatchedRubric.name} is for{" "}
+                          {roundTypeLabel(mismatchedRubric.appliesTo?.roundType ?? null)}, not this round. Pick a
+                          different rubric to replace it.
                         </p>
                       )}
-                      {!mismatchedRubric && row.roundType && savedRubricCount === 0 && (
-                        <p className="mt-1 text-xs text-textmuted dark:text-white/55">
-                          No saved rubric applies to this round type. Define one for this round, or
-                          clear &ldquo;Applies to round type&rdquo; on a rubric to make it usable by
-                          every round.
+                      {invalidSelectedTemplate && (
+                        <p className="mt-1 text-xs text-danger" role="alert" aria-live="polite">
+                          This rubric is archived or unavailable. Choose another saved rubric or define criteria for
+                          this round.
+                        </p>
+                      )}
+                      {noApplicableSavedRubrics && (
+                        <p className="mt-1 text-xs text-danger" role="alert" aria-live="polite">
+                          No saved rubric fits this round type. Use &ldquo;Define for this round&rdquo; below, or edit a
+                          rubric template so it applies to any round.
                         </p>
                       )}
                     </div>

@@ -3,6 +3,7 @@ import {
   INTERVIEW_ROUND_TYPE_OPTIONS,
   applicationIdsByJobId,
   buildScheduleLinkageFields,
+  formatScheduleRoundOptionLabel,
   linkageActions,
   linkageBadge,
   offersLinkAction,
@@ -84,6 +85,21 @@ describe('offersLinkAction', () => {
   it('hides it for verified interviews and interviews without a candidate', () => {
     expect(offersLinkAction({ linkageStatus: 'verified_manual', candidateId: CAND, applicationId: APP_A })).toBe(false)
     expect(offersLinkAction({ linkageStatus: 'unlinked', candidateId: '' })).toBe(false)
+  })
+})
+
+describe('formatScheduleRoundOptionLabel', () => {
+  it('prefers the plan label and appends type for duplicate rubric types', () => {
+    expect(formatScheduleRoundOptionLabel({ label: 'System design', roundType: 'technical', index: 2 })).toBe(
+      'System design (Technical)'
+    )
+    expect(formatScheduleRoundOptionLabel({ label: 'Coding', roundType: 'technical', index: 3 })).toBe(
+      'Coding (Technical)'
+    )
+  })
+
+  it('falls back to Round N when the label is blank', () => {
+    expect(formatScheduleRoundOptionLabel({ label: '  ', roundType: 'hr', index: 1 })).toBe('Round 1 (HR)')
   })
 })
 

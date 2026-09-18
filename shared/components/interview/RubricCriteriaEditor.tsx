@@ -153,8 +153,8 @@ export default function RubricCriteriaEditor({
         </p>
       </div>
       <p className="mb-2 text-xs text-defaulttextcolor/60 dark:text-white/60">
-        A new criterion&apos;s key follows its label until you save, then it is frozen. Stored ratings reference the
-        key — after that, rename the label, never the key.
+        For new criteria, the Key column matches the label until you save. After save, you can rename the label; the key
+        stays the same so past interview scores still line up.
       </p>
       {(weightError || zeroWeightLabels.length > 0) && (
         <div className="mb-3 space-y-2">
@@ -163,7 +163,7 @@ export default function RubricCriteriaEditor({
               className="flex gap-2 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger"
               role="alert"
             >
-              <span className="font-semibold uppercase tracking-wide">Fix to save</span>
+              <span className="shrink-0 font-semibold">Before you save</span>
               <span className="min-w-0 flex-1">{weightError}</span>
             </p>
           )}
@@ -172,18 +172,18 @@ export default function RubricCriteriaEditor({
               className="flex gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning"
               role="status"
             >
-              <span className="font-semibold uppercase tracking-wide">Heads up</span>
+              <span className="shrink-0 font-semibold">Tip</span>
               <span className="min-w-0 flex-1">
                 {zeroWeightLabels.length === 1 ? (
                   <>
-                    <strong className="font-semibold">{zeroWeightLabels[0]}</strong> has 0% weight, so it will not
-                    affect the score. Interviewers still see it and can still rate it — give it weight or remove it.
+                    <strong className="font-semibold">{zeroWeightLabels[0]}</strong> has 0% weight, so it won&apos;t
+                    count toward the score. Add weight or remove it if interviewers shouldn&apos;t rate it.
                   </>
                 ) : (
                   <>
                     <strong className="font-semibold">{zeroWeightLabels.join(", ")}</strong> have 0% weight, so they
-                    will not affect the score. Interviewers still see them and can still rate them — give them weight or
-                    remove them.
+                    won&apos;t count toward the score. Add weight or remove any you don&apos;t want interviewers to
+                    rate.
                   </>
                 )}
               </span>

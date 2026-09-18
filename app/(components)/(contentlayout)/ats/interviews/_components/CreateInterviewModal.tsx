@@ -1,10 +1,11 @@
 "use client"
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { format } from 'date-fns'
 import { useAuth } from '@/shared/contexts/auth-context'
 import { appendJoinIdentityToUrl, resolvePersonalJoinIdentity } from '@/shared/lib/join-room-url'
 import { getRoundHistory, type Meeting, type RoundProgress } from '@/shared/lib/api/meetings'
-import type { Job } from '@/shared/lib/api/jobs'
+import { getJobById, type Job } from '@/shared/lib/api/jobs'
 import type { CandidateListItem } from '@/shared/lib/api/candidates'
 import { listJobApplications, type JobApplication } from '@/shared/lib/api/jobApplications'
 import { getCandidate, type AgentOption } from '@/shared/lib/api/employees'
@@ -24,6 +25,7 @@ import {
   INTERVIEW_ROUND_TYPE_OPTIONS,
   OFF_PLAN_ROUND,
   applicationIdsByJobId,
+  formatScheduleRoundOptionLabel,
 } from './interviewLinkage'
 import { listAllUsers, pickOfficialEmail, hasMeetingEmailMuted } from '@/shared/lib/api/users'
 import ParticipantInvitesField, { type ParticipantUser } from '@/shared/components/meeting/ParticipantInvitesField'
@@ -187,42 +189,137 @@ export default function CreateInterviewModal({
       : ''
   const [applicationJobsLoading, setApplicationJobsLoading] = useState(false)
   const [roundPlan, setRoundPlan] = useState<RoundProgress | null>(null)
+  const [roundHistoryLoading, setRoundHistoryLoading] = useState(false)
+  const [selectedJobPlan, setSelectedJobPlan] = useState<Job['interviewRounds'] | null>(null)
+  const [selectedJobPlanLoading, setSelectedJobPlanLoading] = useState(false)
+  const [roundPlanKey, setRoundPlanKey] = useState('')
   const [offPlan, setOffPlan] = useState(false)
+
+  const scheduleRoundReady = Boolean(selectedCandidateId && selectedJobId && selectedApplicationId)
 
   /**
    * The round plan in force for this application, plus which rows are already held.
    *
    * Reuses GET /meetings/rounds rather than adding an endpoint — it already returns exactly
    * this, derived server-side, and a second derivation is what this whole feature exists to
-   * avoid. A failure leaves roundPlan null and the form falls back to the free round-type
-   * picker, which is what every job without a plan uses anyway.
+   * avoid. A failure leaves roundPlan null and the form falls back to job.interviewRounds
+   * when present, else the legacy round-type picker.
    */
   useEffect(() => {
     if (!selectedApplicationId) {
       setRoundPlan(null)
-      setOffPlan(false)
+      setRoundHistoryLoading(false)
       return
     }
     let cancelled = false
+    setRoundHistoryLoading(true)
     getRoundHistory(selectedApplicationId)
       .then((res) => {
         if (cancelled) return
         const progress = res.progress?.hasPlan ? res.progress : null
         setRoundPlan(progress)
-        // Every planned row already held leaves nothing but an extra round to schedule, so
-        // the picker opens there. Without this the free fields would stay hidden while the
-        // off-plan option is the selected one.
-        setOffPlan(Boolean(progress) && !progress?.nextRound)
       })
       .catch(() => {
         if (cancelled) return
         setRoundPlan(null)
-        setOffPlan(false)
+      })
+      .finally(() => {
+        if (!cancelled) setRoundHistoryLoading(false)
       })
     return () => {
       cancelled = true
     }
   }, [selectedApplicationId])
+
+  /** Job interview plan (for labels/keys when round history is still loading or unavailable). */
+  useEffect(() => {
+    if (!selectedJobId) {
+      setSelectedJobPlan(null)
+      setSelectedJobPlanLoading(false)
+      return
+    }
+    let cancelled = false
+    setSelectedJobPlanLoading(true)
+    getJobById(selectedJobId)
+      .then((job) => {
+        if (!cancelled) setSelectedJobPlan(job.interviewRounds ?? [])
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedJobPlan(null)
+      })
+      .finally(() => {
+        if (!cancelled) setSelectedJobPlanLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedJobId])
+
+  useEffect(() => {
+    setRoundPlanKey('')
+    setOffPlan(false)
+  }, [selectedCandidateId, selectedJobId])
+
+  const schedulePlanRows = useMemo(() => {
+    if (roundPlan?.hasPlan) {
+      return roundPlan.rows.map((row) => {
+        const held = row.meetingId !== null
+        const why =
+          row.state === 'passed' ? ', passed' : row.state === 'rejected' ? ', rejected' : ''
+        const base = formatScheduleRoundOptionLabel({
+          label: row.label,
+          roundType: row.roundType,
+          index: row.index,
+        })
+        return {
+          key: row.key,
+          optionLabel: held ? `${base} (already held${why})` : base,
+          disabled: held,
+        }
+      })
+    }
+    const jobRows = selectedJobPlan?.filter((r) => r?.key) ?? []
+    if (jobRows.length === 0) return []
+    return jobRows.map((row, i) => ({
+      key: row.key,
+      optionLabel: formatScheduleRoundOptionLabel({
+        label: row.label,
+        roundType: row.roundType,
+        index: i + 1,
+      }),
+      disabled: false,
+    }))
+  }, [roundPlan, selectedJobPlan])
+
+  const hasJobPlan = schedulePlanRows.length > 0
+  const roundPlanLoading = scheduleRoundReady && (roundHistoryLoading || selectedJobPlanLoading)
+  const legacyNoPlan =
+    scheduleRoundReady &&
+    !roundPlanLoading &&
+    !hasJobPlan &&
+    selectedJobPlan !== null &&
+    selectedJobPlan.length === 0
+
+  useEffect(() => {
+    if (!hasJobPlan) {
+      setRoundPlanKey('')
+      setOffPlan(false)
+      return
+    }
+    if (roundPlan?.hasPlan) {
+      const next = roundPlan.nextRound?.key ?? OFF_PLAN_ROUND
+      setRoundPlanKey(next)
+      setOffPlan(!roundPlan.nextRound)
+      return
+    }
+    const first = schedulePlanRows.find((r) => !r.disabled)
+    if (first) {
+      setRoundPlanKey(first.key)
+      setOffPlan(false)
+    }
+  }, [hasJobPlan, roundPlan, schedulePlanRows])
+
+  const roundFieldsResetKey = `${selectedCandidateId}|${selectedJobId}`
   const scheduleBlocked = Boolean(getInterviewSchedulingBlockReason(prefill?.applicationStatus))
   const scheduleBlockMessage =
     getInterviewSchedulingBlockReason(prefill?.applicationStatus) ?? INTERVIEW_SCHEDULE_REJECTED_MESSAGE
@@ -718,87 +815,189 @@ export default function CreateInterviewModal({
                   </select>
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {roundPlan && (
-                    <div className="sm:col-span-2">
-                      <label htmlFor="schedule-round-plan-key" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
-                        Round
-                      </label>
-                      <select
-                        id="schedule-round-plan-key"
-                        defaultValue={roundPlan.nextRound?.key ?? OFF_PLAN_ROUND}
-                        className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                        onChange={(e) => setOffPlan(e.target.value === OFF_PLAN_ROUND)}
-                      >
-                        {roundPlan.rows.map((row) => {
-                          // A row already holding a live round is not offered. Booking a second
-                          // round on one row makes the later one win and silently detaches the
-                          // first from the plan. Cancelling the existing round frees the row, and
-                          // then it appears here again.
-                          const held = row.meetingId !== null
-                          const why =
-                            row.state === 'passed' ? ', passed' : row.state === 'rejected' ? ', rejected' : ''
-                          return (
-                            <option key={row.key} value={row.key} disabled={held}>
-                              {`Round ${row.index} — ${row.label}${held ? ` (already held${why})` : ''}`}
-                            </option>
-                          )
-                        })}
-                        <option value={OFF_PLAN_ROUND}>Extra round, outside the plan</option>
-                      </select>
-
-                      <p className="mt-1.5 text-xs text-textmuted dark:text-white/55">
-                        {roundPlan.label ? `${roundPlan.label}. ` : ''}
-                        This job plans {roundPlan.total} {roundPlan.total === 1 ? 'round' : 'rounds'}
-                        {roundPlan.remainingCount > 0
-                          ? `, ${roundPlan.remainingCount} still to finish.`
-                          : '.'}
-                      </p>
-
-                      {offPlan && (
-                        <p className="mt-1.5 text-xs text-warning">
-                          An extra round is not counted towards this job&rsquo;s {roundPlan.total} planned
-                          rounds, so it will neither delay nor unlock Move to Offer.
-                        </p>
-                      )}
-                    </div>
-                  )}
-                  {/* The free fields: the whole experience for a job with no plan, and the way
-                      to describe an ad-hoc round when one is chosen deliberately. Hidden while a
-                      plan row is selected — the row supplies both, and two ways to say the same
-                      thing invites them to disagree. That disagreement is a real bug: the server
-                      only fills type and label from the row when the caller sent neither. */}
-                  {(!roundPlan || offPlan) && (
-                    <>
-                      <div>
-                        <label htmlFor="schedule-round-type" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
-                          {roundPlan ? 'Extra round type' : 'Round'}
+                  <div className="sm:col-span-2">
+                    {!scheduleRoundReady ? (
+                      <>
+                        <label htmlFor="schedule-round-plan-key" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                          Interview round
                         </label>
                         <select
-                          id="schedule-round-type"
-                          defaultValue=""
-                          className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                          id="schedule-round-plan-key"
+                          className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg opacity-70"
+                          disabled
+                          value=""
+                          aria-describedby="schedule-round-hint"
                         >
-                          <option value="">Not set</option>
-                          {INTERVIEW_ROUND_TYPE_OPTIONS.map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.label}
+                          <option value="">
+                            {!selectedCandidateId
+                              ? 'Select a candidate first'
+                              : !selectedJobId
+                                ? 'Select a job first'
+                                : 'Loading application…'}
+                          </option>
+                        </select>
+                        <p id="schedule-round-hint" className="mt-1.5 text-xs text-textmuted dark:text-white/55">
+                          Choose the candidate and job above to see which interview rounds you can schedule.
+                        </p>
+                      </>
+                    ) : roundPlanLoading && !hasJobPlan ? (
+                      <>
+                        <label htmlFor="schedule-round-plan-key" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                          Interview round
+                        </label>
+                        <select
+                          id="schedule-round-plan-key"
+                          className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg opacity-70"
+                          disabled
+                          value=""
+                        >
+                          <option value="">Loading interview rounds…</option>
+                        </select>
+                        <p className="mt-1.5 text-xs text-textmuted dark:text-white/55">
+                          Fetching interview rounds defined for this job.
+                        </p>
+                      </>
+                    ) : hasJobPlan && !offPlan ? (
+                      <>
+                        <label htmlFor="schedule-round-plan-key" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                          Interview round
+                        </label>
+                        <select
+                          id="schedule-round-plan-key"
+                          className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                          disabled={roundHistoryLoading && !roundPlan?.hasPlan}
+                          value={roundPlanKey}
+                          onChange={(e) => setRoundPlanKey(e.target.value)}
+                        >
+                          {schedulePlanRows.map((row) => (
+                            <option key={row.key} value={row.key} disabled={row.disabled}>
+                              {row.optionLabel}
                             </option>
                           ))}
                         </select>
-                      </div>
-                      <div>
-                        <label htmlFor="schedule-round-label" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
-                          Round label <span className="text-xs font-normal text-textmuted dark:text-white/55">(optional)</span>
-                        </label>
-                        <input
-                          type="text"
-                          id="schedule-round-label"
-                          placeholder="e.g. System design"
-                          className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                        />
-                      </div>
-                    </>
-                  )}
+                        {roundPlan?.hasPlan && (
+                          <p className="mt-1.5 text-xs text-textmuted dark:text-white/55">
+                            {roundPlan.label ? `${roundPlan.label}. ` : ''}
+                            This job includes {roundPlan.total} scheduled{' '}
+                            {roundPlan.total === 1 ? 'round' : 'rounds'}
+                            {roundPlan.remainingCount > 0
+                              ? `; ${roundPlan.remainingCount} still to finish.`
+                              : '.'}
+                          </p>
+                        )}
+                        <div className="mt-3 flex items-start gap-2.5">
+                          <input
+                            type="checkbox"
+                            id="schedule-off-plan"
+                            className="form-check-input mt-0.5"
+                            checked={offPlan}
+                            onChange={() => {
+                              setOffPlan(true)
+                              setRoundPlanKey(OFF_PLAN_ROUND)
+                            }}
+                          />
+                          <label
+                            htmlFor="schedule-off-plan"
+                            className="text-sm text-defaulttextcolor dark:text-white/90 cursor-pointer"
+                          >
+                            Schedule outside the job plan
+                          </label>
+                        </div>
+                      </>
+                    ) : hasJobPlan && offPlan ? (
+                      <>
+                        <input type="hidden" id="schedule-round-plan-key" value={OFF_PLAN_ROUND} readOnly tabIndex={-1} aria-hidden />
+                        <div className="flex items-start gap-2.5">
+                          <input
+                            type="checkbox"
+                            id="schedule-off-plan"
+                            className="form-check-input mt-0.5"
+                            checked
+                            onChange={() => {
+                              setOffPlan(false)
+                              const next =
+                                roundPlan?.hasPlan && roundPlan.nextRound?.key
+                                  ? roundPlan.nextRound.key
+                                  : schedulePlanRows.find((r) => !r.disabled)?.key ?? ''
+                              setRoundPlanKey(next)
+                            }}
+                          />
+                          <label
+                            htmlFor="schedule-off-plan"
+                            className="text-sm text-defaulttextcolor dark:text-white/90 cursor-pointer"
+                          >
+                            Schedule outside the job plan
+                          </label>
+                        </div>
+                        {roundPlan?.hasPlan && (
+                          <p className="mt-2 text-xs text-warning">
+                            This interview won&rsquo;t count toward the {roundPlan.total} rounds on this job, so it
+                            won&rsquo;t delay or unlock Move to Offer.
+                          </p>
+                        )}
+                      </>
+                    ) : legacyNoPlan ? (
+                      <>
+                        <input type="hidden" id="schedule-round-plan-key" value="" readOnly tabIndex={-1} aria-hidden />
+                        <p className="text-xs text-warning">
+                          This job doesn&rsquo;t define interview rounds yet —{' '}
+                          <Link
+                            href={`/ats/jobs/edit/${selectedJobId}`}
+                            className="font-medium underline underline-offset-2 hover:text-warning/90"
+                          >
+                            add interview rounds on the job
+                          </Link>
+                          .
+                        </p>
+                      </>
+                    ) : null}
+                  </div>
+                  {scheduleRoundReady &&
+                    (legacyNoPlan || (hasJobPlan && offPlan)) &&
+                    !(roundPlanLoading && !hasJobPlan) && (
+                      <fieldset
+                        key={roundFieldsResetKey}
+                        className="sm:col-span-2 min-w-0 border-0 p-0 m-0"
+                      >
+                        <legend className="form-label float-none w-full block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                          Interview round
+                        </legend>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <label
+                              htmlFor="schedule-round-type"
+                              className="mb-1.5 block text-xs font-medium text-textmuted dark:text-white/55"
+                            >
+                              Type
+                            </label>
+                            <select
+                              id="schedule-round-type"
+                              defaultValue=""
+                              className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                            >
+                              <option value="">Select type</option>
+                              {INTERVIEW_ROUND_TYPE_OPTIONS.map((o) => (
+                                <option key={o.value} value={o.value}>
+                                  {o.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label htmlFor="schedule-round-label" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                              Custom name{' '}
+                              <span className="text-xs font-normal text-textmuted dark:text-white/55">(optional)</span>
+                            </label>
+                            <input
+                              type="text"
+                              id="schedule-round-label"
+                              placeholder="e.g. System design"
+                              className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                            />
+                          </div>
+                        </div>
+                      </fieldset>
+                    )}
                 </div>
                 <div>
                   <label htmlFor="schedule-interview-language" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
