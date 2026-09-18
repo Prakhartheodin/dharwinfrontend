@@ -115,8 +115,15 @@ describe('buildScheduleLinkageFields', () => {
       interviewLanguage: '',
     })
     expect(fields).toEqual({})
+    // 'group_discussion' is not a declared round type. 'panel' used to stand here, but it is
+    // one of the nine the backend accepts — the schema that rejected it was the bug.
     expect(
-      buildScheduleLinkageFields({ candidateId: CAND, applicationId: 'x', roundType: 'panel', interviewLanguage: 'fr' })
+      buildScheduleLinkageFields({
+        candidateId: CAND,
+        applicationId: 'x',
+        roundType: 'group_discussion',
+        interviewLanguage: 'fr',
+      })
     ).toEqual({})
   })
 
@@ -138,10 +145,15 @@ describe('buildScheduleLinkageFields', () => {
     expect(buildScheduleLinkageFields({ roundPlanKey: '   ' })).toEqual({})
   })
 
-  it('offers exactly the D4 round types', () => {
+  it('offers exactly the round types the backend declares', () => {
+    // Mirrors INTERVIEW_ROUND_TYPES in the backend's constants/interviewLinkage.js, in order.
+    // This list had already gained 'panel' and 'hr' while the meeting Joi schema still
+    // hardcoded seven, so the form offered two types every request would reject.
     expect(INTERVIEW_ROUND_TYPE_OPTIONS.map((o) => o.value)).toEqual([
       'screening',
       'technical',
+      'panel',
+      'hr',
       'behavioral',
       'hiring_manager',
       'culture',
