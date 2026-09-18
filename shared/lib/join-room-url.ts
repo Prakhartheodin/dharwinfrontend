@@ -35,6 +35,19 @@ export function resolvePersonalJoinIdentity(
  * Append name/email query params to a /join/room URL so LiveKit pre-join can skip empty fields
  * and hosts are recognized by email.
  */
+/** Join URL for an interview: its public URL when the server minted one, else the room fallback. */
+export function buildInterviewJoinUrl(
+  input: { publicMeetingUrl?: string | null; meetingId: string },
+  identity: { name?: string; email?: string },
+  origin?: string
+): string {
+  const base =
+    input.publicMeetingUrl ||
+    (origin ? `${origin}/join/room?room=${encodeURIComponent(input.meetingId)}` : '')
+  if (!base) return ''
+  return appendJoinIdentityToUrl(base, (identity.name || '').trim(), (identity.email || '').trim())
+}
+
 export function appendJoinIdentityToUrl(
   baseUrl: string,
   name?: string | null,

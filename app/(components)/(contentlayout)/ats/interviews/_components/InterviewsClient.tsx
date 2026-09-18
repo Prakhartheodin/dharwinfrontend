@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/shared/contexts/auth-context'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
-import { appendJoinIdentityToUrl } from '@/shared/lib/join-room-url'
+import { buildInterviewJoinUrl } from '@/shared/lib/join-room-url'
 import { useTable, useSortBy } from 'react-table'
 import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, deleteMeeting, resendMeetingInvitations, exportInterviewsExcel, internalTransferEmployee, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload, type InterviewRound } from '@/shared/lib/api/meetings'
 import { getApiErrorMessage } from '@/shared/lib/api/client'
@@ -508,13 +508,12 @@ export default function InterviewsClient() {
   }, [fetchMeetings, fetchWeekMeetings, viewMode])
 
   const copyInterviewLink = useCallback(async (row: InterviewTableRow) => {
-    const baseUrl =
-      row.publicMeetingUrl ||
-      (typeof window !== 'undefined' ? `${window.location.origin}/join/room?room=${encodeURIComponent(row.meetingId)}` : '')
-    if (!baseUrl) return
-    const joinName = (authUser?.name?.trim() || authUser?.email?.split('@')[0] || '').trim()
-    const joinEmail = authUser?.email?.trim() || ''
-    const url = appendJoinIdentityToUrl(baseUrl, joinName, joinEmail)
+    const url = buildInterviewJoinUrl(
+      { publicMeetingUrl: row.publicMeetingUrl, meetingId: row.meetingId },
+      { name: authUser?.name?.trim() || authUser?.email?.split('@')[0], email: authUser?.email },
+      typeof window !== 'undefined' ? window.location.origin : undefined
+    )
+    if (!url) return
     try {
       await navigator.clipboard.writeText(url)
       setCopiedLinkId(row.id)
@@ -574,6 +573,18 @@ export default function InterviewsClient() {
     if (!editUsersLoadedRef.current) void loadEditUsers()
     ;(window as any).HSOverlay?.open(document.querySelector('#edit-interview-modal'))
   }, [loadEditUsers])
+
+  // Deep link from the interview detail page: open the edit modal for one interview, then strip
+  // the param so a refresh does not reopen it.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!permissionsLoaded || !canEdit) return
+    const id = new URLSearchParams(window.location.search).get('editId')
+    if (!id) return
+    openEditModal(id)
+    try { router.replace('/ats/interviews', { scroll: false }) } catch { /* ignore */ }
+  }, [permissionsLoaded, canEdit, openEditModal, router])
+
 
   /** Preline binds overlays/dropdowns during autoInit; client pages that mount toolbars after layout need a refresh. */
   const refreshPrelineDom = useCallback(() => {
