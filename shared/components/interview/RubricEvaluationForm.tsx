@@ -9,6 +9,7 @@ import {
   type EvaluationRatingInput,
   type InterviewEvaluation,
 } from "@/shared/lib/api/meetings";
+import { useConfirm } from "@/shared/components/ui/useConfirm";
 
 type RatingEntry = { rating: number | null; notApplicable: boolean };
 
@@ -62,6 +63,11 @@ function previewWeightedScore(
   };
 }
 
+/** Server sets `submittedAt` on every successful PUT; that is the lock signal (no separate `locked` flag). */
+function isEvaluationSubmitted(evaluation: InterviewEvaluation | undefined): boolean {
+  return Boolean(evaluation?.submittedAt);
+}
+
 function evaluationToRatings(
   evaluation: InterviewEvaluation | undefined,
   criteria: RubricCriterion[]
@@ -81,8 +87,20 @@ export type RubricEvaluationFormProps = {
   meetingId: string;
   variant?: "default" | "obsidian";
   onSaved?: (evaluation: InterviewEvaluation) => void;
+  /** Set when the surrounding dialog owns the save button. Its handler must drive `saveRef`. */
   hideSaveButton?: boolean;
-  saveRef?: React.MutableRefObject<(() => Promise<void>) | null>;
+  /**
+   * Lets the surrounding dialog save this form as part of its own save.
+   *
+   * Every container that embeds this form also has its own primary button. Until those
+   * buttons called this, they persisted the interview outcome, closed, and silently threw
+   * away whatever the interviewer had just scored — the evaluation only ever reached the
+   * database if they separately found the form's own button first.
+   *
+   * Resolves false when the save must block the caller: the confirmation was declined, or
+   * the write failed. The caller must not continue on false.
+   */
+  saveRef?: React.MutableRefObject<(() => Promise<boolean>) | null>;
   readOnly?: boolean;
 };
 
@@ -94,6 +112,7 @@ export default function RubricEvaluationForm({
   saveRef,
   readOnly = false,
 }: RubricEvaluationFormProps) {
+  const { confirm, confirmDialog } = useConfirm();
   const { user } = useAuth();
   const userId = String(user?.id || "");
   const userEmail = (user?.email || "").trim().toLowerCase();
@@ -126,6 +145,7 @@ export default function RubricEvaluationForm({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [evaluationLocked, setEvaluationLocked] = useState(false);
 
   const load = useCallback(async () => {
     if (!meetingId) return;
@@ -140,6 +160,7 @@ export default function RubricEvaluationForm({
       const mine = data.evaluations.find(isMine);
       setRatings(evaluationToRatings(mine, rubricCriteria));
       setComment(mine?.comment || "");
+      setEvaluationLocked(isEvaluationSubmitted(mine));
       setOtherEvaluations(data.evaluations.filter((e) => !isMine(e)));
     } catch (err: unknown) {
       const msg =
@@ -159,8 +180,9 @@ export default function RubricEvaluationForm({
   const preview = useMemo(() => previewWeightedScore(criteria, ratings), [criteria, ratings]);
 
   const isObsidian = variant === "obsidian";
-  const inputsDisabled = readOnly;
-  const showSaveButton = !hideSaveButton && !readOnly;
+  const formReadOnly = readOnly || evaluationLocked;
+  const inputsDisabled = formReadOnly;
+  const showSaveButton = !hideSaveButton && !formReadOnly;
 
   const ratingButtonClass = (active: boolean) => {
     const base =
@@ -179,8 +201,13 @@ export default function RubricEvaluationForm({
     ? "form-control h-24 w-full resize-none !rounded-md border border-white/15 !bg-[#1a1d22] text-sm !text-white placeholder:!text-white/45 focus:!border-primary/60 focus:!ring-2 focus:!ring-primary/30"
     : "form-control h-24 w-full resize-none !rounded-md text-sm dark:bg-bodybg dark:text-white dark:placeholder:text-white/40";
 
-  const handleSave = useCallback(async () => {
-    if (!meetingId || saving) return;
+  /**
+   * @returns true when there is nothing left to persist — either it saved, or it was
+   * already locked. False only when the write failed; the caller must then abort whatever
+   * else it was about to save, because the ratings on screen are not in the database.
+   */
+  const performSave = useCallback(async (): Promise<boolean> => {
+    if (!meetingId || saving || evaluationLocked) return true;
     setSaving(true);
     setSaveError(null);
     try {
@@ -198,22 +225,55 @@ export default function RubricEvaluationForm({
       });
       setRatings(evaluationToRatings(saved, criteria));
       setComment(saved.comment || "");
+      setEvaluationLocked(isEvaluationSubmitted(saved));
       onSaved?.(saved);
       // Refetch so a colleague's evaluation submitted while this form was open appears.
       // Previously the else-branch here cleared the list outright when the caller had no
       // email, so everyone else's evaluations vanished from view until a reload.
       const refreshed = await getInterviewEvaluations(meetingId);
       setOtherEvaluations(refreshed.evaluations.filter((e) => !isMine(e)));
+      return true;
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
         (err as Error)?.message ||
         "Could not save the evaluation.";
       setSaveError(msg);
+      return false;
     } finally {
       setSaving(false);
     }
-  }, [meetingId, saving, criteria, ratings, comment, onSaved, isMine]);
+  }, [meetingId, saving, evaluationLocked, criteria, ratings, comment, onSaved, isMine]);
+
+  /**
+   * Nothing scored and nothing written. Saving anyway would store an all-null row and lock
+   * the round against a later, real evaluation — so an untouched form is a no-op, not a
+   * write. Matters most on the parent-driven path, where this runs on every result save.
+   */
+  const hasAnyInput = useMemo(
+    () =>
+      comment.trim().length > 0 ||
+      Object.values(ratings).some((r) => r.notApplicable || typeof r.rating === "number"),
+    [ratings, comment]
+  );
+
+  /**
+   * @returns false when the caller must stop: the user declined the confirmation, or the
+   * write failed. True means the evaluation is settled and the caller may continue.
+   */
+  const handleSave = useCallback(async (): Promise<boolean> => {
+    if (!meetingId || saving || formReadOnly) return true;
+    if (!hasAnyInput) return true;
+    const ok = await confirm({
+      title: "Save evaluation?",
+      message:
+        "Are you sure you want to save? This evaluation cannot be changed after it is saved.",
+      confirmLabel: "Save evaluation",
+      cancelLabel: "Cancel",
+    });
+    if (!ok) return false;
+    return performSave();
+  }, [confirm, formReadOnly, hasAnyInput, meetingId, performSave, saving]);
 
   useEffect(() => {
     if (!saveRef) return;
@@ -224,6 +284,7 @@ export default function RubricEvaluationForm({
   }, [saveRef, handleSave]);
 
   const setRating = (key: string, value: number) => {
+    if (formReadOnly) return;
     setRatings((prev) => {
       const current = prev[key] || { rating: null, notApplicable: false };
       if (current.notApplicable) return prev;
@@ -236,6 +297,7 @@ export default function RubricEvaluationForm({
   };
 
   const toggleNa = (key: string) => {
+    if (formReadOnly) return;
     setRatings((prev) => {
       const current = prev[key] || { rating: null, notApplicable: false };
       const nextNa = !current.notApplicable;
@@ -276,6 +338,8 @@ export default function RubricEvaluationForm({
   }
 
   return (
+    <>
+      {confirmDialog}
     <div className="space-y-4">
       <div>
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -288,9 +352,15 @@ export default function RubricEvaluationForm({
             </span>
           )}
         </div>
-        <p className="text-xs text-textmuted dark:text-white/70">
-          Rate each criterion. Click a rating again to clear it. Use N/A when a criterion does not apply.
-        </p>
+        {evaluationLocked ? (
+          <p className="text-xs text-textmuted dark:text-white/70">
+            Evaluation saved — cannot be edited.
+          </p>
+        ) : (
+          <p className="text-xs text-textmuted dark:text-white/70">
+            Rate each criterion. Click a rating again to clear it. Use N/A when a criterion does not apply.
+          </p>
+        )}
         <div className="mt-2 flex flex-wrap items-baseline gap-2 tabular-nums">
           <span className="text-lg font-semibold text-primary">
             {preview.weightedScore === null ? "—" : `${preview.weightedScore}%`}
@@ -441,5 +511,6 @@ export default function RubricEvaluationForm({
         </div>
       )}
     </div>
+    </>
   );
 }

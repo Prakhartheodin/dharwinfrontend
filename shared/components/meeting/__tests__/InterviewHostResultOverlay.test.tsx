@@ -1,10 +1,74 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import InterviewHostResultOverlay from "../InterviewHostResultOverlay";
 
-vi.mock("@/shared/lib/api/meetings", () => ({
-  updateMeeting: vi.fn().mockResolvedValue({}),
+/**
+ * The overlay embeds RubricEvaluationForm, which reads the session and the round's rubric.
+ * Without these the whole dialog throws on render ("useAuth must be used within
+ * AuthProvider") and every case here fails before it asserts anything.
+ */
+const api = vi.hoisted(() => ({
+  updateMeeting: vi.fn(),
+  getInterviewEvaluations: vi.fn(),
+  saveInterviewEvaluation: vi.fn(),
 }));
+
+vi.mock("@/shared/lib/api/meetings", () => api);
+
+vi.mock("@/shared/contexts/auth-context", () => ({
+  useAuth: () => ({ user: { id: "u1", name: "Host User", email: "host@example.com" } }),
+}));
+
+vi.mock("@/shared/components/ui/useConfirm", () => ({
+  useConfirm: () => ({ confirm: vi.fn().mockResolvedValue(true), confirmDialog: null }),
+}));
+
+const RUBRIC = {
+  templateId: null,
+  templateName: "Default rubric",
+  criteria: [{ key: "communication", label: "Communication", weight: 100, scaleMin: 1, scaleMax: 5 }],
+};
+
+const MEETING = {
+  id: "m1",
+  meetingId: "room-1",
+  title: "Backend Engineer",
+  status: "ended",
+  scheduledAt: new Date().toISOString(),
+  durationMinutes: 60,
+  maxParticipants: 10,
+  allowGuestJoin: true,
+  requireApproval: false,
+  hosts: [],
+  emailInvites: [],
+  interviewType: "Video",
+  candidate: { id: "c1", name: "Alex Candidate", email: "alex@example.com" },
+};
+
+beforeEach(() => {
+  api.updateMeeting.mockResolvedValue({});
+  api.getInterviewEvaluations.mockResolvedValue({
+    meetingId: "m1",
+    rubric: RUBRIC,
+    evaluations: [],
+  });
+  api.saveInterviewEvaluation.mockResolvedValue({
+    id: "e1",
+    meeting: "m1",
+    evaluator: "u1",
+    evaluatorName: "Host User",
+    evaluatorEmail: "host@example.com",
+    rubricTemplateName: "Default rubric",
+    ratings: [{ key: "communication", rating: 4, notApplicable: false }],
+    comment: "",
+    weightedScore: 75,
+    coveragePct: 100,
+    scoredCount: 1,
+    totalCount: 1,
+    isComplete: true,
+    submittedAt: "2026-09-18T10:39:09.714Z",
+  });
+});
 
 afterEach(() => {
   cleanup();
@@ -92,5 +156,44 @@ describe("InterviewHostResultOverlay", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /skip for now/i }));
     expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The bug this guards: "Save result" recorded the outcome and closed, while the ratings
+   * the host had just entered were never sent anywhere. Scores reached the database only
+   * when somebody separately pressed the form's own button, so the Results tab came up
+   * empty for almost every interview.
+   */
+  it("saves the scorecard before the outcome", async () => {
+    render(<InterviewHostResultOverlay meeting={MEETING} onDone={() => {}} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Communication: 4" }));
+    fireEvent.click(screen.getByRole("button", { name: /save result/i }));
+
+    await waitFor(() => expect(api.saveInterviewEvaluation).toHaveBeenCalledTimes(1));
+    expect(api.saveInterviewEvaluation).toHaveBeenCalledWith("m1", {
+      ratings: [{ key: "communication", rating: 4, notApplicable: false }],
+      comment: "",
+    });
+    await waitFor(() => expect(api.updateMeeting).toHaveBeenCalledTimes(1));
+    expect(api.saveInterviewEvaluation.mock.invocationCallOrder[0]).toBeLessThan(
+      api.updateMeeting.mock.invocationCallOrder[0]
+    );
+  });
+
+  /** A scorecard that will not save must block the close, not be discarded by it. */
+  it("does not record the outcome when the scorecard fails to save", async () => {
+    const onDone = vi.fn();
+    api.saveInterviewEvaluation.mockRejectedValue(new Error("network down"));
+
+    render(<InterviewHostResultOverlay meeting={MEETING} onDone={onDone} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Communication: 4" }));
+    fireEvent.click(screen.getByRole("button", { name: /save result/i }));
+
+    await waitFor(() => expect(api.saveInterviewEvaluation).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByText("network down")).toBeInTheDocument());
+    expect(api.updateMeeting).not.toHaveBeenCalled();
+    expect(onDone).not.toHaveBeenCalled();
   });
 });

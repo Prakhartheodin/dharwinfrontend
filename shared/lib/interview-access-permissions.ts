@@ -1,4 +1,5 @@
 import { getFeaturePermissions } from "@/shared/lib/feature-permissions";
+import { getMeetingActionVisibility, userCanRecordMeeting } from "@/shared/lib/permissions";
 
 const TRANSCRIPT_PREFIX = "ats.interviews.transcript";
 const SUMMARY_PREFIX = "ats.interviews.summary";
@@ -13,6 +14,18 @@ export function canReadInterviewTranscript(permissions: string[], isPlatformSupe
   if (hasRaw(permissions, "interviews.transcript.read")) return true;
   const flags = getFeaturePermissions(permissions, TRANSCRIPT_PREFIX);
   return flags.view || flags.create || flags.edit || flags.delete;
+}
+
+/**
+ * Mirrors GET /recordings/:recordingId/transcript — `meetings.read` OR `meetings.record`
+ * (not `interviews.transcript.read`). Recruiters with Communication → Meetings view can read
+ * segment transcripts on the recordings page but may lack the dedicated interview transcript grant.
+ */
+export function canReadRecordingTranscript(permissions: string[], isPlatformSuperUser?: boolean): boolean {
+  if (isPlatformSuperUser) return true;
+  if (hasRaw(permissions, "meetings.read")) return true;
+  if (getMeetingActionVisibility(permissions).canViewRecordings) return true;
+  return userCanRecordMeeting({ permissions, isPlatformSuperUser });
 }
 
 /** Mirrors backend interviews.summary.read aliases. */

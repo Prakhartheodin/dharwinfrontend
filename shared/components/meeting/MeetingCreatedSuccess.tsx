@@ -384,7 +384,7 @@ export default function MeetingCreatedSuccess({
 
           {(meetingId || status || hostLabels.length > 0) && (
             <section className="space-y-2.5 sm:space-y-3">
-              <Eyebrow>Meeting</Eyebrow>
+              <Eyebrow>{variant === "interview" ? "Interview" : "Meeting"}</Eyebrow>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {hostLabels.length > 0 && (
                   <MetaCell
@@ -396,7 +396,13 @@ export default function MeetingCreatedSuccess({
                     }
                   />
                 )}
-                {meetingId && <MetaCell label="Meeting ID" value={meetingId} mono />}
+                {meetingId && (
+                  <MetaCell
+                    label={variant === "interview" ? "Room ID" : "Meeting ID"}
+                    value={meetingId}
+                    mono
+                  />
+                )}
                 {status && (
                   <MetaCell
                     label="Status"

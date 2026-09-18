@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   getRoundHistory,
@@ -16,6 +16,10 @@ import { useFeaturePermissions } from "@/shared/hooks/use-feature-permissions";
 import RubricEvaluationForm from "@/shared/components/interview/RubricEvaluationForm";
 import { linkageActions, parseInterviewLinkageError } from "../../_components/interviewLinkage";
 import type { InterviewLinkageTarget } from "../../_components/InterviewLinkageModal";
+
+function isFinalInterviewResult(result: Meeting["interviewResult"] | undefined): boolean {
+  return result === "selected" || result === "rejected";
+}
 
 export default function InterviewDetailResultPanel({
   meeting,
@@ -36,6 +40,7 @@ export default function InterviewDetailResultPanel({
   // list already makes for these two actions.
   const { canCreate: canScheduleInterviews } = useFeaturePermissions("ats.interviews");
   const recordId = String(meeting.id ?? meeting._id ?? meetingId);
+  const saveEvaluationRef = useRef<(() => Promise<boolean>) | null>(null);
 
   const [roundPlan, setRoundPlan] = useState<RoundProgress | null>(null);
 
@@ -84,10 +89,19 @@ export default function InterviewDetailResultPanel({
   const [busy, setBusy] = useState(false);
   const [movingToOffer, setMovingToOffer] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [evaluationOpen, setEvaluationOpen] = useState(
+    () => !isFinalInterviewResult(meeting.interviewResult)
+  );
 
   useEffect(() => {
     setSelected(meeting.interviewResult || "pending");
   }, [meeting]);
+
+  useEffect(() => {
+    if (isFinalInterviewResult(meeting.interviewResult)) {
+      setEvaluationOpen(false);
+    }
+  }, [meeting.interviewResult]);
 
   const promptLinkInterview = useCallback(
     async (reason: NonNullable<InterviewLinkageTarget["reason"]>) => {
@@ -213,14 +227,28 @@ export default function InterviewDetailResultPanel({
     }
   };
 
+  /**
+   * Saves the scorecard first, then the outcome.
+   *
+   * A final outcome collapses the evaluation section below, so anything typed there and
+   * not yet saved simply disappeared — the scorecard reached the database only if the
+   * reviewer had separately pressed the form's own button. A scorecard that will not save
+   * now stops the whole action instead of being hidden away.
+   */
   const handleSave = async () => {
     if (!recordId || busy) return;
     setBusy(true);
     setError(null);
     try {
+      const evaluationSettled = await saveEvaluationRef.current?.();
+      if (evaluationSettled === false) return;
       const payload: UpdateMeetingPayload = { interviewResult: selected };
       const updated = await updateMeeting(recordId, payload);
       await onSaved();
+
+      if (isFinalInterviewResult(selected)) {
+        setEvaluationOpen(false);
+      }
 
       if (updated.linkageWarning === "interview_not_linked") {
         await promptLinkInterview("result");
@@ -281,7 +309,34 @@ export default function InterviewDetailResultPanel({
 
         {recordId && (
           <div className="border-t border-defaultborder pt-5 dark:border-defaultborder/10">
-            <RubricEvaluationForm meetingId={recordId} readOnly={readOnly} />
+            <button
+              type="button"
+              className="flex w-full min-h-[2.75rem] items-center gap-2 text-start text-sm font-medium text-defaulttextcolor dark:text-white"
+              aria-expanded={evaluationOpen}
+              aria-controls="interview-detail-evaluation"
+              onClick={() => setEvaluationOpen((open) => !open)}
+            >
+              <i
+                className={`ri-arrow-right-s-line text-lg transition-transform ${evaluationOpen ? "rotate-90" : ""}`}
+                aria-hidden
+              />
+              Scorecard / evaluation
+            </button>
+            {evaluationOpen && (
+              <div id="interview-detail-evaluation" className="mt-4">
+                <RubricEvaluationForm
+                  meetingId={recordId}
+                  readOnly={readOnly}
+                  hideSaveButton
+                  saveRef={saveEvaluationRef}
+                />
+              </div>
+            )}
+            {!evaluationOpen && isFinalInterviewResult(meeting.interviewResult) && (
+              <p className="mt-2 text-xs text-textmuted dark:text-white/55">
+                The interview result is recorded. Expand the scorecard to review evaluations.
+              </p>
+            )}
           </div>
         )}
 

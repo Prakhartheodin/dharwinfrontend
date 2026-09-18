@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { updateMeeting, type Meeting, type UpdateMeetingPayload } from "@/shared/lib/api/meetings";
 import RubricEvaluationForm from "@/shared/components/interview/RubricEvaluationForm";
 
@@ -29,12 +29,23 @@ export default function InterviewHostResultOverlay({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const saveEvaluationRef = useRef<(() => Promise<boolean>) | null>(null);
 
+  /**
+   * Saves the scorecard first, then the outcome.
+   *
+   * The scorecard goes first because it is the irreversible one: the server locks an
+   * evaluation on submit, while the outcome can be changed afterwards. If the scorecard
+   * cannot be saved we stop here rather than record the outcome and close — closing is
+   * what used to discard the host's ratings without a word.
+   */
   const handleSave = async () => {
     if (!meetingId || busy) return;
     setBusy(true);
     setError(null);
     try {
+      const evaluationSettled = await saveEvaluationRef.current?.();
+      if (evaluationSettled === false) return;
       const payload: UpdateMeetingPayload = { interviewResult: selected };
       await updateMeeting(meetingId, payload);
       onDone();
@@ -125,7 +136,12 @@ export default function InterviewHostResultOverlay({
 
           {meetingId && (
             <div className={sectionDividerClass}>
-              <RubricEvaluationForm meetingId={meetingId} variant={isObsidian ? "obsidian" : "default"} />
+              <RubricEvaluationForm
+                meetingId={meetingId}
+                variant={isObsidian ? "obsidian" : "default"}
+                hideSaveButton
+                saveRef={saveEvaluationRef}
+              />
             </div>
           )}
 

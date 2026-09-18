@@ -379,7 +379,8 @@ export default function InterviewsClient() {
   const [agents, setAgents] = useState<AgentOption[]>([])
   const [agentsError, setAgentsError] = useState<string | null>(null)
   const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([])
-  const [dropdownsLoading, setDropdownsLoading] = useState(true)
+  const [dropdownsLoading, setDropdownsLoading] = useState(false)
+  const [scheduleDropdownsError, setScheduleDropdownsError] = useState<string | null>(null)
 
   // Real interviews/meetings from API
   const [meetings, setMeetings] = useState<Meeting[]>([])
@@ -398,6 +399,7 @@ export default function InterviewsClient() {
   const [resultModalInterview, setResultModalInterview] = useState<InterviewTableRow | null>(null)
   const [resultModalSelected, setResultModalSelected] = useState<'pending' | 'selected' | 'rejected'>('pending')
   const [resultUpdating, setResultUpdating] = useState(false)
+  const saveEvaluationRef = useRef<(() => Promise<boolean>) | null>(null)
 
   // Copy interview link feedback
   const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null)
@@ -634,6 +636,7 @@ export default function InterviewsClient() {
     if (scheduleDropdownsInflightRef.current) return scheduleDropdownsInflightRef.current
     const id = ++scheduleDropdownsLoadId.current
     setDropdownsLoading(true)
+    setScheduleDropdownsError(null)
     const p = Promise.allSettled([
       listJobs({ limit: 100, status: 'Active' }).then((r) => r.results),
       fetchScheduleEligibleCandidates(),
@@ -641,13 +644,23 @@ export default function InterviewsClient() {
     ])
       .then((results) => {
         if (scheduleDropdownsLoadId.current !== id) return
-        const jobList = results[0].status === 'fulfilled' ? results[0].value || [] : []
-        const candidateList = results[1].status === 'fulfilled' ? results[1].value || [] : []
+        const jobsRejected = results[0].status === 'rejected'
+        const candidatesRejected = results[1].status === 'rejected'
+        const jobList = !jobsRejected ? results[0].value || [] : []
+        const candidateList = !candidatesRejected ? results[1].value || [] : []
         const agentList = results[2].status === 'fulfilled' ? results[2].value || [] : []
         setJobs(jobList)
         setCandidates(candidateList)
         setAgents(agentList)
         setAgentsError(results[2].status === 'rejected' ? 'Failed to load agents' : null)
+        if (jobsRejected || candidatesRejected) {
+          const parts: string[] = []
+          if (candidatesRejected) parts.push('candidates')
+          if (jobsRejected) parts.push('jobs')
+          setScheduleDropdownsError(`Could not load ${parts.join(' or ')}. Check your connection and try again.`)
+        } else {
+          setScheduleDropdownsError(null)
+        }
         const failed = results
           .map((r, i) => (r.status === 'rejected' ? ['Jobs', 'Candidates', 'Agents'][i] : null))
           .filter(Boolean) as string[]
@@ -770,7 +783,7 @@ export default function InterviewsClient() {
         }
       })
       .catch((err: any) => {
-        if (!cancelled) setEditError(err?.response?.data?.message || err?.message || 'Failed to load meeting')
+        if (!cancelled) setEditError(err?.response?.data?.message || err?.message || 'Failed to load interview')
       })
       .finally(() => {
         if (!cancelled) setEditLoading(false)
@@ -874,7 +887,7 @@ export default function InterviewsClient() {
         await refreshMeetingsList()
         closeEditModal()
       } catch (err: any) {
-        setEditError(err?.response?.data?.message || err?.message || 'Failed to update meeting')
+        setEditError(err?.response?.data?.message || err?.message || 'Failed to update interview')
       } finally {
         setEditSaving(false)
       }
@@ -1042,11 +1055,21 @@ export default function InterviewsClient() {
     }
   }, [selectedRows, confirm, refreshMeetingsList])
 
+  /**
+   * Saves the scorecard first, then the outcome.
+   *
+   * This modal closes itself on success, so an unsaved scorecard is gone for good — which
+   * is exactly what happened before, silently, every time somebody scored the rubric here
+   * and pressed the footer button instead of the form's own. A scorecard that will not
+   * save stops the whole action rather than letting the close discard it.
+   */
   const handleSaveInterviewResult = useCallback(async () => {
     if (!resultModalInterview || !resultModalInterview.id) return
     const interview = resultModalInterview
     setResultUpdating(true)
     try {
+      const evaluationSettled = await saveEvaluationRef.current?.()
+      if (evaluationSettled === false) return
       const payload: UpdateMeetingPayload = { interviewResult: resultModalSelected }
       const updated = await updateMeeting(interview.id, payload)
       await refreshMeetingsList()
@@ -1143,7 +1166,7 @@ export default function InterviewsClient() {
       await updateMeeting(row.id, { status: 'cancelled' })
       await refreshMeetingsList()
     } catch (err: any) {
-      alert(err?.response?.data?.message || err?.message || 'Failed to cancel meeting')
+      alert(err?.response?.data?.message || err?.message || 'Failed to cancel interview')
     }
   }, [confirm, refreshMeetingsList])
 
@@ -1627,7 +1650,7 @@ export default function InterviewsClient() {
         setCreatedMeeting(meeting)
         void refreshMeetingsList()
       } catch (err: any) {
-        setFormError(err?.response?.data?.message || err?.message || 'Failed to create meeting')
+        setFormError(err?.response?.data?.message || err?.message || 'Failed to create interview')
       } finally {
         setFormLoading(false)
       }
@@ -2901,10 +2924,12 @@ export default function InterviewsClient() {
         formLoading={formLoading}
         onSubmit={handleScheduleInterviewSubmit}
         dropdownsLoading={dropdownsLoading}
+        dropdownsError={scheduleDropdownsError}
+        onReloadDropdowns={loadScheduleDropdowns}
         formResetKey={interviewFormResetKey}
         candidates={scheduleCandidatesMerged}
         agents={agents}
-        agentsLoading={dropdownsLoading}
+        agentsLoading={dropdownsLoading && !agentsError}
         agentsError={agentsError}
         onReloadAgents={reloadAgents}
         selectedAgentIds={selectedAgentIds}
@@ -3004,7 +3029,11 @@ export default function InterviewsClient() {
 
                   {resultModalInterview?.id && (
                     <div className="mt-6 border-t border-defaultborder pt-5 dark:border-defaultborder/10">
-                      <RubricEvaluationForm meetingId={resultModalInterview.id} />
+                      <RubricEvaluationForm
+                        meetingId={resultModalInterview.id}
+                        hideSaveButton
+                        saveRef={saveEvaluationRef}
+                      />
                     </div>
                   )}
                 </>

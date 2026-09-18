@@ -109,6 +109,8 @@ export interface CreateInterviewModalProps {
   formLoading: boolean
   onSubmit: (e: React.FormEvent) => void
   dropdownsLoading: boolean
+  dropdownsError?: string | null
+  onReloadDropdowns?: () => void
   /** Incremented when the parent clears the form so candidate/job picks reset. */
   formResetKey?: number
   candidates: CandidateListItem[]
@@ -140,6 +142,8 @@ export default function CreateInterviewModal({
   formLoading,
   onSubmit,
   dropdownsLoading,
+  dropdownsError = null,
+  onReloadDropdowns,
   formResetKey = 0,
   candidates,
   agents,
@@ -679,7 +683,7 @@ export default function CreateInterviewModal({
           <div className="ti-modal-header shrink-0 bg-gradient-to-b from-gray-50 to-gray-50/80 dark:from-black/25 dark:to-black/15 border-b border-defaultborder dark:border-defaultborder/10 px-6 py-4">
             <h3 id="create-interview-modal-label" className="ti-modal-title text-lg font-semibold text-defaulttextcolor dark:text-white flex items-center gap-2">
               <i className="ri-calendar-schedule-line text-primary text-xl transition-transform duration-200 motion-safe:hover:scale-105 motion-reduce:transition-none"></i>
-              {createdMeeting ? 'Meeting Created' : 'Schedule Interview'}
+              {createdMeeting ? 'Interview scheduled' : 'Schedule Interview'}
             </h3>
             <button
               type="button"
@@ -707,8 +711,8 @@ export default function CreateInterviewModal({
               joinHref={personalMeetingUrl || shareMeetingUrl || '#'}
             />
           ) : (
-            <form className="ti-modal-body !p-0 flex min-h-0 max-h-[min(88vh,46rem)] flex-col overflow-hidden" onSubmit={onSubmit} onChange={handleFormChange} noValidate>
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 py-5 space-y-5 scroll-smooth pb-6 motion-reduce:scroll-auto">
+            <form className="ti-modal-body !p-0 flex min-h-0 flex-1 flex-col overflow-hidden" onSubmit={onSubmit} onChange={handleFormChange} noValidate>
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 py-5 space-y-5 scroll-smooth pb-28 motion-reduce:scroll-auto">
                 {scheduleBlocked && (
                   <div
                     role="alert"
@@ -729,23 +733,24 @@ export default function CreateInterviewModal({
                 {draftPrompt && (
                   <div
                     role="status"
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/25 bg-primary/[0.06] p-3 text-sm dark:border-primary/40 dark:bg-primary/10"
+                    className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-defaultborder/60 bg-gray-50/90 px-3 py-2 text-xs text-defaulttextcolor dark:border-white/10 dark:bg-black/20 dark:text-white/90"
                   >
-                    <span className="flex items-center gap-2 text-defaulttextcolor dark:text-white">
-                      <i className="ri-history-line text-primary" aria-hidden />
-                      You have an unsaved interview draft.
+                    <span className="inline-flex min-w-0 flex-1 items-center gap-1.5">
+                      <i className="ri-draft-line text-textmuted dark:text-white/50" aria-hidden />
+                      Saved draft from a previous session.
                     </span>
-                    <span className="flex items-center gap-2">
+                    <span className="flex shrink-0 items-center gap-2">
                       <button
                         type="button"
-                        className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-xs"
+                        className="font-medium text-primary hover:underline"
                         onClick={() => restoreDraft(draftPrompt)}
                       >
                         Restore
                       </button>
+                      <span className="text-textmuted dark:text-white/40" aria-hidden>·</span>
                       <button
                         type="button"
-                        className="ti-btn ti-btn-light !py-1.5 !px-3 !text-xs"
+                        className="text-textmuted hover:text-defaulttextcolor dark:text-white/55 dark:hover:text-white"
                         onClick={discardDraft}
                       >
                         Discard
@@ -762,14 +767,35 @@ export default function CreateInterviewModal({
                   <label htmlFor="schedule-candidate" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
                     Candidate <span className="text-xs font-normal text-textmuted dark:text-white/55">(referral leads)</span>
                   </label>
+                  {dropdownsError ? (
+                    <div
+                      id="schedule-candidate-error"
+                      className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-danger/25 bg-danger/5 px-3 py-2 text-sm text-danger"
+                      role="alert"
+                    >
+                      <span>{dropdownsError}</span>
+                      {onReloadDropdowns ? (
+                        <button
+                          type="button"
+                          className="ti-btn ti-btn-light !py-1 !px-2 !text-xs"
+                          onClick={() => onReloadDropdowns()}
+                        >
+                          Retry
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <select
                     id="schedule-candidate"
                     className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
                     disabled={dropdownsLoading}
                     value={selectedCandidateId}
                     onChange={onScheduleCandidateChange}
+                    aria-busy={dropdownsLoading}
+                    aria-invalid={dropdownsError ? true : undefined}
+                    aria-describedby={dropdownsError ? 'schedule-candidate-error' : undefined}
                   >
-                    <option value="">{dropdownsLoading ? 'Loading...' : 'Select referral lead'}</option>
+                    <option value="">{dropdownsLoading ? 'Loading candidates…' : 'Select a candidate'}</option>
                     {candidates.map((c) => (
                       <option key={c.id ?? c._id} value={c.id ?? c._id}>
                         {c.fullName}{isPublicEmail(c.email) ? ` - ${c.email}` : ''}
@@ -1042,7 +1068,7 @@ export default function CreateInterviewModal({
                         Date and start time <span className="text-danger">*</span>
                       </span>
                       <span className="mt-0.5 block text-xs text-textmuted dark:text-white/50">
-                        One picker — 15-minute slots, Monday-first week, not clipped by the modal
+                        Opens a full-screen picker with 15-minute slots.
                       </span>
                     </div>
                     <div className="flex justify-start">
@@ -1118,11 +1144,11 @@ export default function CreateInterviewModal({
 
                 <p className="flex items-center gap-2 border-b border-defaultborder/50 pb-2.5 pt-1 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-primary dark:text-primary/90 dark:border-white/10">
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
-                  Meeting Setup
+                  Interview room
                 </p>
                 <div>
                   <label htmlFor="schedule-meeting-title" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
-                    Meeting Title <span className="text-danger">*</span>
+                    Interview title <span className="text-danger">*</span>
                   </label>
                   <input
                     type="text"
@@ -1138,7 +1164,7 @@ export default function CreateInterviewModal({
                   <textarea
                     id="schedule-description"
                     rows={2}
-                    placeholder="Optional meeting description..."
+                    placeholder="Optional interview description..."
                     className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
                   />
                 </div>

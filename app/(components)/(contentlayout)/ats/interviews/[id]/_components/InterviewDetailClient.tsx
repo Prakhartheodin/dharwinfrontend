@@ -11,10 +11,12 @@ import {
   getMeetingSummary,
   getMeetingTranscript,
   getMeetingRecordings,
+  getRecordingTranscript,
   type Meeting,
   type MeetingSummaryResponse,
   type MeetingTranscriptResponse,
   type MeetingRecording,
+  type RecordingTranscriptResponse,
   updateMeeting,
 } from "@/shared/lib/api/meetings";
 import { isMongoObjectId } from "@/shared/lib/api/employees";
@@ -23,6 +25,7 @@ import { formatDualZone, getViewerTimezone } from "@/shared/lib/timezone";
 import {
   canReadInterviewSummary,
   canReadInterviewTranscript,
+  canReadRecordingTranscript,
 } from "@/shared/lib/interview-access-permissions";
 import { useFeaturePermissions } from "@/shared/hooks/use-feature-permissions";
 import TranscriptView from "@/shared/components/meeting/TranscriptView";
@@ -84,6 +87,8 @@ export default function InterviewDetailClient({
   const [error, setError] = useState<string | null>(null);
   const [recordings, setRecordings] = useState<MeetingRecording[]>([]);
   const [transcript, setTranscript] = useState<MeetingTranscriptResponse | null>(null);
+  const [recordingTranscript, setRecordingTranscript] =
+    useState<RecordingTranscriptResponse | null>(null);
   const [transcriptLoading, setTranscriptLoading] = useState(false);
   const [transcriptError, setTranscriptError] = useState<string | null>(null);
   const [summary, setSummary] = useState<MeetingSummaryResponse | null>(null);
@@ -93,7 +98,9 @@ export default function InterviewDetailClient({
   const [resolvedJobTitle, setResolvedJobTitle] = useState<string | null>(null);
   const [viewerTz, setViewerTz] = useState("UTC");
 
-  const canTranscript = canReadInterviewTranscript(permissions ?? [], isPlatformSuperUser);
+  const canInterviewTranscript = canReadInterviewTranscript(permissions ?? [], isPlatformSuperUser);
+  const canRecordingTranscript = canReadRecordingTranscript(permissions ?? [], isPlatformSuperUser);
+  const canAccessTranscript = canInterviewTranscript || canRecordingTranscript;
   const canSummary = canReadInterviewSummary(permissions ?? [], isPlatformSuperUser);
   const canManageResult = Boolean(manage.canEdit);
   const { confirm, confirmDialog } = useConfirm();
@@ -154,11 +161,25 @@ export default function InterviewDetailClient({
   }, []);
 
   const loadTranscript = useCallback(async () => {
-    if (!canTranscript) return;
+    if (!canAccessTranscript) return;
     setTranscriptLoading(true);
     setTranscriptError(null);
     try {
-      setTranscript(await getMeetingTranscript(meetingId));
+      if (canInterviewTranscript) {
+        setRecordingTranscript(null);
+        setTranscript(await getMeetingTranscript(meetingId));
+        return;
+      }
+      const recording =
+        recordings.find((r) => r.status === "completed") ?? recordings[0] ?? null;
+      if (!recording?.id) {
+        setTranscript(null);
+        setRecordingTranscript(null);
+        setTranscriptError("No recording with transcript yet.");
+        return;
+      }
+      setTranscript(null);
+      setRecordingTranscript(await getRecordingTranscript(recording.id));
     } catch (e) {
       const status = (e as { response?: { status?: number } }).response?.status;
       setTranscriptError(
@@ -167,10 +188,11 @@ export default function InterviewDetailClient({
           : apiMessage(e, "Transcript unavailable")
       );
       setTranscript(null);
+      setRecordingTranscript(null);
     } finally {
       setTranscriptLoading(false);
     }
-  }, [canTranscript, meetingId]);
+  }, [canAccessTranscript, canInterviewTranscript, meetingId, recordings]);
 
   const loadSummary = useCallback(async () => {
     if (!canSummary) return;
@@ -204,11 +226,11 @@ export default function InterviewDetailClient({
   const tabs = useMemo(
     () =>
       visibleInterviewDetailTabs({
-        canReadTranscript: canTranscript,
+        canReadTranscript: canAccessTranscript,
         canReadSummary: canSummary,
         canManageResult,
       }),
-    [canTranscript, canSummary, canManageResult]
+    [canAccessTranscript, canSummary, canManageResult]
   );
 
   useEffect(() => {
@@ -534,7 +556,7 @@ export default function InterviewDetailClient({
                   {(
                     [
                       ["recording", "Recording", hasCompletedRecording ? "Ready to play" : "Not available yet"],
-                      ["transcript", "Transcript", canTranscript ? "View conversation" : "No access"],
+                      ["transcript", "Transcript", canAccessTranscript ? (hasCompletedRecording ? "View conversation" : "Not available yet") : "No access"],
                       ["summary", "Summary", canSummary ? "View AI recap" : "No access"],
                     ] as const
                   ).map(([key, label, hint]) => {
@@ -624,13 +646,19 @@ export default function InterviewDetailClient({
               tabIndex={0}
               className="rounded-xl border border-defaultborder/60 p-4"
             >
-              {!canTranscript ? (
+              {!canAccessTranscript ? (
                 <div className="py-10 text-center">
                   <p className="text-sm text-defaulttextcolor/70">You do not have access to this transcript.</p>
                 </div>
               ) : (
                 <TranscriptView
-                  mode={transcript ? { kind: "interview", data: transcript } : null}
+                  mode={
+                    transcript
+                      ? { kind: "interview", data: transcript }
+                      : recordingTranscript
+                        ? { kind: "recording", data: recordingTranscript }
+                        : null
+                  }
                   loading={transcriptLoading}
                   error={transcriptError}
                   onRetry={() => void loadTranscript()}
