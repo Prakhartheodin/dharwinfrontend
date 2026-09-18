@@ -124,6 +124,20 @@ describe('buildScheduleLinkageFields', () => {
     expect(buildScheduleLinkageFields({ roundLabel: 'Round 2' })).toEqual({ round: { label: 'Round 2' } })
   })
 
+  it('sends a plan row on its own, with no type to contradict it', () => {
+    // The server fills type and label from the row only when the caller sent neither, so a
+    // plan row must travel alone. A type alongside it would win and could name a different
+    // round than the row the rubric is resolved from.
+    expect(
+      buildScheduleLinkageFields({ candidateId: CAND, applicationId: APP_A, roundPlanKey: 'round_2' })
+    ).toEqual({ applicationId: APP_A, round: { planKey: 'round_2' } })
+  })
+
+  it('omits an off-plan round key rather than sending a blank one', () => {
+    expect(buildScheduleLinkageFields({ roundPlanKey: '' })).toEqual({})
+    expect(buildScheduleLinkageFields({ roundPlanKey: '   ' })).toEqual({})
+  })
+
   it('offers exactly the D4 round types', () => {
     expect(INTERVIEW_ROUND_TYPE_OPTIONS.map((o) => o.value)).toEqual([
       'screening',

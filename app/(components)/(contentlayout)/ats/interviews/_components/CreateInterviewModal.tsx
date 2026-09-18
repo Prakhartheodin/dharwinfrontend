@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { format } from 'date-fns'
 import { useAuth } from '@/shared/contexts/auth-context'
 import { appendJoinIdentityToUrl, resolvePersonalJoinIdentity } from '@/shared/lib/join-room-url'
-import type { Meeting } from '@/shared/lib/api/meetings'
+import { getRoundHistory, type Meeting, type RoundProgress } from '@/shared/lib/api/meetings'
 import type { Job } from '@/shared/lib/api/jobs'
 import type { CandidateListItem } from '@/shared/lib/api/candidates'
 import { listJobApplications, type JobApplication } from '@/shared/lib/api/jobApplications'
@@ -19,7 +19,12 @@ import DateTimeOverlay from '@/shared/components/datetime/DateTimeOverlay'
 import { to12Hour } from '@/shared/components/datetime/daySlots'
 import AgentMultiSelect from './AgentMultiSelect'
 import { saveDraft, loadDraft, clearDraft, type InterviewDraftData } from './interviewDraft'
-import { INTERVIEW_LANGUAGE_OPTIONS, INTERVIEW_ROUND_TYPE_OPTIONS, applicationIdsByJobId } from './interviewLinkage'
+import {
+  INTERVIEW_LANGUAGE_OPTIONS,
+  INTERVIEW_ROUND_TYPE_OPTIONS,
+  OFF_PLAN_ROUND,
+  applicationIdsByJobId,
+} from './interviewLinkage'
 import { listAllUsers, pickOfficialEmail, hasMeetingEmailMuted } from '@/shared/lib/api/users'
 import ParticipantInvitesField, { type ParticipantUser } from '@/shared/components/meeting/ParticipantInvitesField'
 
@@ -181,6 +186,43 @@ export default function CreateInterviewModal({
       ? applicationsFor.idsByJob[selectedJobId] ?? ''
       : ''
   const [applicationJobsLoading, setApplicationJobsLoading] = useState(false)
+  const [roundPlan, setRoundPlan] = useState<RoundProgress | null>(null)
+  const [offPlan, setOffPlan] = useState(false)
+
+  /**
+   * The round plan in force for this application, plus which rows are already held.
+   *
+   * Reuses GET /meetings/rounds rather than adding an endpoint — it already returns exactly
+   * this, derived server-side, and a second derivation is what this whole feature exists to
+   * avoid. A failure leaves roundPlan null and the form falls back to the free round-type
+   * picker, which is what every job without a plan uses anyway.
+   */
+  useEffect(() => {
+    if (!selectedApplicationId) {
+      setRoundPlan(null)
+      setOffPlan(false)
+      return
+    }
+    let cancelled = false
+    getRoundHistory(selectedApplicationId)
+      .then((res) => {
+        if (cancelled) return
+        const progress = res.progress?.hasPlan ? res.progress : null
+        setRoundPlan(progress)
+        // Every planned row already held leaves nothing but an extra round to schedule, so
+        // the picker opens there. Without this the free fields would stay hidden while the
+        // off-plan option is the selected one.
+        setOffPlan(Boolean(progress) && !progress?.nextRound)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setRoundPlan(null)
+        setOffPlan(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedApplicationId])
   const scheduleBlocked = Boolean(getInterviewSchedulingBlockReason(prefill?.applicationStatus))
   const scheduleBlockMessage =
     getInterviewSchedulingBlockReason(prefill?.applicationStatus) ?? INTERVIEW_SCHEDULE_REJECTED_MESSAGE
@@ -676,34 +718,87 @@ export default function CreateInterviewModal({
                   </select>
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="schedule-round-type" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
-                      Round
-                    </label>
-                    <select
-                      id="schedule-round-type"
-                      defaultValue=""
-                      className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    >
-                      <option value="">Not set</option>
-                      {INTERVIEW_ROUND_TYPE_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="schedule-round-label" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
-                      Round label <span className="text-xs font-normal text-textmuted dark:text-white/55">(optional)</span>
-                    </label>
-                    <input
-                      type="text"
-                      id="schedule-round-label"
-                      placeholder="e.g. System design"
-                      className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    />
-                  </div>
+                  {roundPlan && (
+                    <div className="sm:col-span-2">
+                      <label htmlFor="schedule-round-plan-key" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                        Round
+                      </label>
+                      <select
+                        id="schedule-round-plan-key"
+                        defaultValue={roundPlan.nextRound?.key ?? OFF_PLAN_ROUND}
+                        className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                        onChange={(e) => setOffPlan(e.target.value === OFF_PLAN_ROUND)}
+                      >
+                        {roundPlan.rows.map((row) => {
+                          // A row already holding a live round is not offered. Booking a second
+                          // round on one row makes the later one win and silently detaches the
+                          // first from the plan. Cancelling the existing round frees the row, and
+                          // then it appears here again.
+                          const held = row.meetingId !== null
+                          const why =
+                            row.state === 'passed' ? ', passed' : row.state === 'rejected' ? ', rejected' : ''
+                          return (
+                            <option key={row.key} value={row.key} disabled={held}>
+                              {`Round ${row.index} — ${row.label}${held ? ` (already held${why})` : ''}`}
+                            </option>
+                          )
+                        })}
+                        <option value={OFF_PLAN_ROUND}>Extra round, outside the plan</option>
+                      </select>
+
+                      <p className="mt-1.5 text-xs text-textmuted dark:text-white/55">
+                        {roundPlan.label ? `${roundPlan.label}. ` : ''}
+                        This job plans {roundPlan.total} {roundPlan.total === 1 ? 'round' : 'rounds'}
+                        {roundPlan.remainingCount > 0
+                          ? `, ${roundPlan.remainingCount} still to finish.`
+                          : '.'}
+                      </p>
+
+                      {offPlan && (
+                        <p className="mt-1.5 text-xs text-warning">
+                          An extra round is not counted towards this job&rsquo;s {roundPlan.total} planned
+                          rounds, so it will neither delay nor unlock Move to Offer.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {/* The free fields: the whole experience for a job with no plan, and the way
+                      to describe an ad-hoc round when one is chosen deliberately. Hidden while a
+                      plan row is selected — the row supplies both, and two ways to say the same
+                      thing invites them to disagree. That disagreement is a real bug: the server
+                      only fills type and label from the row when the caller sent neither. */}
+                  {(!roundPlan || offPlan) && (
+                    <>
+                      <div>
+                        <label htmlFor="schedule-round-type" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                          {roundPlan ? 'Extra round type' : 'Round'}
+                        </label>
+                        <select
+                          id="schedule-round-type"
+                          defaultValue=""
+                          className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                        >
+                          <option value="">Not set</option>
+                          {INTERVIEW_ROUND_TYPE_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="schedule-round-label" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                          Round label <span className="text-xs font-normal text-textmuted dark:text-white/55">(optional)</span>
+                        </label>
+                        <input
+                          type="text"
+                          id="schedule-round-label"
+                          placeholder="e.g. System design"
+                          className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div>
                   <label htmlFor="schedule-interview-language" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">

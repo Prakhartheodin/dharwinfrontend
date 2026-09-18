@@ -33,7 +33,7 @@ import RecordingsModal from './RecordingsModal'
 import InterviewsFilterPanel from './InterviewsFilterPanel'
 import { detectOverlap } from './interviewOverlap'
 import InterviewLinkageModal, { InterviewLinkageBadge, type InterviewLinkageTarget } from './InterviewLinkageModal'
-import { buildScheduleLinkageFields, formatRoundBadge, linkageActions, offersLinkAction, parseInterviewLinkageError } from './interviewLinkage'
+import { OFF_PLAN_ROUND, buildScheduleLinkageFields, formatRoundBadge, linkageActions, offersLinkAction, parseInterviewLinkageError } from './interviewLinkage'
 
 /** When scheduling, store job id on `Meeting.jobPosition` if known — backend matches Job / JobApplication by ObjectId; title-only strings often fail exact regex match. */
 function isMongoObjectIdString(value: string | undefined): boolean {
@@ -1598,6 +1598,10 @@ export default function InterviewsClient() {
         applicationId: getVal('schedule-application-id'),
         roundType: getVal('schedule-round-type'),
         roundLabel: getVal('schedule-round-label'),
+        // The sentinel means "outside the plan", which is expressed by sending no key at all.
+        // Absent for a job with no plan, where the field is not rendered.
+        roundPlanKey:
+          getVal('schedule-round-plan-key') === OFF_PLAN_ROUND ? '' : getVal('schedule-round-plan-key'),
         interviewLanguage: getVal('schedule-interview-language'),
       }),
     }

@@ -100,6 +100,14 @@ export function offersLinkAction(row: {
 }
 
 /**
+ * Sentinel for "an extra round, outside the job's plan" in the schedule form's Round select.
+ *
+ * Defined once and imported by both the form and the payload build. A plan row key can never
+ * collide with it: keys are generated as `round_<n>`.
+ */
+export const OFF_PLAN_ROUND = '__off_plan__'
+
+/**
  * Linkage keys for POST /meetings. Only values the create schema accepts are included: Joi takes
  * `applicationId` as a 24-hex string only (never '' or null) and `round.type` from the D4 enum only.
  */
@@ -108,6 +116,8 @@ export function buildScheduleLinkageFields(input: {
   applicationId?: string
   roundType?: string
   roundLabel?: string
+  /** A row of the application's round plan. Omitted for an off-plan round. */
+  roundPlanKey?: string
   interviewLanguage?: string
 }): Pick<CreateMeetingPayload, 'applicationId' | 'round' | 'interviewLanguage'> {
   const fields: Pick<CreateMeetingPayload, 'applicationId' | 'round' | 'interviewLanguage'> = {}
@@ -120,7 +130,11 @@ export function buildScheduleLinkageFields(input: {
   if (type) round.type = type
   const label = (input.roundLabel ?? '').trim()
   if (label) round.label = label
-  if (round.type || round.label) fields.round = round
+  // Only sent when it is a real key. The backend fills in the next unfilled row itself
+  // when none arrives, so an empty string here would be worse than absent.
+  const planKey = (input.roundPlanKey ?? '').trim()
+  if (planKey) round.planKey = planKey
+  if (round.type || round.label || round.planKey) fields.round = round
   const language = INTERVIEW_LANGUAGE_OPTIONS.find((o) => o.value === input.interviewLanguage)?.value
   if (language) fields.interviewLanguage = language
   return fields
