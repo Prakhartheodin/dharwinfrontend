@@ -24,13 +24,21 @@ const ROUND_TYPE_LABELS: Record<string, string> = {
   other: "Other",
 };
 
-function roundLabel(meeting: CandidateInterviewMeeting): string {
+/** Name of a round: explicit label, else "Round N". Blank when the round carries neither. */
+export function roundName(meeting: CandidateInterviewMeeting): string {
   const round = meeting.round;
-  if (!round) return "Interview";
+  if (!round) return "";
   if (round.label?.trim()) return round.label.trim();
-  if (round.type) return ROUND_TYPE_LABELS[round.type] || round.type;
   if (round.index != null) return `Round ${round.index}`;
-  return "Interview";
+  return "";
+}
+
+/** Round type ("Technical", "Panel"). Blank when absent, or when it already is the name. */
+export function roundTypeLabel(meeting: CandidateInterviewMeeting): string {
+  const type = meeting.round?.type;
+  if (!type) return "";
+  const label = ROUND_TYPE_LABELS[type] || type;
+  return label.toLowerCase() === roundName(meeting).toLowerCase() ? "" : label;
 }
 
 function stateHeading(state: InterviewPanelState): string {
@@ -115,6 +123,9 @@ export default function InterviewPanel({ application, user, now }: InterviewPane
     ? candidateVisibleInterviewNotes(meeting.notes)
     : "";
 
+  const primaryRoundName = meeting ? roundName(meeting) : "";
+  const primaryRoundType = meeting ? roundTypeLabel(meeting) : "";
+
   return (
     <aside
       className="rounded-2xl border border-defaultborder/50 dark:border-white/10 bg-white dark:bg-bodybg shadow-sm p-5 lg:sticky lg:top-6"
@@ -131,7 +142,7 @@ export default function InterviewPanel({ application, user, now }: InterviewPane
           </h2>
           <p className="text-sm text-defaulttextcolor/65 dark:text-white/55 truncate mt-0.5">
             {jobTitle}
-            {company ? ` Â· ${company}` : ""}
+            {company ? ` · ${company}` : ""}
           </p>
         </div>
         {state.kind !== "no_schedule" ? (
@@ -165,7 +176,8 @@ export default function InterviewPanel({ application, user, now }: InterviewPane
           ) : null}
           <p className="text-sm text-defaulttextcolor/70 dark:text-white/60">
             {formatInterviewModeLabel(meeting?.interviewType, meeting?.requireApproval)}
-            {meeting?.round?.index != null ? ` Â· ${roundLabel(meeting)}` : ""}
+            {primaryRoundName ? ` · ${primaryRoundName}` : ""}
+            {primaryRoundType ? ` · ${primaryRoundType}` : ""}
           </p>
 
           {state.kind === "link_pending" ? (
@@ -228,7 +240,9 @@ export default function InterviewPanel({ application, user, now }: InterviewPane
               <ul className="m-0 list-none space-y-2 p-0" aria-label="Interview rounds">
                 {interviews.map((row) => {
                   const rowState = resolveInterviewPanelState([row], now, user);
-                  const label = roundLabel(row);
+                  const name = roundName(row);
+                  const type = roundTypeLabel(row);
+                  const label = name || type || "Interview";
                   const when = formatDualZone(row.scheduledAt, row.timezone || "UTC", viewerTz);
                   return (
                     <li
@@ -236,8 +250,15 @@ export default function InterviewPanel({ application, user, now }: InterviewPane
                       className="rounded-lg border border-defaultborder/40 dark:border-white/10 px-3 py-2 text-sm"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-medium text-defaulttextcolor dark:text-white truncate">
-                          {label}
+                        <span className="flex min-w-0 items-baseline gap-1.5">
+                          <span className="font-medium text-defaulttextcolor dark:text-white truncate">
+                            {label}
+                          </span>
+                          {name && type ? (
+                            <span className="shrink-0 rounded-md bg-defaultborder/20 dark:bg-white/10 px-1.5 py-0.5 text-[11px] font-medium leading-4 text-defaulttextcolor/70 dark:text-white/60">
+                              {type}
+                            </span>
+                          ) : null}
                         </span>
                         <span className="text-xs text-defaulttextcolor/55 dark:text-white/45 shrink-0 capitalize">
                           {rowState.kind === "no_schedule" ? row.status : rowState.kind.replace("_", " ")}
