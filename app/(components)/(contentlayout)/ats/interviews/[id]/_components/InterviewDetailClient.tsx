@@ -51,6 +51,16 @@ function apiMessage(err: unknown, fallback: string): string {
   return typeof msg === "string" && msg ? msg : fallback;
 }
 
+/** Copy-link and cancel are only useful before the session ends. */
+function isCompletedInterviewStatus(status?: string): boolean {
+  const raw = (status || "").toLowerCase();
+  return raw === "ended" || raw === "completed";
+}
+
+function canCopyOrCancelInterview(status?: string): boolean {
+  return (status || "").toLowerCase() !== "cancelled" && !isCompletedInterviewStatus(status);
+}
+
 function formatStatusLabel(status: string): string {
   if (!status) return "Unknown";
   return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -419,7 +429,7 @@ export default function InterviewDetailClient({
               {interviewResult === "pending" ? "Record result" : "Update result"}
             </button>
           )}
-          {meeting.status?.toLowerCase() !== "cancelled" && (
+          {canCopyOrCancelInterview(meeting.status) && (
             <button type="button" className="ti-btn ti-btn-light min-h-[2.75rem] !text-sm" onClick={() => void handleCopyLink()}>
               <i className={copied ? "ri-check-line me-1.5 align-middle text-success" : "ri-links-line me-1.5 align-middle"} aria-hidden />
               {copied ? "Copied" : "Copy link"}
@@ -444,7 +454,7 @@ export default function InterviewDetailClient({
                 Link application
               </button>
             )}
-          {canManageResult && meeting.status?.toLowerCase() !== "cancelled" && (
+          {canManageResult && canCopyOrCancelInterview(meeting.status) && (
             <button type="button" className="ti-btn ti-btn-danger min-h-[2.75rem] !text-sm" onClick={() => void handleCancel()}>
               Cancel interview
             </button>

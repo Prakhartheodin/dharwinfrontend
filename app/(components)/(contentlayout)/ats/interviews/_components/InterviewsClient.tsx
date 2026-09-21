@@ -57,6 +57,16 @@ function interviewSortToApi(sortOption: string): string {
   return sortOption === 'date-desc' ? 'scheduledAt:desc' : 'scheduledAt:asc'
 }
 
+/** Copy-link and cancel are only useful before the session ends. */
+function isCompletedInterviewStatus(status?: string): boolean {
+  const raw = (status || '').toLowerCase()
+  return raw === 'ended' || raw === 'completed'
+}
+
+function canCopyOrCancelInterview(status?: string): boolean {
+  return (status || '').toLowerCase() !== 'cancelled' && !isCompletedInterviewStatus(status)
+}
+
 function weekRangeIso(weekStart: Date): { dateFrom: string; dateTo: string } {
   const start = new Date(weekStart)
   start.setHours(0, 0, 0, 0)
@@ -1897,7 +1907,7 @@ export default function InterviewsClient() {
                 </span>
               </button>
             </div>
-            {row.original.status?.toLowerCase() !== 'cancelled' && (
+            {canCopyOrCancelInterview(row.original.status) && (
               <div className="hs-tooltip ti-main-tooltip">
                 <button
                   type="button"
@@ -2021,7 +2031,7 @@ export default function InterviewsClient() {
               </button>
             </div>
             )}
-            {canEdit && row.original.status?.toLowerCase() !== 'cancelled' && (
+            {canEdit && canCopyOrCancelInterview(row.original.status) && (
               <div className="hs-tooltip ti-main-tooltip">
                 <button
                   type="button"
@@ -2554,7 +2564,7 @@ export default function InterviewsClient() {
                               >
                                 <i className="ri-video-line"></i>
                               </button>
-                              {interview.status?.toLowerCase() !== 'cancelled' && (
+                              {canCopyOrCancelInterview(interview.status) && (
                                 <button
                                   type="button"
                                   className="ti-btn ti-btn-icon ti-btn-sm ti-btn-light"
@@ -2624,7 +2634,7 @@ export default function InterviewsClient() {
                                   <i className="ri-pencil-line"></i>
                                 </button>
                               )}
-                              {canEdit && interview.status?.toLowerCase() !== 'cancelled' && (
+                              {canEdit && canCopyOrCancelInterview(interview.status) && (
                                 <button
                                   type="button"
                                   className="ti-btn ti-btn-icon ti-btn-sm ti-btn-danger"
@@ -2770,7 +2780,7 @@ export default function InterviewsClient() {
                         >
                           <i className="ri-video-line" />
                         </button>
-                        {interview.status?.toLowerCase() !== 'cancelled' && (
+                        {canCopyOrCancelInterview(interview.status) && (
                           <button
                             type="button"
                             className="ti-btn ti-btn-icon ti-btn-sm ti-btn-light"
@@ -2840,7 +2850,7 @@ export default function InterviewsClient() {
                             <i className="ri-pencil-line" />
                           </button>
                         )}
-                        {canEdit && interview.status?.toLowerCase() !== 'cancelled' && (
+                        {canEdit && canCopyOrCancelInterview(interview.status) && (
                           <button
                             type="button"
                             className="ti-btn ti-btn-icon ti-btn-sm ti-btn-danger"

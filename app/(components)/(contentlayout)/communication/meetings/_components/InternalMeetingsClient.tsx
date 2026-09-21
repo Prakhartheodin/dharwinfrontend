@@ -956,11 +956,14 @@ export default function InternalMeetingsClient() {
                 <i className="ri-video-line"></i>
               </button>
             )}
-            {canCopyLink && row.original.status?.toLowerCase() !== "cancelled" && (
+            {canCopyLink &&
+              row.original.status?.toLowerCase() !== "cancelled" &&
+              !isCompletedStatus(row.original.status) && (
               <button
                 type="button"
                 className="ti-btn ti-btn-icon ti-btn-sm shrink-0 ti-btn-light"
                 title="Copy link"
+                aria-label="Copy link"
                 onClick={() => copyMeetingLink(row.original)}
               >
                 {copiedLinkId === row.original.id ? <i className="ri-check-line text-success"></i> : <i className="ri-links-line"></i>}
@@ -987,11 +990,14 @@ export default function InternalMeetingsClient() {
                 <i className="ri-repeat-2-line"></i>
               </button>
             ) : null}
-            {canDelete && row.original.status?.toLowerCase() !== "cancelled" && (
+            {canDelete &&
+              row.original.status?.toLowerCase() !== "cancelled" &&
+              !isCompletedStatus(row.original.status) && (
               <button
                 type="button"
                 className="ti-btn ti-btn-icon ti-btn-sm shrink-0 ti-btn-danger"
                 title={row.original.seriesId ? "Cancel occurrence or series…" : "Cancel meeting"}
+                aria-label={row.original.seriesId ? "Cancel occurrence or series" : "Cancel meeting"}
                 onClick={() => handleCancelMeeting(row.original)}
               >
                 <i className="ri-close-circle-line"></i>
