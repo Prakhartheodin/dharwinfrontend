@@ -8,8 +8,8 @@ import type {
   TranscriptUtterance,
 } from "@/shared/lib/api/meetings";
 
-export function msToTime(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return "0:00";
+export function msToTime(ms: number | null | undefined): string {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return "0:00";
   const totalSec = Math.floor(ms / 1000);
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;

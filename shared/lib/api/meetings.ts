@@ -493,13 +493,20 @@ export async function syncRecordingsFromLiveKit(): Promise<SyncFromLiveKitResult
 }
 
 export interface TranscriptUtterance {
+  utteranceId?: string;
   speaker?: string | null;
   speakerName?: string | null;
   speakerLabel?: string | null;
   speakerSource?: "livekit" | "deepgram" | "fallback" | null;
+  speakerRole?: string | null;
+  roleAssurance?: string | null;
   text: string;
-  startMs: number;
-  endMs: number;
+  /** Ms from the transcript's zero point — see `timebase`. Null when unanchored. */
+  startMs: number | null;
+  endMs: number | null;
+  recordingOffsetMs?: number | null;
+  startedAtEpochMs?: number | null;
+  endedAtEpochMs?: number | null;
   confidence?: number | null;
 }
 
@@ -531,6 +538,8 @@ export interface RecordingTranscriptResponse {
   totalSegments: number;
   /** Which key found the segments: `recordingId` (preferred), `meetingId` (legacy), or `v2`. */
   source: "recordingId" | "meetingId" | "v2";
+  /** Which zero point `startMs`/`endMs` are measured from. */
+  timebase?: "egress" | "first_utterance" | "none";
 }
 
 /** Fetch transcript segments for a recording (sequenceNumber asc). */
