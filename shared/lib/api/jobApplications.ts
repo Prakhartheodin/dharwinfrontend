@@ -45,6 +45,17 @@ export interface JobApplication {
     size?: number;
     capturedAt?: string;
   } | null;
+  /** Optional cover-letter file captured at apply time. `coverLetter` above is the legacy text field. */
+  submittedCoverLetter?: {
+    slot?: string;
+    version?: number;
+    key?: string;
+    documentUrl?: string;
+    originalName?: string;
+    mimeType?: string;
+    size?: number;
+    capturedAt?: string;
+  } | null;
   appliedBy?: { _id: string; name?: string; email?: string };
   notes?: string | null;
   createdAt?: string;

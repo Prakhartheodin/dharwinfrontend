@@ -124,6 +124,8 @@ type PublicApplyResumeUploadFieldProps = {
   optionalHint?: string;
   /** Marks the control as failing validation (red outline + aria-invalid). */
   invalid?: boolean;
+  /** Field label. Defaults to "Resume"; the cover-letter slot accepts the same formats. */
+  label?: string;
 };
 
 export function PublicApplyResumeUploadField({
@@ -134,6 +136,7 @@ export function PublicApplyResumeUploadField({
   required = true,
   optionalHint,
   invalid = false,
+  label = "Resume",
 }: PublicApplyResumeUploadFieldProps) {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -151,7 +154,7 @@ export function PublicApplyResumeUploadField({
     <div>
       {/* The format constraint lives in the hint below — it used to be stated in both places. */}
       <label htmlFor={inputId} className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-        Resume {required ? <span className="text-red-500">*</span> : null}
+        {label} {required ? <span className="text-red-500">*</span> : null}
       </label>
       <p id={hintId} className="mb-1.5 text-xs text-slate-600 dark:text-gray-400">
         {optionalHint ?? `${PUBLIC_RESUME_FORMAT_MESSAGE} Maximum 10MB.`}

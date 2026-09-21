@@ -84,10 +84,45 @@ type ApplicationWithDocs = JobApplication & {
   };
 };
 
-function getResumeUrl(app: ApplicationWithDocs): string | null {
+/** A document link shown against an application, and where it came from. */
+type ApplicationDocLink = {
+  url: string;
+  /** Tooltip: which file, which version, and whether it is the submitted one. */
+  title: string;
+  /** False when falling back to the candidate's live profile file (pre-snapshot applications). */
+  isSubmitted: boolean;
+};
+
+type SubmittedFile = NonNullable<JobApplication["submittedResume"]>;
+
+function fromSnapshot(snap: SubmittedFile | null | undefined, noun: string): ApplicationDocLink | null {
+  if (!snap?.documentUrl) return null;
+  const name = snap.originalName || noun;
+  const version = snap.version != null ? ` (v${snap.version})` : "";
+  return { url: snap.documentUrl, title: `${name}${version} — sent with this application`, isSubmitted: true };
+}
+
+/**
+ * The file the recruiter should open. Prefers the immutable snapshot captured at apply time; a
+ * candidate who later uploads a new version must not retroactively change what this link opens.
+ * Falls back to the live profile document only for applications created before snapshots existed.
+ */
+function getResumeLink(app: ApplicationWithDocs): ApplicationDocLink | null {
+  const snapshot = fromSnapshot(app.submittedResume, "Resume");
+  if (snapshot) return snapshot;
   const docs = app.candidate?.documents ?? [];
   const resume = docs.find((d) => d?.type === "Resume" || d?.type === "CV/Resume");
-  return resume?.url || null;
+  if (!resume?.url) return null;
+  return {
+    url: resume.url,
+    title: "Current profile resume — this application predates resume versioning",
+    isSubmitted: false,
+  };
+}
+
+/** Cover letter has no profile fallback: absent means the applicant sent none. */
+function getCoverLetterLink(app: ApplicationWithDocs): ApplicationDocLink | null {
+  return fromSnapshot(app.submittedCoverLetter, "Cover letter");
 }
 
 type ApplicationRowMeta = {
@@ -99,7 +134,8 @@ type ApplicationRowMeta = {
   jobTitle: string;
   orgName?: string;
   dept: string;
-  resumeUrl: string | null;
+  resumeLink: ApplicationDocLink | null;
+  coverLetterLink: ApplicationDocLink | null;
   profileHref: string;
   jobId: string;
   appliedAt?: string | null;
@@ -139,7 +175,8 @@ function getApplicationRowMeta(app: ApplicationWithDocs): ApplicationRowMeta {
     jobTitle: j.title ?? "—",
     orgName: j.organisation?.name,
     dept: c.department ?? "—",
-    resumeUrl: getResumeUrl(app),
+    resumeLink: getResumeLink(app),
+    coverLetterLink: getCoverLetterLink(app),
     profileHref: candidateId ? `/ats/employees/edit?id=${candidateId}` : "#",
     jobId: String(j._id ?? j.id ?? ""),
     appliedAt: app.appliedAt ?? app.createdAt,
@@ -164,6 +201,57 @@ function ApplicantTypeBadge({ isEmployee }: { isEmployee: boolean }) {
     >
       {isEmployee ? "Employee" : "Candidate"}
     </span>
+  );
+}
+
+/**
+ * Resume + cover letter for one application. Rendered in both the card and table layouts, so the
+ * two can never drift on which file they open.
+ */
+function ApplicationDocLinks({
+  resume,
+  coverLetter,
+  compact = false,
+}: {
+  resume: ApplicationDocLink | null;
+  coverLetter: ApplicationDocLink | null;
+  /** Table cell: shorter labels, since the column header already says "Documents". */
+  compact?: boolean;
+}) {
+  const linkClass =
+    "inline-flex items-center gap-1 text-primary hover:underline text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded";
+  return (
+    <div className="flex flex-col items-start gap-1">
+      {resume ? (
+        <a
+          href={resume.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={linkClass}
+          title={resume.title}
+        >
+          <i className="ri-file-pdf-2-line" aria-hidden /> {compact ? "Resume" : "View resume"}
+          {/* Says in words, not colour alone, that this is the live profile file rather than the
+              one that was sent — otherwise an old application looks identical to a current one. */}
+          {resume.isSubmitted ? null : (
+            <span className="text-[0.625rem] font-normal text-[#8c9097] dark:text-white/50">(profile)</span>
+          )}
+        </a>
+      ) : (
+        <span className="text-[#8c9097]/60 text-xs">{compact ? "—" : "No resume"}</span>
+      )}
+      {coverLetter ? (
+        <a
+          href={coverLetter.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={linkClass}
+          title={coverLetter.title}
+        >
+          <i className="ri-file-text-line" aria-hidden /> {compact ? "Cover letter" : "View cover letter"}
+        </a>
+      ) : null}
+    </div>
   );
 }
 
@@ -808,18 +896,10 @@ export default function ApplicationsPage() {
                           />
                         </div>
                         <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-defaultborder/40 dark:border-white/10">
-                          {meta.resumeUrl ? (
-                            <a
-                              href={meta.resumeUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-primary hover:underline text-xs"
-                            >
-                              <i className="ri-file-pdf-2-line" /> View resume
-                            </a>
-                          ) : (
-                            <span className="text-[#8c9097]/60 text-xs">No resume</span>
-                          )}
+                          <ApplicationDocLinks
+                            resume={meta.resumeLink}
+                            coverLetter={meta.coverLetterLink}
+                          />
                           <ApplicationRowActions
                             meta={meta}
                             appStatus={app.status}
@@ -843,7 +923,7 @@ export default function ApplicationsPage() {
                         <th scope="col" className="!text-start min-w-[8rem]">Department</th>
                         <th scope="col" className="!text-start min-w-[11rem]">Status</th>
                         <th scope="col" className="!text-start whitespace-nowrap">Applied Date</th>
-                        <th scope="col" className="!text-start whitespace-nowrap">Resume</th>
+                        <th scope="col" className="!text-start whitespace-nowrap">Documents</th>
                         <th scope="col" className="!text-start min-w-[11rem]">Actions</th>
                       </tr>
                     </thead>
@@ -903,19 +983,11 @@ export default function ApplicationsPage() {
                               <span title={meta.appliedAt ?? ""}>{formatDate(meta.appliedAt)}</span>
                             </td>
                             <td className="align-middle whitespace-nowrap">
-                              {meta.resumeUrl ? (
-                                <a
-                                  href={meta.resumeUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-primary hover:underline text-xs"
-                                  title="Open resume"
-                                >
-                                  <i className="ri-file-pdf-2-line" /> View
-                                </a>
-                              ) : (
-                                <span className="text-[#8c9097]/60 text-xs">—</span>
-                              )}
+                              <ApplicationDocLinks
+                                resume={meta.resumeLink}
+                                coverLetter={meta.coverLetterLink}
+                                compact
+                              />
                             </td>
                             <td className="!text-start align-middle whitespace-nowrap">
                               <ApplicationRowActions

@@ -13,6 +13,7 @@ import {
   type CandidateJobApplication,
 } from "@/shared/lib/ats/candidateSelection";
 import DocumentsActionCard from "./_components/DocumentsActionCard";
+import PayrollDetailsActionCard from "./_components/PayrollDetailsActionCard";
 import CongratulationsBanner from "./_components/CongratulationsBanner";
 import ApplicationStatusBadge, { splitBadgeLabel } from "./_components/ApplicationStatusBadge";
 import { useConfirm } from "@/shared/components/ui/useConfirm";
@@ -286,6 +287,7 @@ export default function MyApplicationsPage() {
 
         {/* Document requests are account-wide, not per application — render once. */}
         <DocumentsActionCard />
+        <PayrollDetailsActionCard />
 
         {/* Content */}
         {loading ? (
@@ -370,6 +372,14 @@ export default function MyApplicationsPage() {
                           <p className="mt-1 text-xs text-defaulttextcolor/55 dark:text-white/45">
                             Resume: {app.submittedResume.originalName}
                             {app.submittedResume.version != null ? ` (v${app.submittedResume.version})` : ""}
+                          </p>
+                        ) : null}
+                        {app.submittedCoverLetter?.originalName ? (
+                          <p className="mt-0.5 text-xs text-defaulttextcolor/55 dark:text-white/45">
+                            Cover letter: {app.submittedCoverLetter.originalName}
+                            {app.submittedCoverLetter.version != null
+                              ? ` (v${app.submittedCoverLetter.version})`
+                              : ""}
                           </p>
                         ) : null}
                       </div>

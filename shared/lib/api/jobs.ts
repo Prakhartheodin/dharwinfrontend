@@ -284,22 +284,33 @@ export type BrowseApplyOptions = {
   ref?: string;
   resumeVersion?: number;
   resumeFile?: File;
+  /** Optional. Omit both cover-letter fields to apply without one. */
+  coverLetterVersion?: number;
+  coverLetterFile?: File;
 };
 
 export async function browseApplyToJob(
   jobId: string,
   options?: BrowseApplyOptions
 ): Promise<BrowseApplyResponse> {
-  if (options?.resumeFile) {
+  // Either slot may arrive as a fresh file, so multipart is chosen by "any file present", not by
+  // the resume alone. The version of the *other* slot rides along as a form field.
+  if (options?.resumeFile || options?.coverLetterFile) {
     const form = new FormData();
     if (options.ref?.trim()) form.append("ref", options.ref.trim());
-    form.append("resume", options.resumeFile);
+    if (options.resumeFile) form.append("resume", options.resumeFile);
+    else if (options.resumeVersion != null) form.append("resumeVersion", String(options.resumeVersion));
+    if (options.coverLetterFile) form.append("coverLetter", options.coverLetterFile);
+    else if (options.coverLetterVersion != null) {
+      form.append("coverLetterVersion", String(options.coverLetterVersion));
+    }
     const { data } = await apiClient.post<BrowseApplyResponse>(`/jobs/browse/${jobId}/apply`, form);
     return data;
   }
-  const body: { ref?: string; resumeVersion?: number } = {};
+  const body: { ref?: string; resumeVersion?: number; coverLetterVersion?: number } = {};
   if (options?.ref?.trim()) body.ref = options.ref.trim();
   if (options?.resumeVersion != null) body.resumeVersion = options.resumeVersion;
+  if (options?.coverLetterVersion != null) body.coverLetterVersion = options.coverLetterVersion;
   const { data } = await apiClient.post<BrowseApplyResponse>(`/jobs/browse/${jobId}/apply`, body);
   return data;
 }
