@@ -36,12 +36,21 @@ function statusOf(err: unknown): number {
 export type InterviewBiasPanelProps = {
   meetingId: string;
   canRerun: boolean;
+  /** Drop the top border/heading when the drawer already titles the review. */
+  embedded?: boolean;
+  /** Hide the whole panel on 403 (list modal). Drawer shows a permission message instead. */
+  hideWhenForbidden?: boolean;
 };
 
 /**
  * Staff advisory bias panel for an ended interview. Does not change pass/fail.
  */
-export default function InterviewBiasPanel({ meetingId, canRerun }: InterviewBiasPanelProps) {
+export default function InterviewBiasPanel({
+  meetingId,
+  canRerun,
+  embedded = false,
+  hideWhenForbidden = true,
+}: InterviewBiasPanelProps) {
   const [report, setReport] = useState<InterviewBiasCheck | null>(null);
   const [hidden, setHidden] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -102,27 +111,43 @@ export default function InterviewBiasPanel({ meetingId, canRerun }: InterviewBia
     }
   }, [meetingId, canRerun]);
 
-  if (hidden || !meetingId) return null;
+  if (!meetingId) return null;
+  if (hidden) {
+    if (hideWhenForbidden) return null;
+    return (
+      <p className="text-sm text-defaulttextcolor/70 dark:text-white/70" role="status">
+        You don&apos;t have permission to view this bias review.
+      </p>
+    );
+  }
 
   const skipLabel = report?.skipReasonLabel || null;
   const isHigh = report?.status === "ready" && report.riskLevel === "high";
 
   return (
     <section
-      className="mt-6 pt-5 border-t border-defaultborder dark:border-defaultborder/10"
-      aria-labelledby="interview-bias-heading"
+      className={embedded ? "" : "mt-6 pt-5 border-t border-defaultborder dark:border-defaultborder/10"}
+      aria-labelledby={embedded ? undefined : "interview-bias-heading"}
     >
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
-          <h4
-            id="interview-bias-heading"
-            className="text-sm font-medium text-defaulttextcolor dark:text-white mb-0.5"
-          >
-            Bias review
-          </h4>
-          <p className="text-xs text-defaulttextcolor/60 dark:text-white/60 mb-0">
-            Advisory only. A human makes the final decision.
-          </p>
+          {embedded ? (
+            <p className="text-xs text-defaulttextcolor/60 dark:text-white/60 mb-0">
+              Advisory only. A human makes the final decision.
+            </p>
+          ) : (
+            <>
+              <h4
+                id="interview-bias-heading"
+                className="text-sm font-medium text-defaulttextcolor dark:text-white mb-0.5"
+              >
+                Bias review
+              </h4>
+              <p className="text-xs text-defaulttextcolor/60 dark:text-white/60 mb-0">
+                Advisory only. A human makes the final decision.
+              </p>
+            </>
+          )}
         </div>
         {canRerun && (
           <button

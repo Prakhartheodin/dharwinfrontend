@@ -236,6 +236,8 @@ export interface Meeting {
   interviewResult?: 'pending' | 'selected' | 'rejected';
   /** Rubric scores (PRD 5.4). Informational — never derives interviewResult. */
   interviewScorecard?: InterviewScorecard;
+  /** Quote-free chip for list/detail. Full report is GET /meetings/:id/bias-check. */
+  biasSummary?: InterviewBiasSummary;
   createdBy?: { _id: string; name?: string; email?: string };
   createdAt?: string;
   updatedAt?: string;
@@ -770,6 +772,11 @@ export type BiasRiskLevel = "low" | "medium" | "high";
 export type BiasCheckStatus = "pending" | "ready" | "skipped" | "failed";
 export type BiasFlagCategory = "protected_class" | "score_mismatch" | "vague_culture_fit";
 
+export interface InterviewBiasSummary {
+  status: BiasCheckStatus | null;
+  riskLevel: BiasRiskLevel | null;
+}
+
 export interface InterviewBiasFlag {
   category: BiasFlagCategory;
   label: string;
@@ -795,7 +802,7 @@ export interface InterviewBiasCheck {
   analyzedAt: string | null;
 }
 
-/** Staff-only advisory bias report. Never returned on GET /meetings. */
+/** Staff-only advisory bias report (quotes). List/detail only expose biasSummary. */
 export async function getInterviewBiasCheck(id: string): Promise<InterviewBiasCheck> {
   const { data } = await apiClient.get<InterviewBiasCheck>(`/meetings/${id}/bias-check`);
   return data;

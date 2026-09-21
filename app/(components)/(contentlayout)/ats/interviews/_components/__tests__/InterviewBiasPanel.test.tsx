@@ -82,6 +82,12 @@ describe("InterviewBiasPanel", () => {
     });
   });
 
+  it("shows a permission message in the drawer when forbidden", async () => {
+    getMock.mockRejectedValue({ response: { status: 403 } });
+    render(<InterviewBiasPanel meetingId="abc" canRerun hideWhenForbidden={false} />);
+    expect(await screen.findByText(/don't have permission to view this bias review/i)).toBeInTheDocument();
+  });
+
   it("shows failed copy without a fake risk chip", async () => {
     getMock.mockResolvedValue(
       report({
