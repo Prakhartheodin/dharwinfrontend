@@ -40,6 +40,17 @@ export interface PlacementOnboardingTask {
   order: number;
 }
 
+export interface PlacementOrientationMeeting {
+  id?: string;
+  _id?: string;
+  meetingId?: string;
+  title?: string;
+  scheduledAt?: string;
+  timezone?: string;
+  status?: string;
+  publicMeetingUrl?: string;
+}
+
 /** PATCH body items for pre-boarding / onboarding checklists (backend taskPatchSchema). */
 export interface PlacementTaskPatch {
   _id: string;
@@ -83,6 +94,8 @@ export interface Placement {
   itAccess?: ItAccess[];
   onboardingTasks?: PlacementOnboardingTask[];
   notes?: string | null;
+  /** Communication internal meeting for orientation & compliance (id or populated). */
+  orientationMeetingId?: string | PlacementOrientationMeeting | null;
   /** Filled when status was set to Deferred */
   deferredBy?: PlacementActorRef | null;
   deferredAt?: string | null;
@@ -136,6 +149,7 @@ export interface UpdatePlacementPayload {
   assetAllocation?: AssetAllocation[];
   itAccess?: ItAccess[];
   onboardingTasks?: PlacementTaskPatch[];
+  orientationMeetingId?: string | null;
 }
 
 export async function updatePlacement(id: string, payload: UpdatePlacementPayload): Promise<Placement> {

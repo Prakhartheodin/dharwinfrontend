@@ -15,6 +15,8 @@ import { MeetingRecordingHostControls } from "@/shared/components/livekit/meetin
 import { LiveKitAiRecordingBanner } from "@/shared/components/livekit/recording-participant-banner";
 import InterviewJoinConsentPanel from "@/shared/components/meeting/InterviewJoinConsentPanel";
 import InterviewHostResultOverlay from "@/shared/components/meeting/InterviewHostResultOverlay";
+import OrientationHostChecklist from "@/shared/components/meeting/OrientationHostChecklist";
+import { getInternalMeetingOrientationOnboarding } from "@/shared/lib/api/internal-meetings";
 import {
   isCommunicationChatRoomEntry,
   shouldShowInterviewJoinConsent,
@@ -723,6 +725,9 @@ export default function MeetingRoomClient() {
   const [mediaFailureKind, setMediaFailureKind] = useState<string | null>(null);
   const [interviewConsentComplete, setInterviewConsentComplete] = useState(false);
   const [hostPostInterview, setHostPostInterview] = useState<Meeting | null>(null);
+  const [hostPostKind, setHostPostKind] = useState<"idle" | "pending" | "orientation" | "interview" | "none">(
+    "idle"
+  );
 
   // Try to get user from auth context
   let user = null;
@@ -840,15 +845,27 @@ export default function MeetingRoomClient() {
     } else {
       await updateMeeting(roomName, { status: "ended" }).catch(() => {});
       if (isHost) {
+        setHostPostKind("pending");
+        try {
+          const orientation = await getInternalMeetingOrientationOnboarding(roomName);
+          if (orientation.linked) {
+            setHostPostKind("orientation");
+            return;
+          }
+        } catch {
+          /* not an orientation host view */
+        }
         try {
           const meeting = await getMeeting(roomName);
           if (meeting.candidate?.id || meeting.candidateId) {
             setHostPostInterview(meeting);
+            setHostPostKind("interview");
             return;
           }
         } catch {
           /* fall through to lobby */
         }
+        setHostPostKind("none");
       }
       router.push("/meetings/pre-join/");
     }
@@ -906,7 +923,21 @@ export default function MeetingRoomClient() {
     setReconnectKey((prev) => prev + 1);
   }, [roomId, participantName, participantEmail]);
 
-  if (hostPostInterview && isHost) {
+  if (isHost && hostPostKind === "orientation") {
+    return (
+      <OrientationHostChecklist
+        meetingId={decodeURIComponent(roomId)}
+        variant="obsidian"
+        layout="overlay"
+        onDismiss={() => {
+          setHostPostKind("none");
+          router.push("/meetings/pre-join/");
+        }}
+      />
+    );
+  }
+
+  if (hostPostInterview && isHost && hostPostKind === "interview") {
     return (
       <InterviewHostResultOverlay
         meeting={hostPostInterview}

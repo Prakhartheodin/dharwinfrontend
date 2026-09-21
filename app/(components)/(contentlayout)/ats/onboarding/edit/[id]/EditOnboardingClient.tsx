@@ -1,10 +1,11 @@
 "use client"
-import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
-import React, { Fragment, useState, useEffect, useMemo } from 'react'
+import React, { Fragment, useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import pipelineStyles from '../../../ats-pipeline-list.module.css'
 import { useRouter, useParams } from 'next/navigation'
+import { format } from 'date-fns'
+import { toZonedTime } from 'date-fns-tz'
 import { getPlacementById, updatePlacement } from '@/shared/lib/api/placements'
 import {
   getCandidate,
@@ -17,6 +18,20 @@ import { createDepartment, listDepartments, type Department } from '@/shared/lib
 import type { Placement, PlacementOnboardingTask } from '@/shared/lib/api/placements'
 import { listJobApplications, type JobApplication } from '@/shared/lib/api/jobApplications'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
+import { useAuth } from '@/shared/contexts/auth-context'
+import {
+  createInternalMeeting,
+  getInternalMeeting,
+  updateInternalMeeting,
+  getInternalMeetingRecordings,
+  type InternalMeeting,
+  type InternalMeetingRecording,
+} from '@/shared/lib/api/internal-meetings'
+import { getRecordingTranscript, type RecordingTranscriptResponse } from '@/shared/lib/api/meetings'
+import TranscriptView, { recordingTranscriptEmptyMessage } from '@/shared/components/meeting/TranscriptView'
+import OrientationScheduleModal from '@/shared/components/meeting/OrientationScheduleModal'
+import { useConfirm } from '@/shared/components/ui/useConfirm'
+import { getViewerTimezone, wallClockToUtc, normalizeTimezone } from '@/shared/lib/timezone'
 import Swal from 'sweetalert2'
 
 async function showHrmsValidationToast(message: string): Promise<void> {
@@ -166,6 +181,65 @@ function formatSidebarJoining(iso: string): string {
   }
 }
 
+const ORIENTATION_SESSION_TASK_TITLE = 'Orientation session scheduled'
+const ORIENTATION_AI_PENDING = new Set(['dispatching', 'transcribing', 'finalizing', 'pending'])
+
+function apiErrorMessage(err: unknown, fallback: string): string {
+  const ax = err as { response?: { data?: { message?: string }; status?: number }; message?: string }
+  return ax?.response?.data?.message || ax?.message || fallback
+}
+
+function orientationMeetingRefId(ref: Placement['orientationMeetingId']): string {
+  if (!ref) return ''
+  if (typeof ref === 'string') return isValidMongoId(ref) ? ref : ''
+  const id = ref.id ?? ref._id
+  return isValidMongoId(id) ? id : ''
+}
+
+function formatOrientationTime(instant: Date, timezone: string): string {
+  try {
+    const zoned = toZonedTime(instant, normalizeTimezone(timezone))
+    return format(zoned, 'h:mm a')
+  } catch {
+    return format(instant, 'h:mm a')
+  }
+}
+
+function formatOrientationDate(instant: Date, timezone: string): string {
+  try {
+    const zoned = toZonedTime(instant, normalizeTimezone(timezone))
+    return format(zoned, 'd MMM yyyy')
+  } catch {
+    return format(instant, 'd MMM yyyy')
+  }
+}
+
+function composeOrientationMeetingTitle(instant: Date, timezone: string): string {
+  const tz = normalizeTimezone(timezone)
+  return `Orientation and compliance meeting — ${formatOrientationDate(instant, tz)}, ${formatOrientationTime(instant, tz)} (${tz})`
+}
+
+function defaultOrientationInstant(joiningYmd: string, timezone: string): Date {
+  if (joiningYmd && /^\d{4}-\d{2}-\d{2}$/.test(joiningYmd)) {
+    return wallClockToUtc(joiningYmd, '10:00', timezone)
+  }
+  return wallClockToUtc(format(new Date(), 'yyyy-MM-dd'), '10:00', timezone)
+}
+
+function pickLatestCompletedRecording(
+  list: InternalMeetingRecording[]
+): InternalMeetingRecording | null {
+  const completed = list.filter((r) => r.status === 'completed' && r.playbackUrl)
+  return completed[0] || null
+}
+
+function isOrientationChecklistTask(task: PlacementOnboardingTask): boolean {
+  return (
+    task.order === 0 ||
+    task.title.trim().toLowerCase() === ORIENTATION_SESSION_TASK_TITLE.toLowerCase()
+  )
+}
+
 /** e.g. "Prakhar Sharma" → "Prakhar S." */
 function shortPersonName(name: string): string {
   const p = name.trim().split(/\s+/).filter(Boolean)
@@ -188,6 +262,8 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
   const placementId = isValidMongoId(rawId) ? rawId : null
   const { canEdit } = useFeaturePermissions('ats.onboarding')
   const { canCreate: canCreateDepartment } = useFeaturePermissions('organization.departments')
+  const { user: authUser } = useAuth()
+  const { confirm, confirmDialog } = useConfirm()
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -215,6 +291,66 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
   const [atsAppliedJobTitle, setAtsAppliedJobTitle] = useState('')
   const [orientationJoiningDate, setOrientationJoiningDate] = useState('')
   const [onboardingTasks, setOnboardingTasks] = useState<PlacementOnboardingTask[]>([])
+  const [candidateEmail, setCandidateEmail] = useState('')
+  const [orientationMeeting, setOrientationMeeting] = useState<InternalMeeting | null>(null)
+  const [orientationRecordings, setOrientationRecordings] = useState<InternalMeetingRecording[]>([])
+  const [orientationTranscript, setOrientationTranscript] = useState<RecordingTranscriptResponse | null>(null)
+  const [orientationMeetingBusy, setOrientationMeetingBusy] = useState(false)
+  const [orientationScheduleBusy, setOrientationScheduleBusy] = useState(false)
+  const [orientationCancelBusy, setOrientationCancelBusy] = useState(false)
+  const [orientationOverlayOpen, setOrientationOverlayOpen] = useState(false)
+  const [orientationOverlayMode, setOrientationOverlayMode] = useState<'schedule' | 'reschedule'>('schedule')
+  const [orientationJoinCopied, setOrientationJoinCopied] = useState(false)
+  const [orientationModalError, setOrientationModalError] = useState<string | null>(null)
+  const [orientationScheduleCreated, setOrientationScheduleCreated] = useState<InternalMeeting | null>(null)
+  const orientationPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const stopOrientationPoll = useCallback(() => {
+    if (orientationPollRef.current) {
+      clearInterval(orientationPollRef.current)
+      orientationPollRef.current = null
+    }
+  }, [])
+
+  const loadOrientationMeetingBundle = useCallback(async (meetingId: string) => {
+    if (!meetingId) return
+    setOrientationMeetingBusy(true)
+    try {
+      const meeting = await getInternalMeeting(meetingId)
+      if (meeting.status === 'cancelled') {
+        setOrientationMeeting(null)
+        setOrientationRecordings([])
+        setOrientationTranscript(null)
+        stopOrientationPoll()
+        return
+      }
+      setOrientationMeeting(meeting)
+      const recordings = await getInternalMeetingRecordings(meeting.id || meeting._id || meetingId).catch(
+        () => [] as InternalMeetingRecording[]
+      )
+      const list = Array.isArray(recordings) ? recordings : []
+      setOrientationRecordings(list)
+      const target = pickLatestCompletedRecording(list) || list[0] || null
+      if (!target?.id) {
+        setOrientationTranscript(null)
+        return
+      }
+      try {
+        const transcript = await getRecordingTranscript(target.id)
+        setOrientationTranscript(transcript)
+      } catch {
+        setOrientationTranscript(null)
+      }
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 403 || status === 404) {
+        return
+      }
+      setError(apiErrorMessage(err, 'Could not load the orientation meeting'))
+    } finally {
+      setOrientationMeetingBusy(false)
+    }
+  }, [stopOrientationPoll])
 
   useEffect(() => {
     if (!placementId || placementId === '_') {
@@ -257,6 +393,12 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
         ])
         const activeDepartments = deptList.filter((d) => d.isActive !== false)
         setDepartments(activeDepartments)
+        const candEmail =
+          (typeof c.email === 'string' && c.email.trim()) ||
+          (typeof (placement.candidate as { email?: string })?.email === 'string'
+            ? (placement.candidate as { email?: string }).email!.trim()
+            : '')
+        setCandidateEmail(candEmail)
         const appTitle = firstApplicationJobTitle(applicationsRes.results ?? [])
         const appliedJobTitle =
           placementJobTitle(placement) ||
@@ -319,6 +461,37 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
           placementStatus,
           preBoardingStatusComplete: placement.preBoardingStatus === 'Completed',
         })
+        const linkedMeetingId = orientationMeetingRefId(placement.orientationMeetingId)
+        const populatedMeeting =
+          placement.orientationMeetingId && typeof placement.orientationMeetingId === 'object'
+            ? placement.orientationMeetingId
+            : null
+        if (populatedMeeting?.status && populatedMeeting.status !== 'cancelled') {
+          setOrientationMeeting({
+            id: populatedMeeting.id ?? populatedMeeting._id,
+            _id: populatedMeeting._id,
+            meetingId: populatedMeeting.meetingId || '',
+            title: populatedMeeting.title || '',
+            scheduledAt: populatedMeeting.scheduledAt || '',
+            timezone: populatedMeeting.timezone,
+            durationMinutes: 60,
+            maxParticipants: 10,
+            allowGuestJoin: false,
+            requireApproval: false,
+            meetingType: 'Video',
+            hosts: [],
+            emailInvites: [],
+            status: populatedMeeting.status,
+            publicMeetingUrl: populatedMeeting.publicMeetingUrl,
+          })
+        } else {
+          setOrientationMeeting(null)
+          setOrientationRecordings([])
+          setOrientationTranscript(null)
+        }
+        if (linkedMeetingId) {
+          void loadOrientationMeetingBundle(linkedMeetingId)
+        }
       } catch (err: any) {
         setError(err?.response?.data?.message || err?.message || 'Failed to load placement')
       } finally {
@@ -333,7 +506,7 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
       .catch(() => {
         setAgents([])
       })
-  }, [placementId, rawId])
+  }, [placementId, rawId, loadOrientationMeetingBundle])
 
   /** Include current value if it is not in the roster (legacy or API drift). */
   const agentOptionsForSelect = useMemo(() => {
@@ -392,6 +565,231 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
     if (!a?.name?.trim()) return '—'
     return shortPersonName(a.name)
   }, [agentOptionsForSelect, form.agentId])
+
+  const joiningYmdForOrientation =
+    orientationJoiningDate || (form.joiningDate && /^\d{4}-\d{2}-\d{2}$/.test(form.joiningDate) ? form.joiningDate : '')
+  const orientationMeetingActive =
+    Boolean(orientationMeeting) && String(orientationMeeting?.status || '').toLowerCase() !== 'cancelled'
+  const latestCompletedRecording = pickLatestCompletedRecording(orientationRecordings)
+  const transcriptPending = Boolean(
+    orientationTranscript && ORIENTATION_AI_PENDING.has(orientationTranscript.recording.aiProcessingStatus)
+  )
+  const orientationMeetingDocId = orientationMeeting?.id ?? orientationMeeting?._id ?? null
+  const orientationMeetingStatus = orientationMeeting?.status ?? null
+  const completedRecordingId = latestCompletedRecording?.id ?? null
+  const transcriptReady = Boolean(orientationTranscript) && !transcriptPending
+
+  useEffect(() => {
+    const meetingDocId = orientationMeetingDocId
+    const cancelled = String(orientationMeetingStatus || '').toLowerCase() === 'cancelled'
+    const hasCompletedBundle = Boolean(completedRecordingId) && transcriptReady
+    const shouldPoll = Boolean(meetingDocId) && !cancelled && !hasCompletedBundle
+    stopOrientationPoll()
+    if (!shouldPoll || !meetingDocId) return
+    orientationPollRef.current = setInterval(() => {
+      void loadOrientationMeetingBundle(meetingDocId)
+    }, 12000)
+    return () => stopOrientationPoll()
+  }, [
+    orientationMeetingDocId,
+    orientationMeetingStatus,
+    completedRecordingId,
+    transcriptReady,
+    loadOrientationMeetingBundle,
+    stopOrientationPoll,
+  ])
+
+  const markOrientationSessionScheduled = useCallback(
+    (tasks: PlacementOnboardingTask[]) =>
+      tasks.map((t) => (isOrientationChecklistTask(t) ? { ...t, done: true } : t)),
+    []
+  )
+
+  const persistOrientationLink = useCallback(
+    async (meetingMongoId: string, tasks: PlacementOnboardingTask[]) => {
+      if (!placementId) return
+      await updatePlacement(placementId, {
+        orientationMeetingId: meetingMongoId,
+        onboardingTasks: onboardingTasksToPatch(tasks),
+      })
+    },
+    [placementId]
+  )
+
+  const handleOrientationConfirm = useCallback(
+    async ({
+      instant,
+      timezone,
+      durationMinutes,
+      extraInvites = [],
+    }: {
+      instant: Date
+      timezone: string
+      durationMinutes: number
+      extraInvites?: string[]
+    }) => {
+      if (!placementId) return
+      const hostEmail = authUser?.email?.trim()
+      if (!hostEmail) {
+        setOrientationModalError('Your account has no email, so this meeting cannot be hosted.')
+        return
+      }
+      if (!joiningYmdForOrientation) {
+        setOrientationModalError('Set a joining date before scheduling the orientation meeting.')
+        return
+      }
+      const inviteEmails = [candidateEmail.trim().toLowerCase()].filter(Boolean)
+      if (!inviteEmails.length) {
+        setOrientationModalError('Candidate email is missing. Add it on the employee record before scheduling.')
+        return
+      }
+      const reserved = new Set([inviteEmails[0], hostEmail.toLowerCase()].filter(Boolean))
+      const agentEmail = agentOptionsForSelect.find((a) => a.id === form.agentId)?.email?.trim().toLowerCase()
+      if (agentEmail && !reserved.has(agentEmail)) {
+        inviteEmails.push(agentEmail)
+        reserved.add(agentEmail)
+      }
+      for (const raw of extraInvites) {
+        const e = String(raw || '').trim().toLowerCase()
+        if (e && !reserved.has(e)) {
+          inviteEmails.push(e)
+          reserved.add(e)
+        }
+      }
+      const title = composeOrientationMeetingTitle(instant, timezone)
+      setOrientationScheduleBusy(true)
+      setOrientationModalError(null)
+      try {
+        const existingId = orientationMeeting?.id || orientationMeeting?._id
+        let saved: InternalMeeting
+        if (orientationMeetingActive && existingId) {
+          saved = await updateInternalMeeting(existingId, {
+            title,
+            scheduledAt: instant.toISOString(),
+            timezone: normalizeTimezone(timezone),
+            durationMinutes,
+            meetingType: 'Video',
+            emailInvites: inviteEmails,
+          })
+        } else {
+          saved = await createInternalMeeting({
+            title,
+            scheduledAt: instant.toISOString(),
+            timezone: normalizeTimezone(timezone),
+            durationMinutes,
+            meetingType: 'Video',
+            hosts: [
+              {
+                nameOrRole: (authUser?.name ?? '').trim() || hostEmail.split('@')[0] || '',
+                email: hostEmail,
+              },
+            ],
+            emailInvites: inviteEmails,
+            orientationPlacementId: placementId,
+          })
+        }
+        const mongoId = saved.id || saved._id || ''
+        setOrientationMeeting(saved)
+        setOrientationScheduleCreated(saved)
+        const ticked = markOrientationSessionScheduled(onboardingTasks)
+        setOnboardingTasks(ticked)
+        if (mongoId) {
+          await persistOrientationLink(mongoId, ticked)
+        }
+        void loadOrientationMeetingBundle(mongoId || saved.meetingId)
+      } catch (err: unknown) {
+        setOrientationModalError(apiErrorMessage(err, 'Could not schedule the orientation meeting'))
+      } finally {
+        setOrientationScheduleBusy(false)
+      }
+    },
+    [
+      placementId,
+      authUser?.email,
+      authUser?.name,
+      joiningYmdForOrientation,
+      candidateEmail,
+      agentOptionsForSelect,
+      form.agentId,
+      orientationMeeting,
+      orientationMeetingActive,
+      onboardingTasks,
+      markOrientationSessionScheduled,
+      persistOrientationLink,
+      loadOrientationMeetingBundle,
+    ]
+  )
+
+  const openOrientationSchedule = useCallback(() => {
+    if (!joiningYmdForOrientation) return
+    setOrientationOverlayMode(orientationMeetingActive ? 'reschedule' : 'schedule')
+    setOrientationModalError(null)
+    setOrientationScheduleCreated(null)
+    setOrientationOverlayOpen(true)
+  }, [joiningYmdForOrientation, orientationMeetingActive])
+
+  const closeOrientationSchedule = useCallback(() => {
+    setOrientationOverlayOpen(false)
+    setOrientationScheduleCreated(null)
+    setOrientationModalError(null)
+  }, [])
+
+  const handleCancelOrientationMeeting = useCallback(async () => {
+    const existingId = orientationMeeting?.id || orientationMeeting?._id
+    if (!existingId || !orientationMeetingActive) return
+    const title = (orientationMeeting?.title || '').trim() || 'this orientation meeting'
+    const ok = await confirm({
+      title: 'Cancel meeting?',
+      message: `Cancel "${title}"? The join link will be disabled.`,
+      confirmLabel: 'Cancel meeting',
+      cancelLabel: 'Keep meeting',
+      tone: 'danger',
+    })
+    if (!ok) return
+    setOrientationCancelBusy(true)
+    try {
+      await updateInternalMeeting(existingId, { status: 'cancelled' })
+      setOrientationMeeting(null)
+      setOrientationRecordings([])
+      setOrientationTranscript(null)
+      setOrientationScheduleCreated(null)
+      stopOrientationPoll()
+    } catch (err: unknown) {
+      setError(apiErrorMessage(err, 'Could not cancel the orientation meeting'))
+    } finally {
+      setOrientationCancelBusy(false)
+    }
+  }, [confirm, orientationMeeting, orientationMeetingActive, stopOrientationPoll])
+
+  const copyOrientationJoinLink = useCallback(async () => {
+    const url = orientationMeeting?.publicMeetingUrl
+    if (!url) return
+    try {
+      await navigator.clipboard.writeText(url)
+      setOrientationJoinCopied(true)
+      setTimeout(() => setOrientationJoinCopied(false), 1800)
+    } catch {
+      setError('Could not copy the join link')
+    }
+  }, [orientationMeeting?.publicMeetingUrl])
+
+  const orientationOverlayValue = useMemo(() => {
+    if (orientationMeeting?.scheduledAt) {
+      const d = new Date(orientationMeeting.scheduledAt)
+      if (!Number.isNaN(d.getTime())) return d
+    }
+    return defaultOrientationInstant(joiningYmdForOrientation, getViewerTimezone())
+  }, [orientationMeeting?.scheduledAt, joiningYmdForOrientation])
+
+  const orientationExtraInvites = useMemo(() => {
+    const reserved = new Set(
+      [candidateEmail.trim().toLowerCase(), (authUser?.email ?? '').trim().toLowerCase()].filter(Boolean)
+    )
+    return (orientationMeeting?.emailInvites || []).filter((e) => {
+      const n = String(e || '').trim().toLowerCase()
+      return Boolean(n) && !reserved.has(n)
+    })
+  }, [orientationMeeting?.emailInvites, candidateEmail, authUser?.email])
 
   const handleDepartmentSelectChange = async (value: string) => {
     if (value !== ADD_DEPARTMENT_SELECT_VALUE) {
@@ -518,7 +916,6 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
     return (
       <Fragment>
         <Seo title="Edit HRMS" />
-        <Pageheader currentpage="Edit HRMS" activepage="Onboarding" mainpage="Edit HRMS" />
         <div className={`mt-5 grid grid-cols-12 gap-6 min-w-0 sm:mt-6 ${pipelineStyles.listShell}`}>
           <div className="col-span-12 p-6 rounded-[10px] border border-danger/25 bg-danger/5 text-danger">
             You do not have permission to edit onboarding.
@@ -531,7 +928,6 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
   return (
     <Fragment>
       <Seo title="Edit HRMS" />
-      <Pageheader currentpage="Edit HRMS" activepage="Onboarding" mainpage={`Edit HRMS – ${candidateName || '…'}`} />
       <div className={`mt-5 grid grid-cols-12 gap-6 min-w-0 sm:mt-6 ${pipelineStyles.listShell}`}>
         <div className="col-span-12 min-w-0 flex flex-col">
           <div className="box min-w-0 flex flex-col">
@@ -551,14 +947,6 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
                     ) : null}
                   </span>
                 </span>
-                {placementId && (
-                  <span
-                    className="badge bg-light text-default ms-1 align-middle text-[0.7rem] tabular-nums sm:ms-2 sm:text-[0.75rem]"
-                    title="Placement id"
-                  >
-                    {placementId.slice(0, 8)}…
-                  </span>
-                )}
               </div>
               <div
                 className="grid w-full min-w-0 max-w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:max-w-none sm:flex-wrap sm:items-center sm:gap-2"
@@ -770,8 +1158,9 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
                                   />
                                 </div>
                                 <ul className="space-y-3" role="list">
-                                  {onboardingTasks.map((task) => {
+                                  {onboardingTasks.map((task, index) => {
                                     const taskKey = task._id || String(task.order)
+                                    const isOrientationTask = index === 0 || isOrientationChecklistTask(task)
                                     return (
                                       <li key={taskKey}>
                                         <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700 dark:text-slate-200">
@@ -795,6 +1184,146 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
                                             ) : null}
                                           </span>
                                         </label>
+                                        {isOrientationTask ? (
+                                          <div
+                                            className="ms-6 mt-3 space-y-3"
+                                            aria-busy={orientationMeetingBusy || orientationScheduleBusy}
+                                          >
+                                            {canEdit && !orientationMeetingActive ? (
+                                              <div>
+                                                <button
+                                                  type="button"
+                                                  className="ti-btn ti-btn-primary min-h-11 !py-2 !px-4 !text-sm"
+                                                  disabled={!joiningYmdForOrientation || orientationScheduleBusy}
+                                                  onClick={openOrientationSchedule}
+                                                >
+                                                  <i className="ri-calendar-event-line me-1.5" aria-hidden />
+                                                  {orientationScheduleBusy
+                                                    ? 'Scheduling…'
+                                                    : 'Schedule orientation meeting'}
+                                                </button>
+                                                {!joiningYmdForOrientation ? (
+                                                  <p className="mb-0 mt-2 text-[0.8125rem] leading-snug text-slate-500">
+                                                    Set a joining date to schedule this meeting.
+                                                  </p>
+                                                ) : null}
+                                              </div>
+                                            ) : null}
+
+                                            {orientationMeetingActive && orientationMeeting ? (
+                                              <div className="space-y-2">
+                                                <p className="form-label mb-1">Scheduled</p>
+                                                <p className="mb-0 text-sm font-medium text-slate-900 dark:text-slate-100">
+                                                  {orientationMeeting.title}
+                                                </p>
+                                                <p className="mb-0 text-[0.8125rem] leading-snug text-slate-500">
+                                                  {(() => {
+                                                    const d = new Date(orientationMeeting.scheduledAt)
+                                                    if (Number.isNaN(d.getTime())) return '—'
+                                                    try {
+                                                      const tz = normalizeTimezone(orientationMeeting.timezone)
+                                                      return `${new Intl.DateTimeFormat('en-GB', {
+                                                        day: 'numeric',
+                                                        month: 'short',
+                                                        year: 'numeric',
+                                                        hour: 'numeric',
+                                                        minute: '2-digit',
+                                                        hour12: true,
+                                                        timeZone: tz,
+                                                      }).format(d)} (${tz})`
+                                                    } catch {
+                                                      return orientationMeeting.scheduledAt
+                                                    }
+                                                  })()}
+                                                </p>
+                                                <div className="flex flex-wrap gap-2">
+                                                  {orientationMeeting.publicMeetingUrl ? (
+                                                    <button
+                                                      type="button"
+                                                      className="ti-btn ti-btn-light min-h-11"
+                                                      onClick={() => void copyOrientationJoinLink()}
+                                                    >
+                                                      {orientationJoinCopied ? 'Join link copied' : 'Copy join link'}
+                                                    </button>
+                                                  ) : null}
+                                                  {canEdit ? (
+                                                    <button
+                                                      type="button"
+                                                      className="ti-btn ti-btn-primary-light min-h-11 !py-2 !px-4 !text-sm"
+                                                      disabled={orientationScheduleBusy || orientationCancelBusy}
+                                                      onClick={openOrientationSchedule}
+                                                    >
+                                                      <i className="ri-calendar-event-line me-1.5" aria-hidden />
+                                                      {orientationScheduleBusy ? 'Saving…' : 'Reschedule'}
+                                                    </button>
+                                                  ) : null}
+                                                  {canEdit ? (
+                                                    <button
+                                                      type="button"
+                                                      className="ti-btn ti-btn-danger min-h-11 !py-2 !px-4 !text-sm"
+                                                      disabled={orientationScheduleBusy || orientationCancelBusy}
+                                                      onClick={() => void handleCancelOrientationMeeting()}
+                                                    >
+                                                      <i className="ri-close-circle-line me-1.5" aria-hidden />
+                                                      {orientationCancelBusy ? 'Cancelling…' : 'Cancel orientation meeting'}
+                                                    </button>
+                                                  ) : null}
+                                                </div>
+                                              </div>
+                                            ) : null}
+
+                                            {orientationMeetingActive && !latestCompletedRecording ? (
+                                              <div className="rounded-lg border border-dashed border-slate-300 px-3 py-3 dark:border-white/20">
+                                                <p className="mb-0 text-[0.8125rem] leading-snug text-slate-500">
+                                                  Recordings appear here after the session ends and processing completes.
+                                                </p>
+                                                {orientationTranscript ? (
+                                                  <p className="mb-0 mt-2 text-[0.8125rem] leading-snug text-slate-500">
+                                                    {recordingTranscriptEmptyMessage(orientationTranscript.recording)}
+                                                  </p>
+                                                ) : null}
+                                              </div>
+                                            ) : null}
+
+                                            {latestCompletedRecording?.playbackUrl ? (
+                                              <div>
+                                                <p className="form-label mb-2">Recording</p>
+                                                <video
+                                                  controls
+                                                  preload="none"
+                                                  className="aspect-video w-full max-h-[420px] rounded-lg bg-black"
+                                                  src={latestCompletedRecording.playbackUrl}
+                                                  aria-label="Orientation meeting recording"
+                                                >
+                                                  <track kind="captions" />
+                                                </video>
+                                              </div>
+                                            ) : null}
+
+                                            {latestCompletedRecording ? (
+                                              <div>
+                                                <p className="form-label mb-2">Transcript</p>
+                                                <TranscriptView
+                                                  mode={
+                                                    orientationTranscript
+                                                      ? { kind: 'recording', data: orientationTranscript }
+                                                      : null
+                                                  }
+                                                  loading={orientationMeetingBusy && !orientationTranscript}
+                                                  error={
+                                                    orientationTranscript?.recording.aiProcessingStatus === 'failed'
+                                                      ? orientationTranscript.recording.aiProcessingError
+                                                      : null
+                                                  }
+                                                  onRetry={() => {
+                                                    const id = orientationMeeting?.id || orientationMeeting?._id
+                                                    if (id) void loadOrientationMeetingBundle(id)
+                                                  }}
+                                                />
+                                              </div>
+                                            ) : null}
+                                          </div>
+                                        ) : null}
                                       </li>
                                     )
                                   })}
@@ -1069,6 +1598,25 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
           </div>
         </div>
       </div>
+      <OrientationScheduleModal
+        open={orientationOverlayOpen}
+        mode={orientationOverlayMode}
+        candidateName={candidateName}
+        candidateEmail={candidateEmail}
+        hostName={(authUser?.name ?? '').trim() || (authUser?.email ?? '').split('@')[0] || ''}
+        hostEmail={(authUser?.email ?? '').trim()}
+        joiningYmd={joiningYmdForOrientation}
+        composeTitle={(instant, tz) => composeOrientationMeetingTitle(instant, tz)}
+        initialInstant={orientationOverlayValue}
+        initialTimezone={orientationMeeting?.timezone || getViewerTimezone()}
+        initialExtraInvites={orientationExtraInvites}
+        loading={orientationScheduleBusy}
+        formError={orientationModalError}
+        createdMeeting={orientationScheduleCreated}
+        onClose={closeOrientationSchedule}
+        onSubmit={(payload) => void handleOrientationConfirm(payload)}
+      />
+      {confirmDialog}
     </Fragment>
   )
 }

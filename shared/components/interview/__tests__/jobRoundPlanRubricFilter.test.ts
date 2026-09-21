@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rubricOfferableForRow } from "../JobRoundPlanSection";
+import { rubricOfferableForRow, rubricPreviewFromLoadedTemplates } from "../JobRoundPlanSection";
 import type { RubricTemplate } from "@/shared/lib/api/rubricTemplates";
 import type { InterviewRoundPlanRow } from "@/shared/lib/api/jobs";
 import type { InterviewRoundType } from "@/shared/lib/api/meetings";
@@ -58,16 +58,103 @@ describe("rubricOfferableForRow", () => {
     expect(rubricOfferableForRow(template("t-technical", "technical"), row(null))).toBe(true);
   });
 
-  it("keeps the rubric the row already holds, even when it no longer matches", () => {
-    // Changing the round type after picking a rubric must not blank the select and drop the
-    // saved choice on the next save.
-    const screening = template("t-screening", "screening");
-    expect(rubricOfferableForRow(screening, row("technical", "t-screening"))).toBe(true);
+  it("does not list other Screening templates on a Technical row that already holds one", () => {
+    const saved = template("t-screening", "screening");
+    const otherScreening = template("t-screening-2", "screening");
+    const generic = template("t-generic", null);
+    const technical = template("t-technical", "technical");
+    const techRow = row("technical", "t-screening");
+    expect(rubricOfferableForRow(saved, techRow)).toBe(true);
+    expect(rubricOfferableForRow(otherScreening, techRow)).toBe(false);
+    expect(rubricOfferableForRow(generic, techRow)).toBe(true);
+    expect(rubricOfferableForRow(technical, techRow)).toBe(true);
   });
 
   it("keeps an archived rubric only while it is the selected one", () => {
     const archived = template("t-old", "screening", "2026-09-10T00:00:00.000Z");
     expect(rubricOfferableForRow(archived, row("screening"))).toBe(false);
     expect(rubricOfferableForRow(archived, row("screening", "t-old"))).toBe(true);
+  });
+});
+
+describe("rubricPreviewFromLoadedTemplates", () => {
+  it("previews the selected Other template, not another Other template in the catalog", () => {
+    const t1: RubricTemplate = {
+      ...template("t1", null),
+      name: "Other v1",
+      criteria: [{ key: "v1", label: "Version one", weight: 100, scaleMin: 1, scaleMax: 5 }],
+    };
+    const t2: RubricTemplate = {
+      ...template("t2", null),
+      name: "Other v2",
+      criteria: [{ key: "v2", label: "Version two", weight: 100, scaleMin: 1, scaleMax: 5 }],
+    };
+    const preview = rubricPreviewFromLoadedTemplates(row(null, "t2"), [t1, t2]);
+    expect(preview).toEqual({
+      source: "template",
+      templateId: "t2",
+      templateName: "Other v2",
+      criteria: t2.criteria,
+    });
+  });
+
+  it("keeps custom-criteria preview local", () => {
+    const customRow = {
+      ...row(null, null),
+      criteria: [{ key: "local", label: "Local", weight: 100, scaleMin: 1, scaleMax: 5 }],
+    } as InterviewRoundPlanRow;
+    const preview = rubricPreviewFromLoadedTemplates(customRow, [template("t1", null)]);
+    expect(preview.source).toBe("custom");
+    if (preview.source === "custom") {
+      expect(preview.templateName).toBe("Custom for this round");
+      expect(preview.criteria[0].key).toBe("local");
+    }
+  });
+
+  it("reports missing when the selected template is not in the loaded list", () => {
+    const preview = rubricPreviewFromLoadedTemplates(row(null, "t-missing"), [template("t1", null)]);
+    expect(preview).toEqual({ source: "missing", templateId: "t-missing" });
+  });
+
+  it("keeps T1 and T2 distinct on two Other rows", () => {
+    const t1: RubricTemplate = {
+      ...template("t1", null),
+      name: "Other v1",
+      criteria: [{ key: "v1", label: "Version one", weight: 100, scaleMin: 1, scaleMax: 5 }],
+    };
+    const t2: RubricTemplate = {
+      ...template("t2", null),
+      name: "Other v2",
+      criteria: [{ key: "v2", label: "Version two", weight: 100, scaleMin: 1, scaleMax: 5 }],
+    };
+    const a = rubricPreviewFromLoadedTemplates(row("other", "t1"), [t1, t2]);
+    const b = rubricPreviewFromLoadedTemplates(
+      { ...row("other", "t2"), key: "round_2", label: "Round 2" },
+      [t1, t2]
+    );
+    expect(a.source === "template" && a.templateName).toBe("Other v1");
+    expect(b.source === "template" && b.templateName).toBe("Other v2");
+  });
+});
+
+describe("rubricOfferableForRow screening catalog", () => {
+  it("lists a generic rubric and a screening rubric for a Screening row", () => {
+    const generic = template("t-generic", null);
+    const screening = template("t-screening", "screening");
+    const technical = template("t-technical", "technical");
+    const screeningRow = row("screening");
+    expect(rubricOfferableForRow(generic, screeningRow)).toBe(true);
+    expect(rubricOfferableForRow(screening, screeningRow)).toBe(true);
+    expect(rubricOfferableForRow(technical, screeningRow)).toBe(false);
+  });
+
+  it("lists only Technical and any-round templates on a Technical row", () => {
+    const generic = template("t-generic", null);
+    const screening = template("t-screening", "screening");
+    const technical = template("t-technical", "technical");
+    const technicalRow = row("technical");
+    expect(rubricOfferableForRow(generic, technicalRow)).toBe(true);
+    expect(rubricOfferableForRow(technical, technicalRow)).toBe(true);
+    expect(rubricOfferableForRow(screening, technicalRow)).toBe(false);
   });
 });

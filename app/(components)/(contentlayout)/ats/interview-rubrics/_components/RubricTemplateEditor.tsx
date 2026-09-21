@@ -17,11 +17,12 @@ import {
 } from "@/shared/lib/api/rubricTemplates";
 import { getApiErrorMessage } from "@/shared/lib/api/client";
 
+/** Mirrors backend DEFAULT_RUBRIC_CRITERIA. Keys are frozen on stored ratings; editor defaults only seed NEW templates. */
 export const DEFAULT_RUBRIC_CRITERIA: RubricCriterion[] = [
-  { key: "technical", label: "Technical", weight: 40, scaleMin: 1, scaleMax: 5 },
-  { key: "communication", label: "Communication", weight: 25, scaleMin: 1, scaleMax: 5 },
-  { key: "problem_solving", label: "Problem Solving", weight: 20, scaleMin: 1, scaleMax: 5 },
-  { key: "culture_fit", label: "Culture Fit", weight: 15, scaleMin: 1, scaleMax: 5 },
+  { key: "technical", label: "Technical Skills", weight: 40, scaleMin: 1, scaleMax: 5 },
+  { key: "communication", label: "Communication Skills", weight: 25, scaleMin: 1, scaleMax: 5 },
+  { key: "problemSolving", label: "Problem Solving", weight: 20, scaleMin: 1, scaleMax: 5 },
+  { key: "cultureFit", label: "Cultural Fit", weight: 15, scaleMin: 1, scaleMax: 5 },
 ];
 
 export default function RubricTemplateEditor({
@@ -156,7 +157,7 @@ export default function RubricTemplateEditor({
         </div>
         <div>
           <label htmlFor="rubric-round-type" className="form-label mb-1 block text-sm font-medium">
-            Applies to round type (optional)
+            Applies to round type (filter only, optional)
           </label>
           <select
             id="rubric-round-type"
@@ -171,6 +172,10 @@ export default function RubricTemplateEditor({
               </option>
             ))}
           </select>
+          <p className="mt-1 text-xs text-textmuted dark:text-white/55">
+            Filters the job-form list. It does not pick the rubric for a round. Bind a
+            rubric on the job under Interview rounds.
+          </p>
         </div>
       </div>
 

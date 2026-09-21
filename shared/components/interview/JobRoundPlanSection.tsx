@@ -15,7 +15,8 @@ import { INTERVIEW_ROUND_TYPE_OPTIONS } from "@/app/(components)/(contentlayout)
 import RubricCriteriaEditor from "@/shared/components/interview/RubricCriteriaEditor";
 import {
   createRubricTemplate,
-  listRubricTemplates,
+  getRubricTemplate,
+  listAllRubricTemplates,
   resolveRubric,
   type ResolvedRubric,
   type RubricCriterion,
@@ -53,14 +54,13 @@ function roundTypeLabel(roundType: InterviewRoundType | null): string {
 /**
  * Whether a saved rubric is offerable for this round.
  *
- * "Applies to round type" on the rubric means what it says: set it, and the rubric belongs
- * to that round type only; leave it unset and the rubric is generic, so every round may use
- * it. Without this the Screening round listed the Technical rubric and vice versa, and
- * picking the wrong one is silent — the round simply gets scored against the wrong criteria.
+ * Options are this round type plus untagged (any-round) templates. A Screening
+ * template is never a pick on a Technical row, and vice versa.
  *
- * The rubric this row already holds stays visible regardless, even if archived or no longer
- * matching: dropping it would blank the select and discard a saved choice on the next save.
- * A round with no type chosen yet cannot be filtered against, so it sees everything.
+ * A templateId already saved on the row stays visible even when it is the wrong
+ * type or archived, so the select does not blank a legacy choice. New picks
+ * cannot choose a mismatch because it is not in the list otherwise.
+ * A round with no type chosen yet cannot be filtered, so it sees everything.
  */
 export function rubricOfferableForRow(
   template: RubricTemplate,
@@ -73,58 +73,118 @@ export function rubricOfferableForRow(
   return appliesTo === null || appliesTo === row.roundType;
 }
 
-function RoundRubricPreview({
-  jobId,
-  row,
-}: {
-  jobId?: string | null;
-  row: InterviewRoundPlanRow;
-}) {
-  const [preview, setPreview] = useState<ResolvedRubric | null>(null);
-  const [loading, setLoading] = useState(false);
+export type LoadedRubricPreview =
+  | { source: "custom"; templateName: string; criteria: RubricCriterion[] }
+  | { source: "template"; templateId: string; templateName: string; criteria: RubricCriterion[] }
+  | { source: "missing"; templateId: string }
+  | { source: "none" };
 
-  useEffect(() => {
-    if (Array.isArray(row.criteria) && row.criteria.length > 0) {
-      setPreview({
-        templateId: null,
-        templateName: "Custom for this round",
-        criteria: row.criteria,
-      });
-      return;
-    }
-    if (!row.templateId) {
-      setPreview(null);
-      return;
-    }
-    setLoading(true);
-    void resolveRubric({
-      jobId: jobId ?? undefined,
-      roundType: row.roundType ?? undefined,
-    })
-      .then(setPreview)
-      .catch(() => setPreview(null))
-      .finally(() => setLoading(false));
-  }, [jobId, row.templateId, row.roundType, row.criteria]);
+/** Preview from the job row and the already-loaded catalog. Never type-fallback. */
+export function rubricPreviewFromLoadedTemplates(
+  row: InterviewRoundPlanRow,
+  templates: RubricTemplate[]
+): LoadedRubricPreview {
+  if (Array.isArray(row.criteria) && row.criteria.length > 0) {
+    return {
+      source: "custom",
+      templateName: "Custom for this round",
+      criteria: row.criteria,
+    };
+  }
+  if (!row.templateId) return { source: "none" };
+  const match = templates.find((t) => t.id === row.templateId);
+  if (!match) return { source: "missing", templateId: row.templateId };
+  return {
+    source: "template",
+    templateId: match.id,
+    templateName: match.name,
+    criteria: match.criteria || [],
+  };
+}
 
-  if (!row.templateId && !(row.criteria?.length)) return null;
-  if (loading) return <p className="mt-2 text-xs text-textmuted dark:text-white/55">Loading rubric preview…</p>;
-  if (!preview) return null;
-
+function previewChips(name: string, criteria: RubricCriterion[]) {
   return (
     <div className="mt-2 rounded-md border border-defaultborder/60 bg-gray-50/80 p-2 text-xs dark:border-white/10 dark:bg-white/[0.03]">
-      <p className="font-medium text-defaulttextcolor dark:text-white">{preview.templateName}</p>
-      <div className="mt-1 flex flex-wrap gap-1">
-        {(preview.criteria || []).map((c) => (
-          <span
-            key={c.key}
-            className="rounded-md bg-white px-2 py-0.5 tabular-nums text-defaulttextcolor/80 shadow-sm dark:bg-white/10 dark:text-white/80"
-          >
-            {c.label} {c.weight}%
-          </span>
-        ))}
-      </div>
+      <p className="font-medium text-defaulttextcolor dark:text-white">{name}</p>
+      {criteria.length === 0 ? (
+        <p className="mt-1 text-textmuted dark:text-white/55">This rubric has no criteria.</p>
+      ) : (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {criteria.map((c) => (
+            <span
+              key={c.key}
+              className="rounded-md bg-white px-2 py-0.5 tabular-nums text-defaulttextcolor/80 shadow-sm dark:bg-white/10 dark:text-white/80"
+            >
+              {c.label} {c.weight ?? 0}%
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
+}
+
+export function RoundRubricPreview({
+  row,
+  templates,
+}: {
+  row: InterviewRoundPlanRow;
+  templates: RubricTemplate[];
+}) {
+  const loaded = useMemo(
+    () => rubricPreviewFromLoadedTemplates(row, templates),
+    [row.templateId, row.criteria, templates]
+  );
+  const missingId = loaded.source === "missing" ? loaded.templateId : null;
+  const [fetched, setFetched] = useState<RubricTemplate | null>(null);
+  const [fetchState, setFetchState] = useState<"idle" | "loading" | "error" | "missing">("idle");
+
+  const fetchMissing = useCallback(() => {
+    if (!missingId) return;
+    setFetchState("loading");
+    void getRubricTemplate(missingId)
+      .then((template) => {
+        setFetched(template);
+        setFetchState("idle");
+      })
+      .catch((err: { response?: { status?: number } }) => {
+        setFetched(null);
+        setFetchState(err?.response?.status === 404 ? "missing" : "error");
+      });
+  }, [missingId]);
+
+  useEffect(() => {
+    setFetched(null);
+    if (missingId) {
+      fetchMissing();
+      return;
+    }
+    setFetchState("idle");
+  }, [missingId, fetchMissing]);
+
+  if (loaded.source === "none") return null;
+  if (loaded.source === "custom") return previewChips(loaded.templateName, loaded.criteria);
+  if (loaded.source === "template") return previewChips(loaded.templateName, loaded.criteria);
+
+  if (fetched) return previewChips(fetched.name, fetched.criteria || []);
+  if (fetchState === "error" || fetchState === "missing") {
+    return (
+      <div className="mt-2">
+        <p className="text-xs text-danger" role="alert">
+          {fetchState === "error" ? "Could not load this rubric." : "Rubric not in this list"}
+        </p>
+        <button
+          type="button"
+          className="ti-btn ti-btn-light mt-2 !text-xs min-h-[44px]"
+          onClick={() => fetchMissing()}
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  return <p className="mt-2 text-xs text-textmuted dark:text-white/55">Loading rubric preview…</p>;
 }
 
 export default function JobRoundPlanSection({
@@ -149,7 +209,7 @@ export default function JobRoundPlanSection({
 
   const loadTemplates = useCallback(() => {
     setTemplatesError(null);
-    return listRubricTemplates(true)
+    return listAllRubricTemplates(true)
       .then((res) => setTemplates(res.results || []))
       .catch(() => {
         setTemplates([]);
@@ -171,6 +231,9 @@ export default function JobRoundPlanSection({
 
   useEffect(() => {
     void loadTemplates();
+    const onFocus = () => void loadTemplates();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, [loadTemplates]);
 
   useEffect(() => {
@@ -392,7 +455,18 @@ export default function JobRoundPlanSection({
           {validationError && !value.some((row) => errorTargetsRow(validationError, row)) && (
             <p className="text-xs text-danger" role="alert">{validationError}</p>
           )}
-          {templatesError && <p className="text-xs text-danger">{templatesError}</p>}
+          {templatesError && (
+            <div>
+              <p className="text-xs text-danger" role="alert">{templatesError}</p>
+              <button
+                type="button"
+                className="ti-btn ti-btn-light mt-2 !text-xs min-h-[44px]"
+                onClick={() => void loadTemplates()}
+              >
+                Retry
+              </button>
+            </div>
+          )}
 
           {value.map((row, index) => {
             const rowError = errorTargetsRow(validationError, row) ? validationError : null;
@@ -455,7 +529,7 @@ export default function JobRoundPlanSection({
                     <span className="text-xs font-medium text-textmuted dark:text-white/55">Round {index + 1}</span>
                   </div>
 
-                  <div className="flex flex-col gap-3 sm:grid sm:grid-cols-12 sm:items-end">
+                  <div className="flex flex-col gap-3 sm:grid sm:grid-cols-12 sm:items-start sm:gap-x-3 sm:gap-y-2">
                     <div className="sm:col-span-4">
                       <label className="form-label mb-1 block text-xs font-medium" htmlFor={`plan-label-${row.key}`}>
                         Round name
@@ -468,7 +542,7 @@ export default function JobRoundPlanSection({
                         onChange={(e) => updateRow(index, { label: e.target.value })}
                       />
                     </div>
-                    <div className="sm:col-span-3">
+                    <div className="sm:col-span-3 min-w-0">
                       <label className="form-label mb-1 block text-xs font-medium" htmlFor={`plan-type-${row.key}`}>
                         Round type
                       </label>
@@ -477,6 +551,7 @@ export default function JobRoundPlanSection({
                         className="form-select w-full min-h-[44px] text-sm !bg-white dark:!bg-bodybg"
                         style={{ colorScheme: "light" }}
                         value={row.roundType ?? ""}
+                        aria-describedby={duplicateTypeCount > 1 ? `plan-type-help-${row.key}` : undefined}
                         onChange={(e) => {
                           const v = e.target.value;
                           updateRow(index, { roundType: v ? (v as InterviewRoundType) : null });
@@ -490,13 +565,15 @@ export default function JobRoundPlanSection({
                         ))}
                       </select>
                       {duplicateTypeCount > 1 && (
-                        <p className="mt-1 text-xs text-textmuted dark:text-white/55">
-                          Another round uses this type. Give each round a distinct name so schedulers and candidates can
-                          tell them apart.
+                        <p
+                          id={`plan-type-help-${row.key}`}
+                          className="mt-2 max-w-full text-pretty text-xs leading-snug text-textmuted dark:text-white/55"
+                        >
+                          Another round uses this type. This round is identified by its name, not the type.
                         </p>
                       )}
                     </div>
-                    <div className="sm:col-span-4">
+                    <div className="sm:col-span-4 min-w-0">
                       <label className="form-label mb-1 block text-xs font-medium" htmlFor={`plan-rubric-${row.key}`}>
                         Rubric
                       </label>
@@ -505,43 +582,56 @@ export default function JobRoundPlanSection({
                         className="form-select w-full min-h-[44px] text-sm !bg-white dark:!bg-bodybg"
                         style={{ colorScheme: "light" }}
                         value={rubricSelectValue(row)}
+                        aria-describedby={
+                          mismatchedRubric || invalidSelectedTemplate || noApplicableSavedRubrics
+                            ? `plan-rubric-help-${row.key}`
+                            : undefined
+                        }
                         onChange={(e) => handleRubricPick(index, e.target.value)}
                       >
                         <option value="" disabled>Select a rubric</option>
-                        {offerableRubrics.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.name}
-                            {t.archivedAt ? " (archived)" : ""}
-                            {/* Named in the option itself, so the reason it is listed is
-                                readable without opening the rubric. */}
-                            {!t.archivedAt && (t.appliesTo?.roundType ?? null) === null
-                              ? " (any round)"
-                              : ""}
-                          </option>
-                        ))}
+                        {offerableRubrics.map((t) => {
+                          const savedMismatch =
+                            mismatchedRubric && t.id === mismatchedRubric.id;
+                          return (
+                            <option key={t.id} value={t.id}>
+                              {`${t.name}${t.archivedAt ? " (archived)" : ""}${
+                                savedMismatch
+                                  ? " (saved)"
+                                  : !t.archivedAt && (t.appliesTo?.roundType ?? null) === null
+                                    ? " (any round)"
+                                    : ""
+                              }`}
+                            </option>
+                          );
+                        })}
                         <option value={RUBRIC_CUSTOM}>Define for this round</option>
                       </select>
-                      {mismatchedRubric && (
-                        <p className="mt-1 text-xs text-warning" role="status">
-                          {mismatchedRubric.name} is for{" "}
-                          {roundTypeLabel(mismatchedRubric.appliesTo?.roundType ?? null)}, not this round. Pick a
-                          different rubric to replace it.
-                        </p>
-                      )}
-                      {invalidSelectedTemplate && (
-                        <p className="mt-1 text-xs text-danger" role="alert" aria-live="polite">
-                          This rubric is archived or unavailable. Choose another saved rubric or define criteria for
-                          this round.
-                        </p>
-                      )}
-                      {noApplicableSavedRubrics && (
-                        <p className="mt-1 text-xs text-danger" role="alert" aria-live="polite">
-                          No saved rubric fits this round type. Use &ldquo;Define for this round&rdquo; below, or edit a
-                          rubric template so it applies to any round.
-                        </p>
+                      {(mismatchedRubric || invalidSelectedTemplate || noApplicableSavedRubrics) && (
+                        <div id={`plan-rubric-help-${row.key}`} className="mt-2 max-w-full space-y-1">
+                          {mismatchedRubric && (
+                            <p className="text-pretty text-xs leading-snug text-warning dark:text-warning" role="status">
+                              Saved rubric is for {roundTypeLabel(mismatchedRubric.appliesTo?.roundType ?? null)}.
+                              Pick a {roundTypeLabel(row.roundType)} or any-round rubric to change it. Saving is
+                              allowed.
+                            </p>
+                          )}
+                          {invalidSelectedTemplate && (
+                            <p className="text-pretty text-xs leading-snug text-danger" role="alert" aria-live="polite">
+                              This rubric is archived or unavailable. Choose another saved rubric or define criteria for
+                              this round.
+                            </p>
+                          )}
+                          {noApplicableSavedRubrics && (
+                            <p className="text-pretty text-xs leading-snug text-danger" role="alert" aria-live="polite">
+                              No saved rubric fits this round type. Use &ldquo;Define for this round&rdquo; below, or
+                              edit a rubric template so it applies to any round.
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
-                    <div className="sm:col-span-1 flex sm:justify-end">
+                    <div className="sm:col-span-1 flex sm:justify-end sm:pt-6">
                       <button
                         type="button"
                         className="ti-btn ti-btn-light !text-xs min-h-[44px]"
@@ -557,7 +647,7 @@ export default function JobRoundPlanSection({
                   <p className="mt-2 text-xs text-danger" role="alert">{rowError}</p>
                 )}
 
-                <RoundRubricPreview jobId={jobId} row={row} />
+                <RoundRubricPreview row={row} templates={templates} />
 
                 {rubricSelectValue(row) === RUBRIC_CUSTOM && (
                   <div className="mt-3 space-y-2">

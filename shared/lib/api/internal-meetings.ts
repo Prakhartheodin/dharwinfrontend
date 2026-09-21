@@ -40,6 +40,8 @@ export interface CreateInternalMeetingPayload {
   // Present (with frequency) => the backend creates a recurring series.
   recurrence?: MeetingRecurrence;
   end?: MeetingRecurrenceEnd;
+  /** Edit HRMS orientation: duplicate-guard + link Placement.orientationMeetingId. */
+  orientationPlacementId?: string;
 }
 
 export interface InternalMeeting {
@@ -171,5 +173,42 @@ export interface InternalMeetingRecording {
 
 export async function getInternalMeetingRecordings(meetingId: string): Promise<InternalMeetingRecording[]> {
   const { data } = await apiClient.get<InternalMeetingRecording[]>(`/internal-meetings/${meetingId}/recordings`);
+  return data;
+}
+
+export interface OrientationOnboardingTask {
+  title: string;
+  required: boolean;
+  done: boolean;
+  order: number;
+  _id?: string;
+}
+
+export interface OrientationOnboardingResponse {
+  linked: boolean;
+  ended?: boolean;
+  meetingStatus?: string;
+  placementId?: string;
+  candidateName?: string;
+  tasks?: OrientationOnboardingTask[];
+}
+
+export async function getInternalMeetingOrientationOnboarding(
+  id: string
+): Promise<OrientationOnboardingResponse> {
+  const { data } = await apiClient.get<OrientationOnboardingResponse>(
+    `/internal-meetings/${id}/orientation-onboarding`
+  );
+  return data;
+}
+
+export async function patchInternalMeetingOrientationOnboarding(
+  id: string,
+  tasks: { title: string; done: boolean }[]
+): Promise<OrientationOnboardingResponse> {
+  const { data } = await apiClient.patch<OrientationOnboardingResponse>(
+    `/internal-meetings/${id}/orientation-onboarding`,
+    { tasks }
+  );
   return data;
 }

@@ -134,6 +134,8 @@ export function buildScheduleLinkageFields(input: {
   roundLabel?: string
   /** A row of the application's round plan. Omitted for an off-plan round. */
   roundPlanKey?: string
+  /** Required for an off-plan round on a job that already has interviewRounds. */
+  roundTemplateId?: string
   interviewLanguage?: string
 }): Pick<CreateMeetingPayload, 'applicationId' | 'round' | 'interviewLanguage'> {
   const fields: Pick<CreateMeetingPayload, 'applicationId' | 'round' | 'interviewLanguage'> = {}
@@ -150,7 +152,9 @@ export function buildScheduleLinkageFields(input: {
   // when none arrives, so an empty string here would be worse than absent.
   const planKey = (input.roundPlanKey ?? '').trim()
   if (planKey) round.planKey = planKey
-  if (round.type || round.label || round.planKey) fields.round = round
+  const templateId = (input.roundTemplateId ?? '').trim()
+  if (!planKey && isMongoObjectId(templateId)) round.templateId = templateId
+  if (round.type || round.label || round.planKey || round.templateId) fields.round = round
   const language = INTERVIEW_LANGUAGE_OPTIONS.find((o) => o.value === input.interviewLanguage)?.value
   if (language) fields.interviewLanguage = language
   return fields

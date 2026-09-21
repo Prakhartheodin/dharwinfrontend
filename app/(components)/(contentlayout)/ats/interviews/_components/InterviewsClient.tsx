@@ -1680,8 +1680,13 @@ export default function InterviewsClient() {
         // Absent for a job with no plan, where the field is not rendered.
         roundPlanKey:
           getVal('schedule-round-plan-key') === OFF_PLAN_ROUND ? '' : getVal('schedule-round-plan-key'),
+        roundTemplateId: getVal('schedule-round-template-id'),
         interviewLanguage: getVal('schedule-interview-language'),
       }),
+    }
+    if (getVal('schedule-round-plan-key') === OFF_PLAN_ROUND && !getVal('schedule-round-template-id')) {
+      setFormError('Pick a rubric for this off-plan round')
+      return
     }
     const runCreate = async () => {
       setFormLoading(true)

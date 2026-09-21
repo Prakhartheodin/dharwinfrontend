@@ -175,6 +175,25 @@ describe('buildScheduleLinkageFields', () => {
     expect(buildScheduleLinkageFields({ roundPlanKey: '   ' })).toEqual({})
   })
 
+  it('sends templateId for an off-plan round and not for a planned row', () => {
+    expect(
+      buildScheduleLinkageFields({
+        candidateId: CAND,
+        applicationId: APP_A,
+        roundPlanKey: '',
+        roundTemplateId: APP_B,
+      })
+    ).toEqual({ applicationId: APP_A, round: { templateId: APP_B } })
+    expect(
+      buildScheduleLinkageFields({
+        candidateId: CAND,
+        applicationId: APP_A,
+        roundPlanKey: 'round_1',
+        roundTemplateId: APP_B,
+      })
+    ).toEqual({ applicationId: APP_A, round: { planKey: 'round_1' } })
+  })
+
   it('offers exactly the round types the backend declares', () => {
     // Mirrors INTERVIEW_ROUND_TYPES in the backend's constants/interviewLinkage.js, in order.
     // This list had already gained 'panel' and 'hr' while the meeting Joi schema still

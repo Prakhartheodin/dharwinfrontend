@@ -26,6 +26,7 @@ import RecordingsModal, { type RecordingListItem } from "../../../ats/interviews
 import { listAllUsers, pickOfficialEmail, hasMeetingEmailMuted } from "@/shared/lib/api/users"
 import ParticipantInvitesField, { type ParticipantUser } from "@/shared/components/meeting/ParticipantInvitesField"
 import MeetingReadOnlyView from "@/shared/components/meeting/MeetingReadOnlyView"
+import OrientationHostChecklist from "@/shared/components/meeting/OrientationHostChecklist"
 import { useConfirm } from "@/shared/components/ui/useConfirm"
 import { useRecurringScopeDialog } from "@/shared/components/meeting/RecurringScopeDialog"
 import { getMeetingActionVisibility } from "@/shared/lib/permissions"
@@ -1477,6 +1478,12 @@ export default function InternalMeetingsClient() {
                     mutedEmails={editMutedEmails}
                     notes={editMeeting.notes}
                   />
+                  {editStatusRaw === "ended" ? (
+                    <OrientationHostChecklist
+                      meetingId={editMeeting.id || editMeeting._id || editMeeting.meetingId}
+                      layout="panel"
+                    />
+                  ) : null}
                   <div className="flex justify-end pt-4 border-t border-defaultborder dark:border-defaultborder/10">
                     <button type="button" className="ti-btn ti-btn-light !py-2 !px-4 !text-sm font-medium" onClick={closeEditModal}>Close</button>
                   </div>

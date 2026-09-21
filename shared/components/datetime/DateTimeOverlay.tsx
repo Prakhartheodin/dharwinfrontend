@@ -28,6 +28,8 @@ export interface DateTimeOverlayProps {
   title?: string
   /** Accessible name; falls back to `title`. */
   ariaLabel?: string
+  /** When false, past calendar days and time slots stay selectable (orientation reschedule). Default true. */
+  disablePastSlots?: boolean
 }
 
 const startOfToday = (): Date => {
@@ -38,7 +40,7 @@ const startOfToday = (): Date => {
 
 export default function DateTimeOverlay({
   open, value, timezone, onConfirm, onClose,
-  title = 'Select date & time', ariaLabel,
+  title = 'Select date & time', ariaLabel, disablePastSlots = true,
 }: DateTimeOverlayProps) {
   const [draftTz, setDraftTz] = useState(() => normalizeTimezone(timezone))
   const [draftDate, setDraftDate] = useState('')
@@ -76,8 +78,8 @@ export default function DateTimeOverlay({
   }, [open])
 
   const slots = useMemo(
-    () => buildDaySlots(draftDate, draftTz, period),
-    [draftDate, draftTz, period]
+    () => buildDaySlots(draftDate, draftTz, period, disablePastSlots ? undefined : new Date(0)),
+    [draftDate, draftTz, period, disablePastSlots]
   )
 
   const calendarDate = useMemo(
@@ -182,7 +184,7 @@ export default function DateTimeOverlay({
                   inline
                   selected={calendarDate}
                   onChange={(d: Date | null) => { if (d) setDraftDate(format(d, 'yyyy-MM-dd')) }}
-                  minDate={startOfToday()}
+                  minDate={disablePastSlots ? startOfToday() : undefined}
                   calendarStartDay={1}
                   calendarClassName="schedule-interview-dp-inline"
                 />

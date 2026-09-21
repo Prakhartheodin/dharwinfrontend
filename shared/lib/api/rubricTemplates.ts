@@ -41,8 +41,17 @@ export interface RubricTemplatePayload {
   name: string;
   description?: string;
   criteria: RubricCriterion[];
-  appliesTo?: { jobId?: string | null; roundType?: InterviewRoundType | null };
+  /** Catalog filter only. jobId is unused and must not be sent. */
+  appliesTo?: { roundType?: InterviewRoundType | null };
   isDefault?: boolean;
+}
+
+function payloadWithoutJobId(payload: RubricTemplatePayload | Partial<RubricTemplatePayload>) {
+  if (!payload.appliesTo) return payload;
+  return {
+    ...payload,
+    appliesTo: { roundType: payload.appliesTo.roundType ?? null },
+  };
 }
 
 /**
@@ -83,13 +92,38 @@ export function criteriaWeightError(criteria: RubricCriterion[]): string | null 
 }
 
 export async function listRubricTemplates(
-  includeArchived = false
-): Promise<{ results: RubricTemplate[]; totalResults: number }> {
-  const res = await apiClient.get<{ results: RubricTemplate[]; totalResults: number }>(
+  includeArchived = false,
+  options?: { limit?: number; page?: number }
+): Promise<{ results: RubricTemplate[]; totalResults: number; totalPages?: number }> {
+  const params: Record<string, string | number | boolean> = {};
+  if (includeArchived) params.includeArchived = true;
+  if (options?.limit) params.limit = options.limit;
+  if (options?.page) params.page = options.page;
+  const res = await apiClient.get<{ results: RubricTemplate[]; totalResults: number; totalPages?: number }>(
     "/rubric-templates",
-    { params: includeArchived ? { includeArchived: true } : {} }
+    { params }
   );
   return res.data;
+}
+
+/** Every live page, so a job form never silently drops templates past page 1. */
+export async function listAllRubricTemplates(
+  includeArchived = false
+): Promise<{ results: RubricTemplate[]; totalResults: number }> {
+  const pageSize = 100;
+  const collected: RubricTemplate[] = [];
+  let page = 1;
+  let totalResults = 0;
+  const maxPages = 50;
+  do {
+    const res = await listRubricTemplates(includeArchived, { limit: pageSize, page });
+    const rows = res.results || [];
+    collected.push(...rows);
+    totalResults = Number(res.totalResults) || collected.length;
+    if (!rows.length || collected.length >= totalResults) break;
+    page += 1;
+  } while (page <= maxPages);
+  return { results: collected, totalResults };
 }
 
 export async function getRubricTemplate(id: string): Promise<RubricTemplate> {
@@ -98,7 +132,7 @@ export async function getRubricTemplate(id: string): Promise<RubricTemplate> {
 }
 
 export async function createRubricTemplate(payload: RubricTemplatePayload): Promise<RubricTemplate> {
-  const res = await apiClient.post<RubricTemplate>("/rubric-templates", payload);
+  const res = await apiClient.post<RubricTemplate>("/rubric-templates", payloadWithoutJobId(payload));
   return res.data;
 }
 
@@ -106,7 +140,7 @@ export async function updateRubricTemplate(
   id: string,
   payload: Partial<RubricTemplatePayload>
 ): Promise<RubricTemplate> {
-  const res = await apiClient.patch<RubricTemplate>(`/rubric-templates/${id}`, payload);
+  const res = await apiClient.patch<RubricTemplate>(`/rubric-templates/${id}`, payloadWithoutJobId(payload));
   return res.data;
 }
 
@@ -124,10 +158,14 @@ export async function restoreRubricTemplate(id: string): Promise<RubricTemplate>
 export async function resolveRubric(params: {
   jobId?: string | null;
   roundType?: InterviewRoundType | null;
+  planKey?: string | null;
+  templateId?: string | null;
 }): Promise<ResolvedRubric> {
   const query: Record<string, string> = {};
   if (params.jobId) query.jobId = params.jobId;
   if (params.roundType) query.roundType = params.roundType;
+  if (params.planKey) query.planKey = params.planKey;
+  if (params.templateId) query.templateId = params.templateId;
   const res = await apiClient.get<ResolvedRubric>("/rubric-templates/resolve", { params: query });
   return res.data;
 }

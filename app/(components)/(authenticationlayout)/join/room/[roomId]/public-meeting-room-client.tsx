@@ -16,6 +16,8 @@ import Swal from "sweetalert2";
 import * as livekitApi from "@/shared/lib/api/livekit";
 import { endMeetingPublic, getMeeting, type Meeting } from "@/shared/lib/api/meetings";
 import InterviewHostResultOverlay from "@/shared/components/meeting/InterviewHostResultOverlay";
+import OrientationHostChecklist from "@/shared/components/meeting/OrientationHostChecklist";
+import { getInternalMeetingOrientationOnboarding } from "@/shared/lib/api/internal-meetings";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { WaitingParticipantsPanel } from "@/shared/components/livekit/waiting-participants-panel";
 import { MeetingRecordingHostControls } from "@/shared/components/livekit/meeting-recording-host-controls";
@@ -1950,6 +1952,9 @@ export default function PublicMeetingRoomClient() {
   const [isLoading, setIsLoading] = useState(false);
   const [meetingEnded, setMeetingEnded] = useState(false);
   const [hostPostInterview, setHostPostInterview] = useState<Meeting | null>(null);
+  const [hostPostKind, setHostPostKind] = useState<"idle" | "pending" | "orientation" | "interview" | "none">(
+    "idle"
+  );
   const [reconnectKey, setReconnectKey] = useState(0);
   const [hasPermissionError, setHasPermissionError] = useState(false);
   /** Normal participant waiting for host to admit; same page with message + loader */
@@ -2424,18 +2429,34 @@ export default function PublicMeetingRoomClient() {
       reconnectTimerRef.current = null;
     }
     setMeetingEnded(true);
-    if (isHost) {
-      const roomName = decodeURIComponent(roomId);
-      void getMeeting(roomName)
-        .then((meeting) => {
-          if (meeting.candidate?.id || meeting.candidateId) {
-            setHostPostInterview(meeting);
-          }
-        })
-        .catch(() => {
-          /* hosts without list access still see the session-closed screen */
-        });
+    if (!isHost) {
+      setHostPostKind("none");
+      return;
     }
+    const roomName = decodeURIComponent(roomId);
+    setHostPostKind("pending");
+    void (async () => {
+      try {
+        const orientation = await getInternalMeetingOrientationOnboarding(roomName);
+        if (orientation.linked) {
+          setHostPostKind("orientation");
+          return;
+        }
+      } catch {
+        /* not an orientation host view — try interview overlay */
+      }
+      try {
+        const meeting = await getMeeting(roomName);
+        if (meeting.candidate?.id || meeting.candidateId) {
+          setHostPostInterview(meeting);
+          setHostPostKind("interview");
+          return;
+        }
+      } catch {
+        /* hosts without list access still see the session-closed screen */
+      }
+      setHostPostKind("none");
+    })();
   }, [isHost, roomId]);
 
   const handleReconnect = useCallback(async () => {
@@ -2550,13 +2571,46 @@ export default function PublicMeetingRoomClient() {
 
   // Terminal: the meeting has ended for everyone. Wins over every other screen so
   // host and participants all land here, disconnected, with no auto-navigation.
-  if (meetingEnded && isHost && hostPostInterview) {
+  if (meetingEnded && isHost && hostPostKind === "pending") {
+    return (
+      <div className="obs-error">
+        <ObsidianStudioStyles />
+        <div className="obs-error__grain" aria-hidden />
+        <div className="obs-error__card">
+          <span className="obs-mono obs-eyebrow obs-error__eyebrow">— SESSION CLOSED</span>
+          <h2 className="obs-display obs-error__title">
+            The meeting has <em className="obs-display-italic">ended.</em>
+          </h2>
+          <p className="obs-error__msg">Loading host follow-up…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (meetingEnded && isHost && hostPostKind === "orientation") {
+    return (
+      <>
+        <ObsidianStudioStyles />
+        <OrientationHostChecklist
+          meetingId={decodeURIComponent(roomId)}
+          variant="obsidian"
+          layout="overlay"
+          onDismiss={() => setHostPostKind("none")}
+        />
+      </>
+    );
+  }
+
+  if (meetingEnded && isHost && hostPostKind === "interview" && hostPostInterview) {
     return (
       <>
         <ObsidianStudioStyles />
         <InterviewHostResultOverlay
           meeting={hostPostInterview}
-          onDone={() => setHostPostInterview(null)}
+          onDone={() => {
+            setHostPostInterview(null);
+            setHostPostKind("none");
+          }}
           variant="obsidian"
         />
       </>

@@ -17,6 +17,7 @@ import {
 } from '@/shared/lib/ats/applicationPipeline'
 import { getViewerTimezone, getZoneAbbreviation, utcInstantToWallClock } from '@/shared/lib/timezone'
 import DateTimeOverlay from '@/shared/components/datetime/DateTimeOverlay'
+import ScheduleWhenTrigger from '@/shared/components/datetime/ScheduleWhenTrigger'
 import { to12Hour } from '@/shared/components/datetime/daySlots'
 import AgentMultiSelect from './AgentMultiSelect'
 import { saveDraft, loadDraft, clearDraft, type InterviewDraftData } from './interviewDraft'
@@ -28,6 +29,10 @@ import {
   formatScheduleRoundOptionLabel,
 } from './interviewLinkage'
 import { listAllUsers, pickOfficialEmail, hasMeetingEmailMuted } from '@/shared/lib/api/users'
+import { listAllRubricTemplates, type RubricTemplate } from '@/shared/lib/api/rubricTemplates'
+import { rubricOfferableForRow } from '@/shared/components/interview/JobRoundPlanSection'
+import type { InterviewRoundPlanRow } from '@/shared/lib/api/jobs'
+import type { InterviewRoundType } from '@/shared/lib/api/meetings'
 import ParticipantInvitesField, { type ParticipantUser } from '@/shared/components/meeting/ParticipantInvitesField'
 
 function jobIdFromAppJob(job: JobApplication['job'] | undefined | null): string | null {
@@ -60,32 +65,6 @@ function jobOptionsFromApplications(apps: JobApplication[]): Job[] {
   return [...m.values()]
 }
 
-type WhenTriggerProps = { value?: string; onClick: () => void; disabled?: boolean }
-
-/** Trigger card that opens the date/time overlay. */
-function ScheduleInterviewWhenTrigger({ value, onClick, disabled }: WhenTriggerProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      id="schedule-when-trigger"
-      className="group flex w-full items-center gap-3 rounded-xl border border-defaultborder bg-white py-2.5 pl-3.5 pr-12 text-left text-sm shadow-sm transition-[border-color,box-shadow] duration-200 hover:border-primary/35 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-60 dark:border-defaultborder/10 dark:bg-bodybg"
-      aria-haspopup="dialog"
-      aria-label={value ? `Interview date and time: ${value}` : 'Choose interview date and time'}
-    >
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/[0.08] text-primary dark:bg-primary/15">
-        <i className="ri-calendar-schedule-line text-lg" aria-hidden />
-      </span>
-      <span className="min-w-0 flex-1 pr-1">
-        <span className="block text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-textmuted dark:text-white/50">Date and time</span>
-        <span className="block truncate font-medium text-defaulttextcolor dark:text-white">
-          {value || 'Select date & time'}
-        </span>
-      </span>
-    </button>
-  )
-}
 /** Context-aware prefill from ATS Applications page row action. */
 export interface SchedulePrefill {
   applicationId?: string
@@ -198,6 +177,9 @@ export default function CreateInterviewModal({
   const [selectedJobPlanLoading, setSelectedJobPlanLoading] = useState(false)
   const [roundPlanKey, setRoundPlanKey] = useState('')
   const [offPlan, setOffPlan] = useState(false)
+  const [offPlanTemplates, setOffPlanTemplates] = useState<RubricTemplate[]>([])
+  const [offPlanRoundType, setOffPlanRoundType] = useState('')
+  const [offPlanTemplateId, setOffPlanTemplateId] = useState('')
 
   const scheduleRoundReady = Boolean(selectedCandidateId && selectedJobId && selectedApplicationId)
 
@@ -262,6 +244,8 @@ export default function CreateInterviewModal({
   useEffect(() => {
     setRoundPlanKey('')
     setOffPlan(false)
+    setOffPlanRoundType('')
+    setOffPlanTemplateId('')
   }, [selectedCandidateId, selectedJobId])
 
   const schedulePlanRows = useMemo(() => {
@@ -303,6 +287,35 @@ export default function CreateInterviewModal({
     !hasJobPlan &&
     selectedJobPlan !== null &&
     selectedJobPlan.length === 0
+
+  const showOffPlanRubric =
+    scheduleRoundReady && (legacyNoPlan || (hasJobPlan && offPlan)) && !(roundPlanLoading && !hasJobPlan)
+
+  useEffect(() => {
+    if (!showOffPlanRubric) return
+    let cancelled = false
+    void listAllRubricTemplates(false)
+      .then((res) => {
+        if (!cancelled) setOffPlanTemplates(res.results || [])
+      })
+      .catch(() => {
+        if (!cancelled) setOffPlanTemplates([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [showOffPlanRubric])
+
+  const offPlanOfferables = useMemo(() => {
+    const row = {
+      key: 'off_plan',
+      label: 'Off-plan',
+      roundType: (offPlanRoundType || null) as InterviewRoundType | null,
+      templateId: offPlanTemplateId || null,
+      criteria: null,
+    } as InterviewRoundPlanRow
+    return offPlanTemplates.filter((t) => !t.archivedAt && rubricOfferableForRow(t, row))
+  }, [offPlanTemplates, offPlanRoundType, offPlanTemplateId])
 
   useEffect(() => {
     if (!hasJobPlan) {
@@ -998,8 +1011,9 @@ export default function CreateInterviewModal({
                             </label>
                             <select
                               id="schedule-round-type"
-                              defaultValue=""
-                              className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                              value={offPlanRoundType}
+                              onChange={(e) => setOffPlanRoundType(e.target.value)}
+                              className="form-select !py-2 !text-sm w-full min-h-[44px] border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
                             >
                               <option value="">Select type</option>
                               {INTERVIEW_ROUND_TYPE_OPTIONS.map((o) => (
@@ -1018,10 +1032,39 @@ export default function CreateInterviewModal({
                               type="text"
                               id="schedule-round-label"
                               placeholder="e.g. System design"
-                              className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                              className="form-control !py-2 !text-sm w-full min-h-[44px] border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
                             />
                           </div>
                         </div>
+                        {hasJobPlan && offPlan && (
+                          <div className="mt-3">
+                            <label
+                              htmlFor="schedule-round-template-id"
+                              className="mb-1.5 block text-xs font-medium text-textmuted dark:text-white/55"
+                            >
+                              Rubric
+                            </label>
+                            <select
+                              id="schedule-round-template-id"
+                              value={offPlanTemplateId}
+                              onChange={(e) => setOffPlanTemplateId(e.target.value)}
+                              required
+                              className="form-select !py-2 !text-sm w-full min-h-[44px] border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                            >
+                              <option value="">Select a rubric</option>
+                              {offPlanOfferables.map((t) => (
+                                <option key={t.id} value={t.id}>
+                                  {t.name}
+                                  {(t.appliesTo?.roundType ?? null) === null ? ' (any round)' : ''}
+                                </option>
+                              ))}
+                            </select>
+                            <p className="mt-1.5 text-xs text-textmuted dark:text-white/55">
+                              Pick a rubric for this off-plan round. Type is only a label; it does not choose the
+                              rubric.
+                            </p>
+                          </div>
+                        )}
                       </fieldset>
                     )}
                 </div>
@@ -1092,7 +1135,7 @@ export default function CreateInterviewModal({
                       <input type="hidden" id="schedule-date" name="schedule-date" value={scheduleDateStr} readOnly tabIndex={-1} aria-hidden />
                       <input type="hidden" id="schedule-time" name="schedule-time" value={scheduleTimeStr} readOnly tabIndex={-1} aria-hidden />
                       <input type="hidden" id="schedule-timezone" name="schedule-timezone" value={scheduleTimezone} readOnly tabIndex={-1} aria-hidden />
-                      <ScheduleInterviewWhenTrigger
+                      <ScheduleWhenTrigger
                         value={whenTriggerLabel}
                         onClick={() => setDateTimeOverlayOpen(true)}
                         disabled={dropdownsLoading || formLoading}

@@ -87,6 +87,8 @@ export interface InterviewRound {
    * ad-hoc round outside the plan — both legitimate, and neither blocks completion.
    */
   planKey?: string | null;
+  /** Off-plan rounds send the rubric to score against. Planned rounds ignore this. */
+  templateId?: string | null;
 }
 
 /** One row of an application's round plan, with what happened on it. */
