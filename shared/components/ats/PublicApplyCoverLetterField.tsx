@@ -20,7 +20,9 @@ const SIZE_REJECTED_MESSAGE = "That file is larger than 10MB. Choose a smaller f
 
 type PublicApplyCoverLetterFieldProps = {
   file: File | null;
-  inputRef: React.RefObject<HTMLInputElement | null>;
+  /** From `useRef<HTMLInputElement>(null)`. No `| null` on the type argument: @types/react 18
+   *  compares RefObject by variance, so RefObject<HTMLInputElement | null> is not a LegacyRef. */
+  inputRef: React.RefObject<HTMLInputElement>;
   onFileSelected: (file: File | null) => void;
   error?: string | null;
   disabled?: boolean;
