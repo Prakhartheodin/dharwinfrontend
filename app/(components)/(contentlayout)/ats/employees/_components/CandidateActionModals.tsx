@@ -9,6 +9,13 @@ const AsyncSelect = dynamic(() => import('react-select/async'), { ssr: false })
 
 type RecruiterOption = { value: string; label: string }
 
+// 44px touch target (Apple HIG / Material), and shrink-0 so a row of actions
+// wraps instead of collapsing and overlapping its labels.
+const ROW_BTN =
+  '!mb-0 !h-auto !w-auto !min-h-11 !shrink-0 !whitespace-nowrap !inline-flex !items-center !justify-center !px-3 !py-2 !text-[0.8125rem]'
+
+const INVALID_FIELD = '!border-rose-400 dark:!border-rose-500/70'
+
 function loadRecruiterOptions(inputValue: string, callback: (options: RecruiterOption[]) => void) {
   listUsers({ search: inputValue || undefined, limit: 20 })
     .then((res) => {
@@ -184,6 +191,42 @@ export default function CandidateActionModals(props: CandidateActionModalsProps)
   // Recruiter picker's search results are the only source for its label — the modal
   // always resets assignRecruiterId to '' on open, so there's no pre-selected value to
   // resolve from elsewhere (see openAssignRecruiterModal in the parent page).
+  // Field-level validation for the salary-slip form. The submit button stays
+  // enabled so a click always explains what is missing — a disabled button is
+  // neither clickable nor announced, so the user gets no feedback at all.
+  const [slipFieldError, setSlipFieldError] = useState<{ field: string; message: string } | null>(null)
+  const failSlipField = (field: string, message: string, focusId: string) => {
+    setSlipFieldError({ field, message })
+    document.getElementById(focusId)?.focus()
+  }
+  const submitSalarySlip = () => {
+    setSlipFieldError(null)
+    if (!salarySlipForm.month.trim()) {
+      failSlipField('month', 'Enter the month this slip covers.', 'slip-month')
+      return
+    }
+    const year = Number(salarySlipForm.year)
+    if (!salarySlipForm.year.trim() || !Number.isInteger(year) || year < 1900 || year > 2999) {
+      // Without this the parent does parseInt('abc') and stores NaN.
+      failSlipField('year', 'Enter a 4-digit year, e.g. 2024.', 'slip-year')
+      return
+    }
+    if (!salarySlipForm.file) {
+      failSlipField('file', 'Choose the salary slip file to upload.', 'slip-file')
+      return
+    }
+    handleSalarySlipSubmit()
+  }
+
+  const [verifyingDocIdx, setVerifyingDocIdx] = useState<number | null>(null)
+  const runVerify = (candidateId: string, idx: number, status: number) => {
+    if (verifyingDocIdx !== null) return
+    setVerifyingDocIdx(idx)
+    // The prop is typed `=> void` but its implementation is async; wrapping keeps
+    // the guard correct either way.
+    Promise.resolve(handleDocumentVerify(candidateId, idx, status)).finally(() => setVerifyingDocIdx(null))
+  }
+
   const [assignRecruiterOption, setAssignRecruiterOption] = useState<RecruiterOption | null>(null)
   useEffect(() => {
     setAssignRecruiterOption(null)
@@ -200,6 +243,23 @@ export default function CandidateActionModals(props: CandidateActionModalsProps)
               <button type="button" className="hs-dropdown-toggle ti-modal-close-btn" data-hs-overlay="#documents-modal" onClick={() => setDocumentsCandidate(null)}><span className="sr-only">Close</span>×</button>
             </div>
             <div className="ti-modal-body min-h-[200px]">
+              {actionError && (
+                <div
+                  role="alert"
+                  className="mb-3 flex items-start gap-2 rounded-lg border border-danger/25 bg-danger/[0.07] px-3 py-2 text-sm text-danger"
+                >
+                  <i className="ri-alert-line mt-0.5 shrink-0" aria-hidden />
+                  <span className="min-w-0 flex-1">{actionError}</span>
+                  <button
+                    type="button"
+                    className="shrink-0 leading-none opacity-70 hover:opacity-100"
+                    onClick={() => setActionError(null)}
+                    aria-label="Dismiss error"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
               {documentsLoading ? (
                 <div className="flex justify-center items-center py-12">
                   <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent" />
@@ -214,24 +274,48 @@ export default function CandidateActionModals(props: CandidateActionModalsProps)
                         {documentsList.map((doc, idx) => {
                           const st = documentStatusMap[idx]
                           const statusLabel = st?.status === 1 ? 'Approved' : st?.status === 2 ? 'Rejected' : 'Pending'
+                          const statusClass =
+                            st?.status === 1
+                              ? 'bg-success/10 text-success'
+                              : st?.status === 2
+                                ? 'bg-rose-100/70 text-rose-700 dark:bg-rose-950/40 dark:text-rose-200'
+                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                          const docName = doc.label || doc.originalName || `Document ${idx + 1}`
+                          const fullName = `${doc.type ? `[${doc.type}] ` : ''}${docName}`
                           return (
                             <li key={idx} className="flex flex-wrap items-center justify-between gap-2 p-2 border border-gray-200 dark:border-defaultborder/10 rounded">
                               <div className="min-w-0 flex-1">
-                                <span className="text-sm truncate block">{doc.type ? `[${doc.type}] ` : ''}{doc.label || doc.originalName || `Document ${idx + 1}`}</span>
-                                <span className="text-xs text-gray-500 dark:text-gray-400">{statusLabel}</span>
+                                <span className="text-sm truncate block" title={fullName}>{doc.type ? `[${doc.type}] ` : ''}{docName}</span>
+                                <span className={`mt-0.5 inline-block rounded px-1.5 py-0.5 text-[11px] font-medium ${statusClass}`}>
+                                  {statusLabel}
+                                </span>
                               </div>
-                              <div className="flex items-center gap-1 shrink-0">
+                              <div className="flex flex-wrap items-center gap-1 shrink-0">
                                 <button
                                   type="button"
-                                  className="ti-btn ti-btn-sm ti-btn-primary !w-auto !h-auto !min-h-[1.75rem] py-1.5 px-3 whitespace-nowrap"
+                                  className={`ti-btn ti-btn-sm ti-btn-primary ${ROW_BTN}`}
                                   onClick={() => documentsCandidate && handleDocumentDownload(documentsCandidate.id, idx)}
                                 >
                                   Download
                                 </button>
                                 {documentsCandidate && (
                                   <>
-                                    <button type="button" className="ti-btn ti-btn-sm ti-btn-success !w-auto !h-auto !min-h-[1.75rem] py-1.5 px-3 whitespace-nowrap" onClick={() => handleDocumentVerify(documentsCandidate.id, idx, 1)}>Approve</button>
-                                    <button type="button" className="ti-btn ti-btn-sm ti-btn-danger !w-auto !h-auto !min-h-[1.75rem] py-1.5 px-3 whitespace-nowrap" onClick={() => handleDocumentVerify(documentsCandidate.id, idx, 2)}>Reject</button>
+                                    <button
+                                      type="button"
+                                      className={`ti-btn ti-btn-sm ti-btn-success ${ROW_BTN}`}
+                                      disabled={st?.status === 1 || verifyingDocIdx !== null}
+                                      onClick={() => runVerify(documentsCandidate.id, idx, 1)}
+                                    >
+                                      Approve
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={`ti-btn ti-btn-sm ti-btn-danger ${ROW_BTN}`}
+                                      disabled={st?.status === 2 || verifyingDocIdx !== null}
+                                      onClick={() => runVerify(documentsCandidate.id, idx, 2)}
+                                    >
+                                      Reject
+                                    </button>
                                   </>
                                 )}
                               </div>
@@ -246,16 +330,16 @@ export default function CandidateActionModals(props: CandidateActionModalsProps)
                       <h6 className="form-label mb-2">Salary slips</h6>
                       <ul className="space-y-2">
                         {salarySlipsFromCandidate.map((slip, idx) => (
-                          <li key={idx} className="flex items-center justify-between gap-2 p-2 border border-gray-200 dark:border-defaultborder/10 rounded">
+                          <li key={idx} className="flex flex-wrap items-center justify-between gap-2 p-2 border border-gray-200 dark:border-defaultborder/10 rounded">
                             <span className="text-sm">{slip.month ?? ''} {slip.year ?? ''}</span>
                             {documentsCandidate && (
-                              <div className="flex gap-1">
+                              <div className="flex flex-wrap items-center gap-1">
                                 {(slip.key || (slip as any).documentUrl) && (
-                                  <button type="button" className="ti-btn ti-btn-sm ti-btn-primary" onClick={() => handleSalarySlipView(documentsCandidate.id, idx)}>
+                                  <button type="button" className={`ti-btn ti-btn-sm ti-btn-primary ${ROW_BTN}`} onClick={() => handleSalarySlipView(documentsCandidate.id, idx)}>
                                     <i className="ri-external-link-line me-1"></i>View
                                   </button>
                                 )}
-                                <button type="button" className="ti-btn ti-btn-sm ti-btn-danger" onClick={() => handleSalarySlipDelete(documentsCandidate.id, idx)}>Delete</button>
+                                <button type="button" className={`ti-btn ti-btn-sm ti-btn-danger ${ROW_BTN}`} onClick={() => handleSalarySlipDelete(documentsCandidate.id, idx)}>Delete</button>
                               </div>
                             )}
                           </li>
@@ -307,22 +391,80 @@ export default function CandidateActionModals(props: CandidateActionModalsProps)
               <button type="button" className="hs-dropdown-toggle ti-modal-close-btn" data-hs-overlay="#salary-slip-modal" onClick={() => setSalarySlipCandidate(null)}><span className="sr-only">Close</span>×</button>
             </div>
             <div className="ti-modal-body space-y-4">
+              {actionError && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger/[0.07] px-3 py-2 text-sm text-danger"
+                >
+                  <i className="ri-alert-line mt-0.5 shrink-0" aria-hidden />
+                  <span className="min-w-0 flex-1">{actionError}</span>
+                  <button
+                    type="button"
+                    className="shrink-0 leading-none opacity-70 hover:opacity-100"
+                    onClick={() => setActionError(null)}
+                    aria-label="Dismiss error"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
               <div>
-                <label className="form-label">Month</label>
-                <input type="text" className="form-control" placeholder="e.g. January" value={salarySlipForm.month} onChange={(e) => setSalarySlipForm(f => ({ ...f, month: e.target.value }))} />
+                <label className="form-label" htmlFor="slip-month">Month</label>
+                <input
+                  id="slip-month"
+                  type="text"
+                  className={`form-control ${slipFieldError?.field === 'month' ? INVALID_FIELD : ''}`}
+                  placeholder="e.g. January"
+                  value={salarySlipForm.month}
+                  aria-invalid={slipFieldError?.field === 'month' || undefined}
+                  aria-describedby={slipFieldError?.field === 'month' ? 'slip-month-error' : undefined}
+                  onChange={(e) => { setSalarySlipForm(f => ({ ...f, month: e.target.value })); setSlipFieldError(null) }}
+                />
+                {slipFieldError?.field === 'month' && (
+                  <p id="slip-month-error" role="alert" className="mb-0 mt-1 text-xs text-rose-600 dark:text-rose-300">
+                    {slipFieldError.message}
+                  </p>
+                )}
               </div>
               <div>
-                <label className="form-label">Year</label>
-                <input type="number" className="form-control" placeholder="2024" value={salarySlipForm.year} onChange={(e) => setSalarySlipForm(f => ({ ...f, year: e.target.value }))} />
+                <label className="form-label" htmlFor="slip-year">Year</label>
+                <input
+                  id="slip-year"
+                  type="number"
+                  className={`form-control ${slipFieldError?.field === 'year' ? INVALID_FIELD : ''}`}
+                  placeholder="2024"
+                  value={salarySlipForm.year}
+                  aria-invalid={slipFieldError?.field === 'year' || undefined}
+                  aria-describedby={slipFieldError?.field === 'year' ? 'slip-year-error' : undefined}
+                  onChange={(e) => { setSalarySlipForm(f => ({ ...f, year: e.target.value })); setSlipFieldError(null) }}
+                />
+                {slipFieldError?.field === 'year' && (
+                  <p id="slip-year-error" role="alert" className="mb-0 mt-1 text-xs text-rose-600 dark:text-rose-300">
+                    {slipFieldError.message}
+                  </p>
+                )}
               </div>
               <div>
-                <label className="form-label">File</label>
-                <input type="file" className="form-control" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setSalarySlipForm(f => ({ ...f, file: e.target.files?.[0] ?? null }))} />
+                <label className="form-label" htmlFor="slip-file">File</label>
+                <input
+                  id="slip-file"
+                  type="file"
+                  className={`form-control ${slipFieldError?.field === 'file' ? INVALID_FIELD : ''}`}
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  aria-invalid={slipFieldError?.field === 'file' || undefined}
+                  aria-describedby={slipFieldError?.field === 'file' ? 'slip-file-error' : undefined}
+                  onChange={(e) => { setSalarySlipForm(f => ({ ...f, file: e.target.files?.[0] ?? null })); setSlipFieldError(null) }}
+                />
+                {slipFieldError?.field === 'file' && (
+                  <p id="slip-file-error" role="alert" className="mb-0 mt-1 text-xs text-rose-600 dark:text-rose-300">
+                    {slipFieldError.message}
+                  </p>
+                )}
               </div>
             </div>
             <div className="ti-modal-footer">
               <button type="button" className="ti-btn ti-btn-light" data-hs-overlay="#salary-slip-modal">Cancel</button>
-              <button type="button" className="ti-btn ti-btn-primary" disabled={salarySlipSubmitting || !salarySlipForm.month || !salarySlipForm.year || !salarySlipForm.file} onClick={handleSalarySlipSubmit}>
+              <button type="button" className="ti-btn ti-btn-primary" disabled={salarySlipSubmitting} onClick={submitSalarySlip}>
                 {salarySlipSubmitting ? 'Uploading...' : 'Upload'}
               </button>
             </div>
