@@ -52,6 +52,7 @@ export const PERMISSION_SECTIONS: {
       { id: "interviews", label: "Interviews" },
       { id: "offers", label: "Offers" },
       { id: "pre-boarding", label: "Pre-boarding" },
+      { id: "payroll-details", label: "Payroll & bank details" },
       { id: "onboarding", label: "Onboarding" },
       { id: "employees", label: "Employees" },
       { id: "employees.transfer", label: "Transfer employee (internal mobility)" },

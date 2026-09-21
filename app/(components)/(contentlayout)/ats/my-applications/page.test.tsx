@@ -33,6 +33,10 @@ vi.mock("./_components/DocumentsActionCard", () => ({
   default: () => null,
 }));
 
+vi.mock("./_components/PayrollDetailsActionCard", () => ({
+  default: () => null,
+}));
+
 vi.mock("@/shared/hooks/useNow", () => ({
   useNow: () => new Date("2026-08-18T10:00:00.000Z"),
 }));

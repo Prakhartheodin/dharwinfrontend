@@ -33,7 +33,10 @@ export function useModalBehavior({ isOpen, onClose, isDirty = false }: UseModalB
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        requestClose();
+        // While the discard prompt is up, Escape dismisses the prompt rather
+        // than re-raising it — otherwise the modal cannot be escaped at all.
+        if (confirmDiscardOpen) setConfirmDiscardOpen(false);
+        else requestClose();
         return;
       }
       if (e.key === 'Tab' && containerRef.current) {
@@ -54,7 +57,7 @@ export function useModalBehavior({ isOpen, onClose, isDirty = false }: UseModalB
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [isOpen, requestClose]);
+  }, [isOpen, requestClose, confirmDiscardOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
