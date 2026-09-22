@@ -25,6 +25,7 @@ import {
 import { useEadCardExtract } from "@/shared/workforce-profile/resources/useEadCardExtract";
 import { useVisaExtract } from "@/shared/workforce-profile/resources/useVisaExtract";
 import { EadScanNotice } from "@/shared/workforce-profile/components/EadScanNotice";
+import { ScanWarnings, ScanResultSummary } from "@/shared/workforce-profile/components/ScanFeedback";
 import { listDepartments, type Department } from "@/shared/lib/api/departments";
 import { resolveDownloadUrlForBrowser } from "@/shared/lib/api/client";
 import { resolveEmployeeJobTitle } from "@/shared/lib/employee-job-title";
@@ -374,12 +375,16 @@ function DraftFileButton({
   );
 }
 
-// Function to get clickable document thumbnail for supported file types (JPG, JPEG, PNG, PDF)
-const getFileThumbnail = (file: File) => {
+/**
+ * Clickable thumbnail for a picked file. Takes the object URL rather than making one:
+ * this runs on every render, so creating one here leaked a blob per render — and this
+ * form re-renders on every keystroke, each leak pinning the whole file in memory until
+ * the page unloaded. FileThumbnail below owns the URL's lifetime instead.
+ */
+const getFileThumbnail = (file: File, fileUrl: string) => {
   const fileType = file.type.toLowerCase();
   const fileName = file.name.toLowerCase();
-  const fileUrl = URL.createObjectURL(file);
-  
+
   // Image files (JPG, JPEG, PNG) - show actual image
   if (fileType.startsWith('image/') || fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') || fileName.endsWith('.png')) {
     return (
@@ -458,6 +463,17 @@ type ExistingDocRow = {
 };
 
 // Function to get clickable document thumbnail for existing files (JPG, JPEG, PNG, PDF only)
+/**
+ * Owns the object URL for a picked file: created once per file, revoked when the file
+ * changes or the component unmounts. Without this the URL — and the file behind it —
+ * survived until page unload.
+ */
+function FileThumbnail({ file }: { file: File }) {
+  const fileUrl = React.useMemo(() => URL.createObjectURL(file), [file]);
+  React.useEffect(() => () => URL.revokeObjectURL(fileUrl), [fileUrl]);
+  return getFileThumbnail(file, fileUrl);
+}
+
 const getExistingFileThumbnail = (url: string, label: string) => {
   // Rewrite dev localhost API URLs to same-origin /api/v1/... so previews work in UAT/prod.
   const finalUrl = typeof window !== "undefined" ? resolveDownloadUrlForBrowser(url) : url;
@@ -2787,7 +2803,7 @@ export const EmployeeForm = ({
                           eadCardNumber: formData.eadCardNumber,
                           eadValidFrom: formData.eadValidFrom,
                           eadValidTo: formData.eadValidTo,
-                        });
+                        }, "fields");
                       }
                     }}
                   />
@@ -2795,20 +2811,22 @@ export const EmployeeForm = ({
                     type="button"
                     className="ti-btn ti-btn-primary-full whitespace-nowrap !mb-0"
                     disabled={ead.scanning}
+                    aria-busy={ead.scanning}
                     onClick={() => eadFileRef.current?.click()}
                   >
-                    {ead.scanning ? "Reading…" : "Scan card"}
+                    {ead.scanning ? (<><i className="ri-loader-4-line animate-spin" aria-hidden="true" /> Reading…</>) : "Scan card"}
                   </button>
                 </div>
                 <p className="text-xs opacity-70 mt-1">Card# on the front of the card, not the USCIS#.</p>
                 <EadScanNotice
                   pending={ead.pendingReplacements.eadCardNumber}
+                  fieldLabel="EAD card number"
                   onReplace={() => ead.applyReplacement("eadCardNumber")}
                   onKeep={() => ead.dismissReplacement("eadCardNumber")}
                 />
-                {ead.warnings.map((w) => (
-                  <p key={w} className="text-xs text-warning mt-1">{w}</p>
-                ))}
+                {ead.lastSource === "fields" && (
+                  <ScanWarnings warnings={ead.warnings} label="EAD card" />
+                )}
             </div>
             <div className="xl:col-span-6 col-span-12">
                 <YmdFilterDateInput
@@ -2823,6 +2841,7 @@ export const EmployeeForm = ({
                 />
                 <EadScanNotice
                   pending={ead.pendingReplacements.eadValidFrom}
+                  fieldLabel="EAD valid from"
                   onReplace={() => ead.applyReplacement("eadValidFrom")}
                   onKeep={() => ead.dismissReplacement("eadValidFrom")}
                 />
@@ -2840,6 +2859,7 @@ export const EmployeeForm = ({
                 />
                 <EadScanNotice
                   pending={ead.pendingReplacements.eadValidTo}
+                  fieldLabel="EAD card expires"
                   onReplace={() => ead.applyReplacement("eadValidTo")}
                   onKeep={() => ead.dismissReplacement("eadValidTo")}
                 />
@@ -2870,7 +2890,7 @@ export const EmployeeForm = ({
                           visaNumber: formData.visaNumber,
                           visaIssueDate: formData.visaIssueDate,
                           visaExpiryDate: formData.visaExpiryDate,
-                        });
+                        }, "fields");
                       }
                     }}
                   />
@@ -2878,20 +2898,22 @@ export const EmployeeForm = ({
                     type="button"
                     className="ti-btn ti-btn-primary-full whitespace-nowrap !mb-0"
                     disabled={visa.scanning}
+                    aria-busy={visa.scanning}
                     onClick={() => visaFileRef.current?.click()}
                   >
-                    {visa.scanning ? "Reading…" : "Scan visa"}
+                    {visa.scanning ? (<><i className="ri-loader-4-line animate-spin" aria-hidden="true" /> Reading…</>) : "Scan visa"}
                   </button>
                 </div>
                 <p className="text-xs opacity-70 mt-1">Printed in red on the visa, not the passport number.</p>
                 <EadScanNotice
                   pending={visa.pendingReplacements.visaNumber}
+                  fieldLabel="visa number"
                   onReplace={() => visa.applyReplacement("visaNumber")}
                   onKeep={() => visa.dismissReplacement("visaNumber")}
                 />
-                {visa.warnings.map((w) => (
-                  <p key={w} className="text-xs text-warning mt-1">{w}</p>
-                ))}
+                {visa.lastSource === "fields" && (
+                  <ScanWarnings warnings={visa.warnings} label="Visa" />
+                )}
             </div>
             <div className="xl:col-span-6 col-span-12">
                 <YmdFilterDateInput
@@ -2906,6 +2928,7 @@ export const EmployeeForm = ({
                 />
                 <EadScanNotice
                   pending={visa.pendingReplacements.visaIssueDate}
+                  fieldLabel="visa issued date"
                   onReplace={() => visa.applyReplacement("visaIssueDate")}
                   onKeep={() => visa.dismissReplacement("visaIssueDate")}
                 />
@@ -2923,6 +2946,7 @@ export const EmployeeForm = ({
                 />
                 <EadScanNotice
                   pending={visa.pendingReplacements.visaExpiryDate}
+                  fieldLabel="visa expiry date"
                   onReplace={() => visa.applyReplacement("visaExpiryDate")}
                   onKeep={() => visa.dismissReplacement("visaExpiryDate")}
                 />
@@ -3864,7 +3888,7 @@ export const EmployeeForm = ({
                         <div className="xl:col-span-4 col-span-12 flex flex-col">
                           <label className="form-label">File Preview</label>
                           <div className="flex items-center">
-                            {getFileThumbnail(doc.file)}
+                            <FileThumbnail file={doc.file} />
                             <div className="ml-2 text-sm text-gray-600 dark:text-gray-400">
                               <div className="text-xs">{doc.file.name}</div>
                               <div className="text-xs font-medium text-blue-600 dark:text-blue-400">
@@ -3885,6 +3909,7 @@ export const EmployeeForm = ({
                             type="button"
                             className="ti-btn ti-btn-primary-full !mb-0"
                             disabled={ead.scanning}
+                    aria-busy={ead.scanning}
                             onClick={() => {
                               const file = doc.file;
                               if (!file) return;
@@ -3892,26 +3917,26 @@ export const EmployeeForm = ({
                                 eadCardNumber: formData.eadCardNumber,
                                 eadValidFrom: formData.eadValidFrom,
                                 eadValidTo: formData.eadValidTo,
-                              });
+                              }, "documents");
                             }}
                           >
-                            {ead.scanning ? "Reading card…" : "Read card details"}
+                            {ead.scanning ? (<><i className="ri-loader-4-line animate-spin" aria-hidden="true" /> Reading card…</>) : "Read card details"}
                           </button>
 
-                          {ead.lastResult && (
-                            <div className="text-xs mt-2 text-gray-600 dark:text-gray-400">
-                              <div>
-                                Card number: <strong>{ead.lastResult.eadCardNumber || "not readable"}</strong>
-                                {" · "}Valid from: <strong>{ead.lastResult.eadValidFrom || "not readable"}</strong>
-                                {" · "}Expires: <strong>{ead.lastResult.eadValidTo || "not readable"}</strong>
-                              </div>
-                              <div className="mt-1">Filled into the Personal step — review before saving.</div>
-                            </div>
+                          {ead.lastResult && ead.lastSource === "documents" && (
+                            <ScanResultSummary
+                              filledInto="the Personal step"
+                              items={[
+                                { label: "Card number", value: ead.lastResult.eadCardNumber },
+                                { label: "Valid from", value: ead.lastResult.eadValidFrom },
+                                { label: "Expires", value: ead.lastResult.eadValidTo },
+                              ]}
+                            />
                           )}
 
-                          {ead.warnings.map((w) => (
-                            <p key={w} className="text-xs text-warning mt-1">{w}</p>
-                          ))}
+                          {ead.lastSource === "documents" && (
+                            <ScanWarnings warnings={ead.warnings} label="EAD card" />
+                          )}
                         </div>
                       )}
 
@@ -3921,6 +3946,7 @@ export const EmployeeForm = ({
                             type="button"
                             className="ti-btn ti-btn-primary-full !mb-0"
                             disabled={visa.scanning}
+                    aria-busy={visa.scanning}
                             onClick={() => {
                               const file = doc.file;
                               if (!file) return;
@@ -3928,26 +3954,26 @@ export const EmployeeForm = ({
                                 visaNumber: formData.visaNumber,
                                 visaIssueDate: formData.visaIssueDate,
                                 visaExpiryDate: formData.visaExpiryDate,
-                              });
+                              }, "documents");
                             }}
                           >
-                            {visa.scanning ? "Reading visa…" : "Read visa details"}
+                            {visa.scanning ? (<><i className="ri-loader-4-line animate-spin" aria-hidden="true" /> Reading visa…</>) : "Read visa details"}
                           </button>
 
-                          {visa.lastResult && (
-                            <div className="text-xs mt-2 text-gray-600 dark:text-gray-400">
-                              <div>
-                                Visa number: <strong>{visa.lastResult.visaNumber || "not readable"}</strong>
-                                {" · "}Issued: <strong>{visa.lastResult.visaIssueDate || "not readable"}</strong>
-                                {" · "}Expires: <strong>{visa.lastResult.visaExpiryDate || "not readable"}</strong>
-                              </div>
-                              <div className="mt-1">Filled into the Personal step — review before saving.</div>
-                            </div>
+                          {visa.lastResult && visa.lastSource === "documents" && (
+                            <ScanResultSummary
+                              filledInto="the Personal step"
+                              items={[
+                                { label: "Visa number", value: visa.lastResult.visaNumber },
+                                { label: "Issued", value: visa.lastResult.visaIssueDate },
+                                { label: "Expires", value: visa.lastResult.visaExpiryDate },
+                              ]}
+                            />
                           )}
 
-                          {visa.warnings.map((w) => (
-                            <p key={w} className="text-xs text-warning mt-1">{w}</p>
-                          ))}
+                          {visa.lastSource === "documents" && (
+                            <ScanWarnings warnings={visa.warnings} label="Visa" />
+                          )}
                         </div>
                       )}
                     </div>
@@ -4213,7 +4239,7 @@ export const EmployeeForm = ({
               <div className="xl:col-span-4 col-span-12 mt-6">
                 <label className="form-label">File Preview</label>
                 <div className="flex items-center">
-                  {slip.file ? getFileThumbnail(slip.file) : getExistingFileThumbnail(slip.documentUrl, `${slip.month} ${slip.year}`)}
+                  {slip.file ? <FileThumbnail file={slip.file} /> : getExistingFileThumbnail(slip.documentUrl, `${slip.month} ${slip.year}`)}
                   <div className="ml-2 text-sm text-gray-600 dark:text-gray-400">
                     <div className="text-xs">{slip.file ? slip.file.name : 'Uploaded File'}</div>
                     <div className="text-xs font-medium text-blue-600 dark:text-blue-400">

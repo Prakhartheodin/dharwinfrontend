@@ -68,6 +68,12 @@ export function useScannedDocumentFields<K extends string, R extends ScanRespons
    * fields themselves, so the caller needs something to show in place.
    */
   const [lastResult, setLastResult] = useState<ScanValues<K> | null>(null);
+  /**
+   * Which surface started the last scan. One hook instance serves both the field
+   * block and the document row, so without this a scan from either rendered its
+   * warnings in both places at once.
+   */
+  const [lastSource, setLastSource] = useState<string | null>(null);
   // A second click while the first request is in flight would race two patches into the form.
   const inFlight = useRef(false);
 
@@ -76,14 +82,16 @@ export function useScannedDocumentFields<K extends string, R extends ScanRespons
     setNeedsReview([]);
     setPendingReplacements({});
     setLastResult(null);
+    setLastSource(null);
   }, []);
 
   const scanFile = useCallback(
-    async (file: File, current: ScanValues<K>) => {
+    async (file: File, current: ScanValues<K>, source?: string) => {
       if (inFlight.current) return;
       inFlight.current = true;
       setScanning(true);
       reset();
+      setLastSource(source ?? null);
 
       try {
         const res = await scan(file);
@@ -150,6 +158,7 @@ export function useScannedDocumentFields<K extends string, R extends ScanRespons
     needsReview,
     pendingReplacements,
     lastResult,
+    lastSource,
     scanFile,
     applyReplacement,
     dismissReplacement,

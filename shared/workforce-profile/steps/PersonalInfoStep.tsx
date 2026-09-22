@@ -6,6 +6,7 @@ import { useWorkforceStore } from "../state/workforce.store";
 import { useEadCardExtract } from "../resources/useEadCardExtract";
 import { useVisaExtract } from "../resources/useVisaExtract";
 import { EadScanNotice } from "../components/EadScanNotice";
+import { ScanWarnings } from "../components/ScanFeedback";
 import { useWizardContext } from "../engine/WizardContext";
 import { getPhoneCountry } from "@/shared/lib/phoneCountries";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
@@ -552,23 +553,21 @@ export function PersonalInfoStep() {
                     type="button"
                     className="ti-btn ti-btn-primary-full whitespace-nowrap !mb-0"
                     disabled={ead.scanning}
+                    aria-busy={ead.scanning}
                     onClick={() => eadFileRef.current?.click()}
                   >
-                    {ead.scanning ? "Reading…" : "Scan card"}
+                    {ead.scanning ? (<><i className="ri-loader-4-line animate-spin" aria-hidden="true" /> Reading…</>) : "Scan card"}
                   </button>
                 </>
               )}
             </div>
             <EadScanNotice
               pending={ead.pendingReplacements.eadCardNumber}
+              fieldLabel="EAD card number"
               onReplace={() => ead.applyReplacement("eadCardNumber")}
               onKeep={() => ead.dismissReplacement("eadCardNumber")}
             />
-            {ead.warnings.map((w) => (
-              <p key={w} className="text-xs text-warning mt-1">
-                {w}
-              </p>
-            ))}
+            <ScanWarnings warnings={ead.warnings} label="EAD card" />
           </Field>
 
           <Field id="eadValidFrom" label="EAD valid from" optional>
@@ -585,6 +584,7 @@ export function PersonalInfoStep() {
             />
             <EadScanNotice
               pending={ead.pendingReplacements.eadValidFrom}
+              fieldLabel="EAD valid from"
               onReplace={() => ead.applyReplacement("eadValidFrom")}
               onKeep={() => ead.dismissReplacement("eadValidFrom")}
             />
@@ -604,6 +604,7 @@ export function PersonalInfoStep() {
             />
             <EadScanNotice
               pending={ead.pendingReplacements.eadValidTo}
+              fieldLabel="EAD card expires"
               onReplace={() => ead.applyReplacement("eadValidTo")}
               onKeep={() => ead.dismissReplacement("eadValidTo")}
             />
@@ -697,23 +698,21 @@ export function PersonalInfoStep() {
                     type="button"
                     className="ti-btn ti-btn-primary-full whitespace-nowrap !mb-0"
                     disabled={visa.scanning}
+                    aria-busy={visa.scanning}
                     onClick={() => visaFileRef.current?.click()}
                   >
-                    {visa.scanning ? "Reading…" : "Scan visa"}
+                    {visa.scanning ? (<><i className="ri-loader-4-line animate-spin" aria-hidden="true" /> Reading…</>) : "Scan visa"}
                   </button>
                 </>
               )}
             </div>
             <EadScanNotice
               pending={visa.pendingReplacements.visaNumber}
+              fieldLabel="visa number"
               onReplace={() => visa.applyReplacement("visaNumber")}
               onKeep={() => visa.dismissReplacement("visaNumber")}
             />
-            {visa.warnings.map((w) => (
-              <p key={w} className="text-xs text-warning mt-1">
-                {w}
-              </p>
-            ))}
+            <ScanWarnings warnings={visa.warnings} label="Visa" />
           </Field>
 
           <Field id="visaIssueDate" label="Visa issued" optional>
@@ -730,6 +729,7 @@ export function PersonalInfoStep() {
             />
             <EadScanNotice
               pending={visa.pendingReplacements.visaIssueDate}
+              fieldLabel="visa issued date"
               onReplace={() => visa.applyReplacement("visaIssueDate")}
               onKeep={() => visa.dismissReplacement("visaIssueDate")}
             />
@@ -749,6 +749,7 @@ export function PersonalInfoStep() {
             />
             <EadScanNotice
               pending={visa.pendingReplacements.visaExpiryDate}
+              fieldLabel="visa expiry date"
               onReplace={() => visa.applyReplacement("visaExpiryDate")}
               onKeep={() => visa.dismissReplacement("visaExpiryDate")}
             />
