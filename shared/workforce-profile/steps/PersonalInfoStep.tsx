@@ -1,7 +1,10 @@
 "use client";
 
-import React, { useId } from "react";
+import React, { useId, useRef } from "react";
+import { YmdFilterDateInput } from "@/shared/components/filters/YmdFilterDateInput";
 import { useWorkforceStore } from "../state/workforce.store";
+import { useEadCardExtract } from "../resources/useEadCardExtract";
+import { EadScanNotice } from "../components/EadScanNotice";
 import { useWizardContext } from "../engine/WizardContext";
 import { getPhoneCountry } from "@/shared/lib/phoneCountries";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
@@ -158,6 +161,8 @@ function Section({ icon, title, hint, children }: SectionProps) {
 export function PersonalInfoStep() {
   const pi = useWorkforceStore((s) => s.personalInfo);
   const setPersonalInfo = useWorkforceStore((s) => s.setPersonalInfo);
+  const eadFileRef = useRef<HTMLInputElement | null>(null);
+  const ead = useEadCardExtract((patch) => setPersonalInfo(patch));
   const { issuesByField, mode, currentIndex, steps, submitAttempted } = useWizardContext();
   const auth = useAuth();
   const fileInputId = useId();
@@ -486,6 +491,109 @@ export function PersonalInfoStep() {
               readOnly={adminOwnedReadOnly}
               className={inputClass(false, adminOwnedReadOnly)}
               placeholder="Employment authorization"
+            />
+          </Field>
+
+          <Field
+            id="eadCardNumber"
+            label="EAD card number"
+            optional
+            hint={
+              adminOwnedReadOnly
+                ? hrOwnedHint
+                : "Card# on the front of the card, not the USCIS#."
+            }
+          >
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={pi.eadCardNumber}
+                onChange={onText("eadCardNumber")}
+                readOnly={adminOwnedReadOnly}
+                className={inputClass(
+                  ead.needsReview.includes("cardNumber"),
+                  adminOwnedReadOnly,
+                )}
+                placeholder="e.g. SRC0000000701"
+              />
+              {!adminOwnedReadOnly && (
+                <>
+                  <input
+                    ref={eadFileRef}
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      // Reset first: picking the same file twice fires no change event otherwise.
+                      e.target.value = "";
+                      if (file) {
+                        void ead.scanCard(file, {
+                          eadCardNumber: pi.eadCardNumber,
+                          eadValidFrom: pi.eadValidFrom,
+                          eadValidTo: pi.eadValidTo,
+                        });
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-primary-full whitespace-nowrap !mb-0"
+                    disabled={ead.scanning}
+                    onClick={() => eadFileRef.current?.click()}
+                  >
+                    {ead.scanning ? "Reading…" : "Scan card"}
+                  </button>
+                </>
+              )}
+            </div>
+            <EadScanNotice
+              pending={ead.pendingReplacements.eadCardNumber}
+              onReplace={() => ead.applyReplacement("eadCardNumber")}
+              onKeep={() => ead.dismissReplacement("eadCardNumber")}
+            />
+            {ead.warnings.map((w) => (
+              <p key={w} className="text-xs text-warning mt-1">
+                {w}
+              </p>
+            ))}
+          </Field>
+
+          <Field id="eadValidFrom" label="EAD valid from" optional>
+            <YmdFilterDateInput
+              label="EAD valid from"
+              hideLabel
+              variant="form"
+              inputId="eadValidFrom"
+              portalId="ead-valid-from-datepicker"
+              popperClassName="!z-[10050]"
+              value={pi.eadValidFrom}
+              disabled={adminOwnedReadOnly}
+              onCommit={(ymd) => setPersonalInfo({ eadValidFrom: ymd })}
+            />
+            <EadScanNotice
+              pending={ead.pendingReplacements.eadValidFrom}
+              onReplace={() => ead.applyReplacement("eadValidFrom")}
+              onKeep={() => ead.dismissReplacement("eadValidFrom")}
+            />
+          </Field>
+
+          <Field id="eadValidTo" label="EAD card expires" optional>
+            <YmdFilterDateInput
+              label="EAD card expires"
+              hideLabel
+              variant="form"
+              inputId="eadValidTo"
+              portalId="ead-valid-to-datepicker"
+              popperClassName="!z-[10050]"
+              value={pi.eadValidTo}
+              disabled={adminOwnedReadOnly}
+              onCommit={(ymd) => setPersonalInfo({ eadValidTo: ymd })}
+            />
+            <EadScanNotice
+              pending={ead.pendingReplacements.eadValidTo}
+              onReplace={() => ead.applyReplacement("eadValidTo")}
+              onKeep={() => ead.dismissReplacement("eadValidTo")}
             />
           </Field>
 

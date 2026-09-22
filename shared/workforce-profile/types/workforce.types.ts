@@ -21,6 +21,10 @@ export type PersonalInfoSlice = {
   customVisaType: string;
   sevisId: string;
   ead: string;
+  eadCardNumber: string;
+  /** YYYY-MM-DD, never a Date and never an ISO timestamp. See mapper.ts for why. */
+  eadValidFrom: string;
+  eadValidTo: string;
   supervisorName: string;
   supervisorContact: string;
   supervisorCountryCode: string;
@@ -112,6 +116,10 @@ export type NormalizedWorkforce = {
   customVisaType: string;
   sevisId: string;
   ead: string;
+  eadCardNumber: string;
+  /** YYYY-MM-DD, never a Date and never an ISO timestamp. See mapper.ts for why. */
+  eadValidFrom: string;
+  eadValidTo: string;
   supervisorName: string;
   supervisorContact: string;
   supervisorCountryCode: string;

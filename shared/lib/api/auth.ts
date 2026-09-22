@@ -241,6 +241,43 @@ export async function extractSkillsFromResume(file: File): Promise<ExtractSkills
   return data;
 }
 
+/** The three EAD fields, as ISO YYYY-MM-DD strings. Null means "not readable", never "empty". */
+export interface EadCardFields {
+  cardNumber: string | null;
+  validFrom: string | null;
+  validTo: string | null;
+}
+
+export interface ExtractEadCardResponse {
+  fields: EadCardFields;
+  /** Field names whose value was read but looks unusual — show it, but make the user look. */
+  needsReview: string[];
+  /** Human-readable notes, already phrased for display. */
+  warnings: string[];
+}
+
+/** Read Card#, Valid From and Card Expires off a photo of an I-766 front. Stores nothing. */
+export async function extractEadCard(file: File): Promise<ExtractEadCardResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  // Do not set Content-Type — apiClient defaults to JSON; FormData needs the browser to set
+  // multipart/form-data WITH its boundary, or multer can't parse the file and req.file is undefined.
+  const { data } = await apiClient.post<ExtractEadCardResponse>(
+    AUTH_ENDPOINTS.extractEadCard,
+    formData,
+    {
+      timeout: 120000,
+      transformRequest: [
+        (body: unknown, headers: Record<string, string>) => {
+          delete headers["Content-Type"];
+          return body;
+        },
+      ],
+    } as any
+  );
+  return data;
+}
+
 /** Payload for POST /auth/me/recommend-skills-by-role — OpenAI gap analysis vs target role. */
 export interface RecommendSkillsByRolePayload {
   role: string;

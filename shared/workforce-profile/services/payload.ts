@@ -77,6 +77,11 @@ export function toCandidatePayload(
     ...(n.degree ? { degree: n.degree } : {}),
     ...(n.sevisId ? { sevisId: n.sevisId } : {}),
     ...(n.ead ? { ead: n.ead } : {}),
+    ...(n.eadCardNumber ? { eadCardNumber: n.eadCardNumber } : {}),
+    // Send the bare YMD string. Never new Date(ymd).toISOString() — that reintroduces
+    // the timezone shift the mapper's read side exists to avoid.
+    ...(n.eadValidFrom ? { eadValidFrom: n.eadValidFrom } : {}),
+    ...(n.eadValidTo ? { eadValidTo: n.eadValidTo } : {}),
     ...(n.visaType ? { visaType: n.visaType } : {}),
     ...(n.customVisaType ? { customVisaType: n.customVisaType } : {}),
     ...(n.supervisorName ? { supervisorName: n.supervisorName } : {}),

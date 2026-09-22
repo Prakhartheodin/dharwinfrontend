@@ -144,6 +144,12 @@ export function mapToFormState(source: WorkforceSource): WorkforceFormState {
     customVisaType: asString(migrated.customVisaType, empty.personalInfo.customVisaType),
     sevisId: asString(migrated.sevisId, empty.personalInfo.sevisId),
     ead: asString(migrated.ead, empty.personalInfo.ead),
+    eadCardNumber: asString(migrated.eadCardNumber, empty.personalInfo.eadCardNumber),
+    // ISO prefix, never new Date(...).getFullYear()/getMonth()/getDate(). The value is
+    // stored at UTC midnight, so local getters return the PREVIOUS calendar day for any
+    // viewer west of UTC — an off-by-one on a work-authorisation expiry is an I-9 error.
+    eadValidFrom: asString(migrated.eadValidFrom, "").slice(0, 10),
+    eadValidTo: asString(migrated.eadValidTo, "").slice(0, 10),
     supervisorName: asString(migrated.supervisorName, empty.personalInfo.supervisorName),
     supervisorContact: asString(migrated.supervisorContact, empty.personalInfo.supervisorContact),
     supervisorCountryCode: asString(

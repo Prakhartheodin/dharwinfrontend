@@ -22,6 +22,8 @@ import {
   ReservedVersionedLabelError,
   resolveGenericDocumentUploadLabel,
 } from "@/shared/components/candidates/documentUploadUx";
+import { useEadCardExtract } from "@/shared/workforce-profile/resources/useEadCardExtract";
+import { EadScanNotice } from "@/shared/workforce-profile/components/EadScanNotice";
 import { listDepartments, type Department } from "@/shared/lib/api/departments";
 import { resolveDownloadUrlForBrowser } from "@/shared/lib/api/client";
 import { resolveEmployeeJobTitle } from "@/shared/lib/employee-job-title";
@@ -618,7 +620,7 @@ export const EmployeeForm = ({
   }, [canManageEmployees]);
 
   const [formData, setFormData] = useState({ 
-    fullName: "", email: "", phoneNumber: "", countryCode: "IN", shortBio: "", sevisId: "", ead: "", degree: "", designation: "", compensationType: "", employmentType: "", supervisorName: "", supervisorContact: "", supervisorCountryCode: "IN", visaType: "", customVisaType: "", salaryRange: "", streetAddress: "", streetAddress2: "", city: "", state: "", zipCode: "", country: "", password: "",
+    fullName: "", email: "", phoneNumber: "", countryCode: "IN", shortBio: "", sevisId: "", ead: "", eadCardNumber: "", eadValidFrom: "", eadValidTo: "", degree: "", designation: "", compensationType: "", employmentType: "", supervisorName: "", supervisorContact: "", supervisorCountryCode: "IN", visaType: "", customVisaType: "", salaryRange: "", streetAddress: "", streetAddress2: "", city: "", state: "", zipCode: "", country: "", password: "",
     companyAssignedEmail: "",
     companyEmailProvider: "" as "" | "gmail" | "outlook" | "unknown",
     departmentId: "",
@@ -790,6 +792,10 @@ export const EmployeeForm = ({
     }
   }, [candidateId]);
 
+  const eadFileRef = useRef<HTMLInputElement | null>(null);
+  const ead = useEadCardExtract((patch) =>
+    setFormData((prev) => ({ ...prev, ...patch }))
+  );
   const newDocumentsRef = useRef<HTMLDivElement>(null);
   const pendingNewDocScrollRef = useRef(false);
 
@@ -1920,6 +1926,12 @@ export const EmployeeForm = ({
         shortBio: initialData.shortBio || "",
         sevisId: initialData.sevisId || "",
         ead: initialData.ead || "",
+        eadCardNumber: initialData.eadCardNumber || "",
+        // ISO prefix, never local Date getters. The value is stored at UTC midnight, so
+        // getFullYear()/getMonth()/getDate() return the PREVIOUS calendar day for any
+        // viewer west of UTC — an off-by-one EAD expiry is an I-9 error, not a cosmetic one.
+        eadValidFrom: String(initialData.eadValidFrom ?? "").slice(0, 10),
+        eadValidTo: String(initialData.eadValidTo ?? "").slice(0, 10),
         degree: initialData.degree || "",
         designation: resolveEmployeeJobTitle(initialData) || initialData.designation || "",
         compensationType: initialData.compensationType || "",
@@ -2254,6 +2266,11 @@ export const EmployeeForm = ({
         profilePicture: finalProfilePicture || {},
         sevisId: formData.sevisId,
         ead: formData.ead,
+        eadCardNumber: formData.eadCardNumber,
+        // Bare YYYY-MM-DD. Never new Date(ymd).toISOString() — that reintroduces the
+        // timezone shift the read side above exists to avoid. Empty clears the field.
+        eadValidFrom: formData.eadValidFrom || null,
+        eadValidTo: formData.eadValidTo || null,
         degree: formData.degree,
         designation: formData.designation?.trim() || undefined,
         // Sent only when set. Unlike compensationType this needs no override flag: there is no
@@ -2726,6 +2743,89 @@ export const EmployeeForm = ({
             <div className="xl:col-span-6 col-span-12">
                 <label htmlFor="ead" className="form-label">EAD</label>
                 <input type="text" name="ead" value={formData.ead} onChange={handleFormChange} className="form-control w-full !rounded-md" id="ead" placeholder="EAD" />
+            </div>
+            <div className="xl:col-span-6 col-span-12">
+                <label htmlFor="eadCardNumber" className="form-label">EAD card number</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    name="eadCardNumber"
+                    value={formData.eadCardNumber}
+                    onChange={handleFormChange}
+                    className="form-control w-full !rounded-md"
+                    id="eadCardNumber"
+                    placeholder="e.g. SRC0000000701"
+                  />
+                  <input
+                    ref={eadFileRef}
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      // Reset first: picking the same file twice fires no change event otherwise.
+                      e.target.value = "";
+                      if (file) {
+                        void ead.scanCard(file, {
+                          eadCardNumber: formData.eadCardNumber,
+                          eadValidFrom: formData.eadValidFrom,
+                          eadValidTo: formData.eadValidTo,
+                        });
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-primary-full whitespace-nowrap !mb-0"
+                    disabled={ead.scanning}
+                    onClick={() => eadFileRef.current?.click()}
+                  >
+                    {ead.scanning ? "Reading…" : "Scan card"}
+                  </button>
+                </div>
+                <p className="text-xs opacity-70 mt-1">Card# on the front of the card, not the USCIS#.</p>
+                <EadScanNotice
+                  pending={ead.pendingReplacements.eadCardNumber}
+                  onReplace={() => ead.applyReplacement("eadCardNumber")}
+                  onKeep={() => ead.dismissReplacement("eadCardNumber")}
+                />
+                {ead.warnings.map((w) => (
+                  <p key={w} className="text-xs text-warning mt-1">{w}</p>
+                ))}
+            </div>
+            <div className="xl:col-span-6 col-span-12">
+                <YmdFilterDateInput
+                  label="EAD valid from"
+                  variant="form"
+                  inputId="eadValidFrom"
+                  portalId="admin-ead-valid-from-datepicker"
+                  value={formData.eadValidFrom}
+                  labelClassName="form-label"
+                  inputClassName="form-control w-full !rounded-md"
+                  onCommit={(ymd) => setFormData((prev) => ({ ...prev, eadValidFrom: ymd }))}
+                />
+                <EadScanNotice
+                  pending={ead.pendingReplacements.eadValidFrom}
+                  onReplace={() => ead.applyReplacement("eadValidFrom")}
+                  onKeep={() => ead.dismissReplacement("eadValidFrom")}
+                />
+            </div>
+            <div className="xl:col-span-6 col-span-12">
+                <YmdFilterDateInput
+                  label="EAD card expires"
+                  variant="form"
+                  inputId="eadValidTo"
+                  portalId="admin-ead-valid-to-datepicker"
+                  value={formData.eadValidTo}
+                  labelClassName="form-label"
+                  inputClassName="form-control w-full !rounded-md"
+                  onCommit={(ymd) => setFormData((prev) => ({ ...prev, eadValidTo: ymd }))}
+                />
+                <EadScanNotice
+                  pending={ead.pendingReplacements.eadValidTo}
+                  onReplace={() => ead.applyReplacement("eadValidTo")}
+                  onKeep={() => ead.dismissReplacement("eadValidTo")}
+                />
             </div>
             <div className="xl:col-span-6 col-span-12">
                 <label htmlFor="degree" className="form-label">Degree</label>

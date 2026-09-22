@@ -21,6 +21,8 @@ export const AUTH_ENDPOINTS = {
   meWithCandidate: "auth/me/with-candidate",
   /** Resume/CV skill extraction (multipart file PDF/DOCX). Server uses OPENAI_API_KEY. */
   extractSkillsFromResume: "auth/me/extract-skills-from-resume",
+  /** EAD (I-766) card read (multipart image/PDF). Stateless — nothing is stored server-side. */
+  extractEadCard: "auth/me/extract-ead-card",
   /** Suggest skills for a job role (JSON `{ role }`). Same OPENAI integration as resume extraction. */
   recommendSkillsByRole: "auth/me/recommend-skills-by-role",
   /** Request verification email for the current user (auth only; no permission required). */
