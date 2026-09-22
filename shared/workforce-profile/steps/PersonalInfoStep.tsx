@@ -185,6 +185,14 @@ export function PersonalInfoStep() {
   // admin-owned: the self-service PATCH omits them, so editable inputs would
   // discard changes silently or risk clearing server values on save.
   const adminOwnedReadOnly = isSelfService;
+  /**
+   * The EAD and visa details a scan fills are NOT admin-owned. CANDIDATE_ME_FIELDS on
+   * the server has always accepted `ead`, `sevisId` and `visaType` from a person's own
+   * PATCH, so the scanned equivalents belong to them too — and locking them here would
+   * leave the scan button hidden for every employee and candidate in their own wizard.
+   * Job title, company mailbox and compensation stay behind adminOwnedReadOnly.
+   */
+  const scannedIdReadOnly = false;
   const hrOwnedHint = "Managed by your administrator.";
 
   const fieldErr = (key: string): string | null => {
@@ -511,25 +519,21 @@ export function PersonalInfoStep() {
             id="eadCardNumber"
             label="EAD card number"
             optional
-            hint={
-              adminOwnedReadOnly
-                ? hrOwnedHint
-                : "Card# on the front of the card, not the USCIS#."
-            }
+            hint="Card# on the front of the card, not the USCIS#."
           >
             <div className="flex gap-2">
               <input
                 type="text"
                 value={pi.eadCardNumber}
                 onChange={onText("eadCardNumber")}
-                readOnly={adminOwnedReadOnly}
+                readOnly={scannedIdReadOnly}
                 className={inputClass(
                   ead.needsReview.includes("cardNumber"),
-                  adminOwnedReadOnly,
+                  scannedIdReadOnly,
                 )}
                 placeholder="e.g. SRC0000000701"
               />
-              {!adminOwnedReadOnly && (
+              {!scannedIdReadOnly && (
                 <>
                   <input
                     ref={eadFileRef}
@@ -562,10 +566,14 @@ export function PersonalInfoStep() {
               )}
             </div>
             <EadScanNotice
-              pending={ead.pendingReplacements.eadCardNumber}
-              fieldLabel="EAD card number"
-              onReplace={() => ead.applyReplacement("eadCardNumber")}
-              onKeep={() => ead.dismissReplacement("eadCardNumber")}
+              documentLabel="EAD card"
+              onReplaceAll={ead.applyAllReplacements}
+              onKeepAll={ead.dismissAllReplacements}
+              items={[
+                { label: "Card number", value: ead.pendingReplacements.eadCardNumber },
+                { label: "Valid from", value: ead.pendingReplacements.eadValidFrom },
+                { label: "Expires", value: ead.pendingReplacements.eadValidTo },
+              ].filter((i): i is { label: string; value: string } => Boolean(i.value))}
             />
             <ScanWarnings warnings={ead.warnings} label="EAD card" />
           </Field>
@@ -579,14 +587,8 @@ export function PersonalInfoStep() {
               portalId="ead-valid-from-datepicker"
               popperClassName="!z-[10050]"
               value={pi.eadValidFrom}
-              disabled={adminOwnedReadOnly}
+              disabled={scannedIdReadOnly}
               onCommit={(ymd) => setPersonalInfo({ eadValidFrom: ymd })}
-            />
-            <EadScanNotice
-              pending={ead.pendingReplacements.eadValidFrom}
-              fieldLabel="EAD valid from"
-              onReplace={() => ead.applyReplacement("eadValidFrom")}
-              onKeep={() => ead.dismissReplacement("eadValidFrom")}
             />
           </Field>
 
@@ -599,14 +601,8 @@ export function PersonalInfoStep() {
               portalId="ead-valid-to-datepicker"
               popperClassName="!z-[10050]"
               value={pi.eadValidTo}
-              disabled={adminOwnedReadOnly}
+              disabled={scannedIdReadOnly}
               onCommit={(ymd) => setPersonalInfo({ eadValidTo: ymd })}
-            />
-            <EadScanNotice
-              pending={ead.pendingReplacements.eadValidTo}
-              fieldLabel="EAD card expires"
-              onReplace={() => ead.applyReplacement("eadValidTo")}
-              onKeep={() => ead.dismissReplacement("eadValidTo")}
             />
           </Field>
 
@@ -656,25 +652,21 @@ export function PersonalInfoStep() {
             id="visaNumber"
             label="Visa number"
             optional
-            hint={
-              adminOwnedReadOnly
-                ? hrOwnedHint
-                : "Printed in red on the visa, not the passport number."
-            }
+            hint="Printed in red on the visa, not the passport number."
           >
             <div className="flex gap-2">
               <input
                 type="text"
                 value={pi.visaNumber}
                 onChange={onText("visaNumber")}
-                readOnly={adminOwnedReadOnly}
+                readOnly={scannedIdReadOnly}
                 className={inputClass(
                   visa.needsReview.includes("visaNumber"),
-                  adminOwnedReadOnly,
+                  scannedIdReadOnly,
                 )}
                 placeholder="e.g. 00000001"
               />
-              {!adminOwnedReadOnly && (
+              {!scannedIdReadOnly && (
                 <>
                   <input
                     ref={visaFileRef}
@@ -707,10 +699,14 @@ export function PersonalInfoStep() {
               )}
             </div>
             <EadScanNotice
-              pending={visa.pendingReplacements.visaNumber}
-              fieldLabel="visa number"
-              onReplace={() => visa.applyReplacement("visaNumber")}
-              onKeep={() => visa.dismissReplacement("visaNumber")}
+              documentLabel="visa"
+              onReplaceAll={visa.applyAllReplacements}
+              onKeepAll={visa.dismissAllReplacements}
+              items={[
+                { label: "Visa number", value: visa.pendingReplacements.visaNumber },
+                { label: "Issued", value: visa.pendingReplacements.visaIssueDate },
+                { label: "Expires", value: visa.pendingReplacements.visaExpiryDate },
+              ].filter((i): i is { label: string; value: string } => Boolean(i.value))}
             />
             <ScanWarnings warnings={visa.warnings} label="Visa" />
           </Field>
@@ -724,14 +720,8 @@ export function PersonalInfoStep() {
               portalId="visa-issue-datepicker"
               popperClassName="!z-[10050]"
               value={pi.visaIssueDate}
-              disabled={adminOwnedReadOnly}
+              disabled={scannedIdReadOnly}
               onCommit={(ymd) => setPersonalInfo({ visaIssueDate: ymd })}
-            />
-            <EadScanNotice
-              pending={visa.pendingReplacements.visaIssueDate}
-              fieldLabel="visa issued date"
-              onReplace={() => visa.applyReplacement("visaIssueDate")}
-              onKeep={() => visa.dismissReplacement("visaIssueDate")}
             />
           </Field>
 
@@ -744,14 +734,8 @@ export function PersonalInfoStep() {
               portalId="visa-expiry-datepicker"
               popperClassName="!z-[10050]"
               value={pi.visaExpiryDate}
-              disabled={adminOwnedReadOnly}
+              disabled={scannedIdReadOnly}
               onCommit={(ymd) => setPersonalInfo({ visaExpiryDate: ymd })}
-            />
-            <EadScanNotice
-              pending={visa.pendingReplacements.visaExpiryDate}
-              fieldLabel="visa expiry date"
-              onReplace={() => visa.applyReplacement("visaExpiryDate")}
-              onKeep={() => visa.dismissReplacement("visaExpiryDate")}
             />
           </Field>
 

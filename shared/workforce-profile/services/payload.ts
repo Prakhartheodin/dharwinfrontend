@@ -124,9 +124,20 @@ export function toSelfServicePayload(
     if (n.countryCode) out.countryCode = n.countryCode;
     out.shortBio = n.shortBio || null;
     out.degree = n.degree || null;
-    // HR-owned immigration/compensation fields are omitted here — employees edit
-    // them only via ATS employee edit; including them would null-clear values
-    // when the wizard state still holds "" for untouched read-only inputs.
+    // Compensation and job-title fields stay omitted: they are admin-owned, read-only
+    // in this wizard, and sending the "" the state holds for them would null-clear a
+    // real value on save.
+    //
+    // The EAD and visa fields are different — CANDIDATE_ME_FIELDS has always let a
+    // person set their own `ead`, `sevisId` and `visaType`, so the scanned equivalents
+    // belong to them too. Each is sent only when non-empty, which keeps the clearing
+    // risk that motivated the original omission off the table.
+    if (n.eadCardNumber) out.eadCardNumber = n.eadCardNumber;
+    if (n.eadValidFrom) out.eadValidFrom = n.eadValidFrom;
+    if (n.eadValidTo) out.eadValidTo = n.eadValidTo;
+    if (n.visaNumber) out.visaNumber = n.visaNumber;
+    if (n.visaIssueDate) out.visaIssueDate = n.visaIssueDate;
+    if (n.visaExpiryDate) out.visaExpiryDate = n.visaExpiryDate;
     if (n.address) out.address = compact(n.address);
     if (n.socialLinks) out.socialLinks = n.socialLinks;
     // A cleared photo must reach the server as an explicit null; omitting it

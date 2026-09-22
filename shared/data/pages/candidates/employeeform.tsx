@@ -2819,10 +2819,14 @@ export const EmployeeForm = ({
                 </div>
                 <p className="text-xs opacity-70 mt-1">Card# on the front of the card, not the USCIS#.</p>
                 <EadScanNotice
-                  pending={ead.pendingReplacements.eadCardNumber}
-                  fieldLabel="EAD card number"
-                  onReplace={() => ead.applyReplacement("eadCardNumber")}
-                  onKeep={() => ead.dismissReplacement("eadCardNumber")}
+                  documentLabel="EAD card"
+                  onReplaceAll={ead.applyAllReplacements}
+                  onKeepAll={ead.dismissAllReplacements}
+                  items={[
+                    { label: "Card number", value: ead.pendingReplacements.eadCardNumber },
+                    { label: "Valid from", value: ead.pendingReplacements.eadValidFrom },
+                    { label: "Expires", value: ead.pendingReplacements.eadValidTo },
+                  ].filter((i): i is { label: string; value: string } => Boolean(i.value))}
                 />
                 {ead.lastSource === "fields" && (
                   <ScanWarnings warnings={ead.warnings} label="EAD card" />
@@ -2839,12 +2843,6 @@ export const EmployeeForm = ({
                   inputClassName="form-control w-full !rounded-md"
                   onCommit={(ymd) => setFormData((prev) => ({ ...prev, eadValidFrom: ymd }))}
                 />
-                <EadScanNotice
-                  pending={ead.pendingReplacements.eadValidFrom}
-                  fieldLabel="EAD valid from"
-                  onReplace={() => ead.applyReplacement("eadValidFrom")}
-                  onKeep={() => ead.dismissReplacement("eadValidFrom")}
-                />
             </div>
             <div className="xl:col-span-6 col-span-12">
                 <YmdFilterDateInput
@@ -2856,12 +2854,6 @@ export const EmployeeForm = ({
                   labelClassName="form-label"
                   inputClassName="form-control w-full !rounded-md"
                   onCommit={(ymd) => setFormData((prev) => ({ ...prev, eadValidTo: ymd }))}
-                />
-                <EadScanNotice
-                  pending={ead.pendingReplacements.eadValidTo}
-                  fieldLabel="EAD card expires"
-                  onReplace={() => ead.applyReplacement("eadValidTo")}
-                  onKeep={() => ead.dismissReplacement("eadValidTo")}
                 />
             </div>
             <div className="xl:col-span-6 col-span-12">
@@ -2906,10 +2898,14 @@ export const EmployeeForm = ({
                 </div>
                 <p className="text-xs opacity-70 mt-1">Printed in red on the visa, not the passport number.</p>
                 <EadScanNotice
-                  pending={visa.pendingReplacements.visaNumber}
-                  fieldLabel="visa number"
-                  onReplace={() => visa.applyReplacement("visaNumber")}
-                  onKeep={() => visa.dismissReplacement("visaNumber")}
+                  documentLabel="visa"
+                  onReplaceAll={visa.applyAllReplacements}
+                  onKeepAll={visa.dismissAllReplacements}
+                  items={[
+                    { label: "Visa number", value: visa.pendingReplacements.visaNumber },
+                    { label: "Issued", value: visa.pendingReplacements.visaIssueDate },
+                    { label: "Expires", value: visa.pendingReplacements.visaExpiryDate },
+                  ].filter((i): i is { label: string; value: string } => Boolean(i.value))}
                 />
                 {visa.lastSource === "fields" && (
                   <ScanWarnings warnings={visa.warnings} label="Visa" />
@@ -2926,12 +2922,6 @@ export const EmployeeForm = ({
                   inputClassName="form-control w-full !rounded-md"
                   onCommit={(ymd) => setFormData((prev) => ({ ...prev, visaIssueDate: ymd }))}
                 />
-                <EadScanNotice
-                  pending={visa.pendingReplacements.visaIssueDate}
-                  fieldLabel="visa issued date"
-                  onReplace={() => visa.applyReplacement("visaIssueDate")}
-                  onKeep={() => visa.dismissReplacement("visaIssueDate")}
-                />
             </div>
             <div className="xl:col-span-6 col-span-12">
                 <YmdFilterDateInput
@@ -2943,12 +2933,6 @@ export const EmployeeForm = ({
                   labelClassName="form-label"
                   inputClassName="form-control w-full !rounded-md"
                   onCommit={(ymd) => setFormData((prev) => ({ ...prev, visaExpiryDate: ymd }))}
-                />
-                <EadScanNotice
-                  pending={visa.pendingReplacements.visaExpiryDate}
-                  fieldLabel="visa expiry date"
-                  onReplace={() => visa.applyReplacement("visaExpiryDate")}
-                  onKeep={() => visa.dismissReplacement("visaExpiryDate")}
                 />
             </div>
             <div className="xl:col-span-6 col-span-12">
@@ -3934,6 +3918,16 @@ export const EmployeeForm = ({
                             />
                           )}
 
+                          <EadScanNotice
+                            documentLabel="EAD card"
+                            onReplaceAll={ead.applyAllReplacements}
+                            onKeepAll={ead.dismissAllReplacements}
+                            items={[
+                              { label: "Card number", value: ead.pendingReplacements.eadCardNumber },
+                              { label: "Valid from", value: ead.pendingReplacements.eadValidFrom },
+                              { label: "Expires", value: ead.pendingReplacements.eadValidTo },
+                            ].filter((i): i is { label: string; value: string } => Boolean(i.value))}
+                          />
                           {ead.lastSource === "documents" && (
                             <ScanWarnings warnings={ead.warnings} label="EAD card" />
                           )}
@@ -3971,6 +3965,16 @@ export const EmployeeForm = ({
                             />
                           )}
 
+                          <EadScanNotice
+                            documentLabel="visa"
+                            onReplaceAll={visa.applyAllReplacements}
+                            onKeepAll={visa.dismissAllReplacements}
+                            items={[
+                              { label: "Visa number", value: visa.pendingReplacements.visaNumber },
+                              { label: "Issued", value: visa.pendingReplacements.visaIssueDate },
+                              { label: "Expires", value: visa.pendingReplacements.visaExpiryDate },
+                            ].filter((i): i is { label: string; value: string } => Boolean(i.value))}
+                          />
                           {visa.lastSource === "documents" && (
                             <ScanWarnings warnings={visa.warnings} label="Visa" />
                           )}

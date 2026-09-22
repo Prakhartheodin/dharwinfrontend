@@ -144,6 +144,20 @@ export function useScannedDocumentFields<K extends string, R extends ScanRespons
     [onPatch],
   );
 
+  /**
+   * Apply every parked value at once. A scan returns one document's fields together,
+   * so confirming them one at a time made the user click Replace three times for a
+   * single card — and made partial acceptance (new number, stale dates) the easy path.
+   */
+  const applyAllReplacements = useCallback(() => {
+    setPendingReplacements((prev) => {
+      if (Object.keys(prev).length) onPatch(prev);
+      return {};
+    });
+  }, [onPatch]);
+
+  const dismissAllReplacements = useCallback(() => setPendingReplacements({}), []);
+
   const dismissReplacement = useCallback((key: K) => {
     setPendingReplacements((prev) => {
       const next = { ...prev };
@@ -162,6 +176,8 @@ export function useScannedDocumentFields<K extends string, R extends ScanRespons
     scanFile,
     applyReplacement,
     dismissReplacement,
+    applyAllReplacements,
+    dismissAllReplacements,
     reset,
   };
 }
