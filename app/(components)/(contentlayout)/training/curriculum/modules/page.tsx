@@ -22,6 +22,7 @@ import { type ModuleLifecycleStatus } from './_components/ModuleStatusBadge'
 import { ModulesBulkActionsBar } from './_components/ModulesBulkActionsBar'
 import { ModulesFolderList } from './_components/ModulesFolderList'
 import { ModulesListEmptyState } from './_components/ModulesListEmptyState'
+import { ModulesListSkeleton } from './_components/ModulesListSkeleton'
 import { ModulesListToolbar } from './_components/ModulesListToolbar'
 import {
   modulesListStatusSearchString,
@@ -1373,18 +1374,7 @@ const TrainingModules = () => {
       ) : null}
 
       {loading ? (
-        <div className="space-y-2 px-1" aria-busy="true" aria-label="Loading modules">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-3 min-h-16 px-3 py-2 rounded-xl border border-defaultborder"
-            >
-              <span className="w-4 h-4 rounded bg-black/10 dark:bg-white/10 shrink-0" />
-              <span className="w-10 h-10 rounded-lg bg-black/10 dark:bg-white/10 shrink-0" />
-              <span className="flex-1 h-4 rounded bg-black/10 dark:bg-white/10 max-w-xs" />
-            </div>
-          ))}
-        </div>
+        <ModulesListSkeleton />
       ) : search.trim() && modules.length === 0 ? (
         <p className="text-[0.8125rem] text-[#8c9097] dark:text-white/50 py-6 mb-0 text-center">
           No modules match your search.

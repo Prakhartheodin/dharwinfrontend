@@ -49,8 +49,8 @@ export interface ModulesListToolbarProps {
 }
 
 /**
- * Catalog toolbar: page title sits above the box; controls stay on one row
- * (search → sort → collapse → new module → overflow, status tabs on the right).
+ * Catalog toolbar: controls stay on one row (search → sort → collapse → new module
+ * → overflow, status tabs on the right). The page title is screen-reader only.
  */
 export function ModulesListToolbar({
   search,
@@ -161,9 +161,11 @@ export function ModulesListToolbar({
 
   return (
     <div>
-      <h1 className="mb-3 text-[1.125rem] font-semibold tracking-tight text-defaulttextcolor dark:text-white">
-        Modules
-      </h1>
+      {/* Visually removed: the sidebar and breadcrumb already say where you are, so the
+          heading was a wasted band above the fold. Kept in the accessibility tree
+          because it is this page's only h1 — deleting it leaves the document with no
+          top-level heading to orient a screen reader. */}
+      <h1 className="sr-only">Modules</h1>
       <div className="box custom-box">
         <div className="box-body !py-2 !px-3">
           <div className="flex items-center gap-1.5 flex-nowrap min-w-0 overflow-x-auto">
