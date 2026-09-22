@@ -24,6 +24,10 @@ export interface PositionAssignedModule {
 
 export interface PositionRosterItem extends Position {
   employeeCount: number;
+  /** Employees with a training Student profile who can be enrolled. */
+  studentCount?: number;
+  /** When true, new hires whose Student.position resolves here are auto-enrolled. */
+  autoEnrollNewHires?: boolean;
   assignedEmployees?: PositionAssignedEmployee[];
   assignedModules?: PositionAssignedModule[];
   /** Title-only grouping when no Position catalog row exists (read-only roster). */
@@ -99,6 +103,15 @@ export async function getPosition(positionId: string): Promise<Position> {
 
 export async function createPosition(payload: { name: string; department?: string; skillsSuggested?: string[] }): Promise<Position> {
   const { data } = await apiClient.post<Position>("/positions", payload);
+  return data;
+}
+
+/** Patch position fields (name, department, auto-enrol flag, …). */
+export async function updatePosition(
+  positionId: string,
+  payload: { name?: string; department?: string; skillsSuggested?: string[]; autoEnrollNewHires?: boolean }
+): Promise<Position> {
+  const { data } = await apiClient.patch<Position>(`/positions/${positionId}`, payload);
   return data;
 }
 
