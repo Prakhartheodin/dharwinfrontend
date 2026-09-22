@@ -1,6 +1,7 @@
 "use client"
 
-import React, { useEffect, useMemo, useRef, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import Swal from "sweetalert2"
 import { AxiosError } from "axios"
 import * as categoriesApi from "@/shared/lib/api/categories"
@@ -8,6 +9,14 @@ import type { Category } from "@/shared/lib/api/categories"
 import { useAuth } from "@/shared/contexts/auth-context"
 import { hasPermission } from "@/shared/lib/permissions"
 import { useModalBehavior } from "@/shared/hooks/useModalBehavior"
+
+/** Local calendar day. toISOString() rendered the UTC day, which is off by one for IST evenings. */
+function formatCreated(iso?: string): string {
+  if (!iso) return "-"
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return "-"
+  return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })
+}
 
 export interface FoldersDrawerProps {
   open: boolean
@@ -28,12 +37,35 @@ export default function FoldersDrawer({ open, onClose, categories, onChanged }: 
   const [showCategoryModal, setShowCategoryModal] = useState(false)
   const [editingCategory, setEditingCategory] = useState<Category | null>(null)
   const [categoryName, setCategoryName] = useState("")
+  const [savingCategory, setSavingCategory] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
 
+  // Escape must dismiss the topmost layer. Without this the drawer's own handler
+  // closed the whole drawer while the name modal was open, discarding the input.
+  const closeTopLayer = useCallback(() => {
+    if (showCategoryModal) setShowCategoryModal(false)
+    else onClose()
+  }, [showCategoryModal, onClose])
+
+  // While the name modal is open, park the drawer trap so Escape / Tab only
+  // hit the top layer. closeTopLayer still covers Escape when the modal is closed.
   const { containerRef, backdropProps } = useModalBehavior({
-    isOpen: open,
-    onClose,
+    isOpen: open && !showCategoryModal,
+    onClose: closeTopLayer,
   })
+
+  // The name dialog needs its own trap; the drawer's only spans the drawer panel,
+  // so Tab used to walk straight out of the dialog.
+  const closeCategoryModal = useCallback(() => setShowCategoryModal(false), [])
+  const { containerRef: modalRef, backdropProps: modalBackdropProps } = useModalBehavior({
+    isOpen: open && showCategoryModal,
+    onClose: closeCategoryModal,
+  })
+
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     if (!open) {
@@ -41,6 +73,7 @@ export default function FoldersDrawer({ open, onClose, categories, onChanged }: 
       setShowCategoryModal(false)
       setEditingCategory(null)
       setCategoryName("")
+      setSavingCategory(false)
       setStatusMessage(null)
     }
   }, [open])
@@ -65,7 +98,7 @@ export default function FoldersDrawer({ open, onClose, categories, onChanged }: 
     if (selectAllRef.current) selectAllRef.current.indeterminate = isIndeterminate
   }, [isIndeterminate])
 
-  if (!open) return null
+  if (!open || !mounted) return null
 
   const toggleSort = (field: "name" | "createdAt") => {
     setSortBy((prev) => (prev === `${field}:asc` ? `${field}:desc` : `${field}:asc`))
@@ -81,11 +114,14 @@ export default function FoldersDrawer({ open, onClose, categories, onChanged }: 
 
   const isActiveSort = (field: string) => sortBy.startsWith(`${field}:`)
 
+  const ariaSort = (field: string): "ascending" | "descending" | "none" =>
+    !isActiveSort(field) ? "none" : sortBy.endsWith(":asc") ? "ascending" : "descending"
+
   const sortBtnClass = (field: string) =>
     `inline-flex items-center gap-0.5 rounded-md px-1.5 py-1 text-[0.68rem] font-semibold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
       isActiveSort(field)
         ? "bg-primary/10 text-primary"
-        : "text-defaulttextcolor/55 hover:bg-primary/5 hover:text-primary"
+        : "text-defaulttextcolor/70 hover:bg-primary/5 hover:text-primary"
     }`
 
   const handleRowSelect = (id: string) => {
@@ -211,6 +247,7 @@ export default function FoldersDrawer({ open, onClose, categories, onChanged }: 
   }
 
   const handleSaveCategory = async () => {
+    if (savingCategory) return
     const name = categoryName.trim()
     if (!name) {
       await Swal.fire({
@@ -226,6 +263,7 @@ export default function FoldersDrawer({ open, onClose, categories, onChanged }: 
       return
     }
     const payload = { name }
+    setSavingCategory(true)
     try {
       if (editingCategory) {
         if (!canUpdateCategory) return
@@ -267,20 +305,40 @@ export default function FoldersDrawer({ open, onClose, categories, onChanged }: 
         showConfirmButton: false,
         timerProgressBar: true,
       })
+    } finally {
+      setSavingCategory(false)
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-[90]" role="dialog" aria-modal="true" aria-label="Folders">
-      <div className="absolute inset-0 bg-black/50 dark:bg-black/70" {...backdropProps} />
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[130]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="folders-drawer-title"
+    >
+      <div
+        className="absolute inset-0 bg-black/60 dark:bg-black/75"
+        data-testid="folders-drawer-backdrop"
+        aria-hidden
+        {...backdropProps}
+      />
       <div
         ref={containerRef}
-        className="absolute inset-y-0 end-0 flex w-full max-w-xl flex-col bg-white shadow-xl dark:bg-bodybg"
+        className="absolute inset-y-0 end-0 z-[1] flex w-full max-w-xl flex-col bg-white shadow-xl dark:bg-bodybg"
       >
         <div className="flex items-center justify-between border-b border-defaultborder/70 px-4 py-3">
           <div>
-            <h2 className="text-lg font-semibold text-defaulttextcolor dark:text-white">Manage folders</h2>
-            <p className="text-xs text-defaulttextcolor/55">Create, rename, and delete training categories.</p>
+            <h2
+              id="folders-drawer-title"
+              className="text-lg font-semibold text-defaulttextcolor dark:text-white"
+            >
+              Manage folders
+              <span className="badge bg-light text-default rounded-full ms-2 align-middle text-[0.7rem]">
+                {sorted.length}
+              </span>
+            </h2>
+            <p className="text-xs text-defaulttextcolor/70">Create, rename, and delete training categories.</p>
           </div>
           <button
             type="button"
@@ -293,15 +351,6 @@ export default function FoldersDrawer({ open, onClose, categories, onChanged }: 
         </div>
 
         <div className="flex flex-wrap items-center gap-2 border-b border-defaultborder/50 px-4 py-2">
-          {canDeleteCategory && selectedRows.size > 0 ? (
-            <button
-              type="button"
-              className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem] !mb-0"
-              onClick={() => void handleDeleteSelected()}
-            >
-              <i className="ri-delete-bin-line align-middle" /> Delete Selected ({selectedRows.size})
-            </button>
-          ) : null}
           {canCreateCategory ? (
             <button
               type="button"
@@ -311,35 +360,58 @@ export default function FoldersDrawer({ open, onClose, categories, onChanged }: 
               <i className="ri-add-line font-semibold align-middle" /> Create
             </button>
           ) : null}
-          <div className="ms-auto inline-flex items-center gap-1">
-            <button
-              type="button"
-              className={sortBtnClass("name")}
-              onClick={() => toggleSort("name")}
-              aria-label={`Sort by name${isActiveSort("name") ? (sortBy.endsWith(":asc") ? ", ascending" : ", descending") : ""}`}
-            >
-              Name <i className={`${sortIcon("name")} text-[0.9rem]`} aria-hidden />
-            </button>
-            <button
-              type="button"
-              className={sortBtnClass("createdAt")}
-              onClick={() => toggleSort("createdAt")}
-              aria-label={`Sort by date created${isActiveSort("createdAt") ? (sortBy.endsWith(":asc") ? ", ascending" : ", descending") : ""}`}
-            >
-              Date <i className={`${sortIcon("createdAt")} text-[0.9rem]`} aria-hidden />
-            </button>
-          </div>
+          {selectedRows.size > 0 ? (
+            <div className="ms-auto inline-flex items-center gap-2">
+              <span className="text-[0.75rem] font-medium text-defaulttextcolor/70">
+                {selectedRows.size} selected
+              </span>
+              {canDeleteCategory ? (
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem] !mb-0"
+                  onClick={() => void handleDeleteSelected()}
+                >
+                  <i className="ri-delete-bin-line align-middle" /> Delete Selected ({selectedRows.size})
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         {statusMessage ? (
-          <div className="border-b border-amber-300/40 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:bg-amber-500/15 dark:text-amber-100" role="status">
-            {statusMessage}
+          <div
+            className="flex items-start gap-2 border-b border-amber-300/40 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:bg-amber-500/15 dark:text-amber-100"
+            role="status"
+          >
+            <span className="flex-1">{statusMessage}</span>
+            <button
+              type="button"
+              className="shrink-0 rounded p-0.5 hover:bg-amber-900/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40"
+              aria-label="Dismiss message"
+              onClick={() => setStatusMessage(null)}
+            >
+              <i className="ri-close-line" aria-hidden />
+            </button>
           </div>
         ) : null}
 
         <div className="flex-1 overflow-y-auto px-2 py-2">
           {sorted.length === 0 ? (
-            <div className="px-3 py-8 text-center text-sm text-defaulttextcolor/60">No folders yet.</div>
+            <div className="px-3 py-10 text-center">
+              <p className="font-medium text-defaulttextcolor dark:text-white">No folders yet</p>
+              <p className="mx-auto mt-1 max-w-sm text-[0.8125rem] text-defaulttextcolor/65">
+                Folders group training modules by category. Create one, then tag modules with it.
+              </p>
+              {canCreateCategory ? (
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-primary-full !mb-0 mt-3 !py-1.5 !px-3 !text-sm"
+                  onClick={openCreateModal}
+                >
+                  Create folder
+                </button>
+              ) : null}
+            </div>
           ) : (
             <table className="table min-w-full">
               <thead>
@@ -356,7 +428,26 @@ export default function FoldersDrawer({ open, onClose, categories, onChanged }: 
                       />
                     </th>
                   ) : null}
-                  <th className="text-start">Folder</th>
+                  <th className="text-start" aria-sort={ariaSort("name")}>
+                    <button
+                      type="button"
+                      className={sortBtnClass("name")}
+                      onClick={() => toggleSort("name")}
+                      aria-label={`Folder, sort by name${isActiveSort("name") ? (sortBy.endsWith(":asc") ? ", ascending" : ", descending") : ""}`}
+                    >
+                      Folder <i className={`${sortIcon("name")} text-[0.9rem]`} aria-hidden />
+                    </button>
+                  </th>
+                  <th className="text-start !w-28" aria-sort={ariaSort("createdAt")}>
+                    <button
+                      type="button"
+                      className={sortBtnClass("createdAt")}
+                      onClick={() => toggleSort("createdAt")}
+                      aria-label={`Created, sort by date${isActiveSort("createdAt") ? (sortBy.endsWith(":asc") ? ", ascending" : ", descending") : ""}`}
+                    >
+                      Created <i className={`${sortIcon("createdAt")} text-[0.9rem]`} aria-hidden />
+                    </button>
+                  </th>
                   <th className="text-center !w-16">Modules</th>
                   <th className="text-center !w-20">Actions</th>
                 </tr>
@@ -377,9 +468,9 @@ export default function FoldersDrawer({ open, onClose, categories, onChanged }: 
                     ) : null}
                     <td>
                       <div className="font-medium text-defaulttextcolor dark:text-white">{category.name}</div>
-                      <div className="text-[0.7rem] text-defaulttextcolor/50">
-                        {category.createdAt ? new Date(category.createdAt).toISOString().split("T")[0] : ""}
-                      </div>
+                    </td>
+                    <td className="text-[0.75rem] text-defaulttextcolor/70">
+                      {formatCreated(category.createdAt)}
                     </td>
                     <td className="text-center tabular-nums">{category.moduleCount ?? 0}</td>
                     <td className="text-center">
@@ -415,16 +506,36 @@ export default function FoldersDrawer({ open, onClose, categories, onChanged }: 
       </div>
 
       {showCategoryModal ? (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center">
+        <div
+          className="fixed inset-0 z-[140] flex items-center justify-center p-3"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="folder-category-title"
+        >
           <div
-            className="absolute inset-0 bg-black/50"
-            onClick={() => setShowCategoryModal(false)}
+            className="absolute inset-0 bg-black/60 dark:bg-black/75"
+            data-testid="folder-category-backdrop"
+            {...modalBackdropProps}
             aria-hidden
           />
-          <div className="relative w-full max-w-md rounded-lg bg-white p-4 shadow-xl dark:bg-bodybg mx-4">
-            <h3 className="text-lg font-semibold mb-3">
-              {editingCategory ? "Edit Category" : "Create Category"}
-            </h3>
+          <div
+            ref={modalRef}
+            className="relative z-[1] w-full max-w-md rounded-lg bg-white p-4 shadow-xl dark:bg-bodybg mx-4"
+          >
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <h3 id="folder-category-title" className="text-lg font-semibold">
+                {editingCategory ? "Edit Category" : "Create Category"}
+              </h3>
+              <button
+                type="button"
+                className="ti-btn ti-btn-icon ti-btn-light !mb-0 shrink-0"
+                aria-label="Close category dialog"
+                disabled={savingCategory}
+                onClick={closeCategoryModal}
+              >
+                <i className="ri-close-line text-xl" aria-hidden />
+              </button>
+            </div>
             <label htmlFor="folder-category-name" className="form-label">
               Category Name
             </label>
@@ -432,9 +543,11 @@ export default function FoldersDrawer({ open, onClose, categories, onChanged }: 
               id="folder-category-name"
               type="text"
               className="form-control"
-              placeholder="Enter category name"
+              placeholder="e.g. Onboarding"
               value={categoryName}
               autoFocus
+              disabled={savingCategory}
+              aria-describedby="folder-category-help"
               onChange={(e) => setCategoryName(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
@@ -443,17 +556,31 @@ export default function FoldersDrawer({ open, onClose, categories, onChanged }: 
                 }
               }}
             />
+            <p id="folder-category-help" className="mt-1 text-[0.75rem] text-defaulttextcolor/65">
+              Shown as a folder on the modules catalog and as a filter chip here.
+            </p>
             <div className="mt-4 flex justify-end gap-2">
-              <button type="button" className="ti-btn ti-btn-light" onClick={() => setShowCategoryModal(false)}>
+              <button
+                type="button"
+                className="ti-btn ti-btn-light"
+                disabled={savingCategory}
+                onClick={closeCategoryModal}
+              >
                 Cancel
               </button>
-              <button type="button" className="ti-btn ti-btn-primary-full" onClick={() => void handleSaveCategory()}>
-                {editingCategory ? "Save" : "Create"}
+              <button
+                type="button"
+                className="ti-btn ti-btn-primary-full"
+                disabled={savingCategory || !categoryName.trim()}
+                onClick={() => void handleSaveCategory()}
+              >
+                {savingCategory ? "Saving…" : editingCategory ? "Save" : "Create"}
               </button>
             </div>
           </div>
         </div>
       ) : null}
-    </div>
+    </div>,
+    document.body
   )
 }

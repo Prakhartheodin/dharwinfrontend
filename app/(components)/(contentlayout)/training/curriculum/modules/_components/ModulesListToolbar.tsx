@@ -270,7 +270,7 @@ export function ModulesListToolbar({
                       <li>
                         <Link
                           className="ti-dropdown-item flex items-center"
-                          href="/training/curriculum/categories"
+                          href="/training/curriculum/setup?tab=categories"
                           role="menuitem"
                           onClick={handleOverflowAction}
                         >

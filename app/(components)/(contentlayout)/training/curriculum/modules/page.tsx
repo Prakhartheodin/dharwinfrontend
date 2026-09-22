@@ -14,25 +14,26 @@ import type { MultiValue } from 'react-select'
 import { sanitizeRichHtml } from '@/shared/lib/sanitize-html'
 import { usePmReactSelectStyles } from '@/shared/hooks/usePmReactSelectStyles'
 import { mapTrainingModuleError } from '@/shared/lib/training/map-training-module-error'
-import {
-  countModulesByLifecycle,
-  groupTrainingModulesIntoFolders,
-} from '@/shared/lib/training/group-modules-into-folders'
+import { groupTrainingModulesIntoFolders } from '@/shared/lib/training/group-modules-into-folders'
 import { type ModuleLifecycleStatus } from './_components/ModuleStatusBadge'
 import { ModulesBulkActionsBar } from './_components/ModulesBulkActionsBar'
 import { ModulesFolderCardGrid } from './_components/ModulesFolderCardGrid'
 import { ModulesListEmptyState } from './_components/ModulesListEmptyState'
 import { ModulesListSkeleton } from './_components/ModulesListSkeleton'
 import { ModulesListToolbar } from './_components/ModulesListToolbar'
+import { parseModulesListStatus } from './_lib/parseModulesListStatus'
 import {
-  modulesListStatusSearchString,
-  parseModulesListStatus,
-} from './_lib/parseModulesListStatus'
-import {
-  ADMIN_MODULES_PAGE_LIMIT,
-  collectRemainingPages,
-} from './_lib/fetchPagedResults'
-import { filterModulesByLocalSearch } from './_lib/filterModulesByLocalSearch'
+  DEFAULT_MODULES_SORT,
+  MODULES_PAGE_SIZE_OPTIONS,
+  MODULES_SORT_OPTIONS,
+  areModulesListQueryStringsEquivalent,
+  buildModulesListHref,
+  modulesStateAfterFilterChange,
+  parseModulesListState,
+  toModulesApiSortBy,
+  type ModulesSortValue,
+} from './_lib/modules-list-query'
+import { collectRemainingPages } from './_lib/fetchPagedResults'
 import {
   fulfilledIds,
   patchModuleInList,
@@ -285,12 +286,7 @@ function NewFolderModal({
   )
 }
 
-const SORT_OPTIONS = [
-  { value: 'moduleName:asc', label: 'Name (A - Z)' },
-  { value: 'moduleName:desc', label: 'Name (Z - A)' },
-  { value: 'createdAt:desc', label: 'Newest' },
-  { value: 'createdAt:asc', label: 'Oldest' },
-]
+const SORT_OPTIONS = [...MODULES_SORT_OPTIONS]
 
 const contentTypeMeta: Record<string, { label: string; icon: string; color: string }> = {
   'upload-video': { label: 'Uploaded Video', icon: 'ri-video-line', color: 'text-primary' },
@@ -672,14 +668,27 @@ const TrainingModules = () => {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const statusFilter = parseModulesListStatus(searchParams.get('status'))
-  const [search, setSearch] = useState('')
-  const [sortValue, setSortValue] = useState(SORT_OPTIONS[0])
-  const [loading, setLoading] = useState(true)
+  const listState = useMemo(() => parseModulesListState(searchParams), [searchParams])
+  const statusFilter = listState.status
+  const sortValue = useMemo(
+    () => SORT_OPTIONS.find((o) => o.value === listState.sortBy) ?? SORT_OPTIONS[0],
+    [listState.sortBy]
+  )
+
+  const [searchDraft, setSearchDraft] = useState(listState.search)
+  const [initialLoading, setInitialLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [modules, setModules] = useState<ApiTrainingModule[]>([])
-  const [categories, setCategories] = useState<ApiCategory[]>([])
-  const [currentPage, setCurrentPage] = useState(1)
+  const [totalResults, setTotalResults] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
+  const [categories, setCategories] = useState<ApiCategory[]>([])
+  const [lifecycleCounts, setLifecycleCounts] = useState({
+    all: 0,
+    draft: 0,
+    published: 0,
+    archived: 0,
+  })
   const [detailModalOpen, setDetailModalOpen] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
@@ -694,6 +703,22 @@ const TrainingModules = () => {
   const [collapsedFolderIds, setCollapsedFolderIds] = useState<Set<string>>(new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkFolderOpen, setBulkFolderOpen] = useState(false)
+
+  const fetchRequestIdRef = useRef(0)
+  const hasLoadedOnceRef = useRef(false)
+  const searchDebounceRef = useRef<number | null>(null)
+
+  const replaceListUrl = useCallback(
+    (next: ReturnType<typeof parseModulesListState>, historyMode: 'replace' | 'push') => {
+      const href = buildModulesListHref(pathname, next)
+      const currentQs = searchParams.toString()
+      const nextQs = href.includes('?') ? href.slice(href.indexOf('?') + 1) : ''
+      if (areModulesListQueryStringsEquivalent(currentQs, nextQs)) return
+      if (historyMode === 'replace') router.replace(href, { scroll: false })
+      else router.push(href, { scroll: false })
+    },
+    [pathname, router, searchParams]
+  )
 
   const toggleSelect = useCallback((moduleId: string) => {
     setSelectedIds((prev) => {
@@ -719,77 +744,64 @@ const TrainingModules = () => {
 
   const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
 
-  const fetchRequestIdRef = useRef(0)
-  const searchRequestIdRef = useRef(0)
-  const allModulesRef = useRef<ApiTrainingModule[]>([])
-  const catalogCompleteRef = useRef(false)
-  const searchRef = useRef(search)
-  searchRef.current = search
-  const truncatedSearchTimerRef = useRef<number | null>(null)
-
-  /**
-   * Cancels a pending truncated-catalog server search (Enter flush / unmount).
-   */
-  const clearTruncatedSearchTimer = useCallback(() => {
-    if (truncatedSearchTimerRef.current == null) return
-    window.clearTimeout(truncatedSearchTimerRef.current)
-    truncatedSearchTimerRef.current = null
+  const fetchLifecycleCounts = useCallback(async () => {
+    try {
+      const [draft, published, archived] = await Promise.all([
+        trainingModulesApi.listTrainingModules({ page: 1, limit: 1, status: 'draft' }),
+        trainingModulesApi.listTrainingModules({ page: 1, limit: 1, status: 'published' }),
+        trainingModulesApi.listTrainingModules({ page: 1, limit: 1, status: 'archived' }),
+      ])
+      const draftTotal = draft.totalResults ?? 0
+      const publishedTotal = published.totalResults ?? 0
+      const archivedTotal = archived.totalResults ?? 0
+      setLifecycleCounts({
+        all: draftTotal + publishedTotal,
+        draft: draftTotal,
+        published: publishedTotal,
+        archived: archivedTotal,
+      })
+    } catch {
+      /* counts are decorative; list still works */
+    }
   }, [])
 
   /**
-   * Filters a cached catalog with a known query (avoids waiting on React state flush).
-   */
-  const applyCatalogFilter = useCallback((catalog: ApiTrainingModule[], query: string) => {
-    const q = query.trim()
-    setModules(q ? filterModulesByLocalSearch(catalog, q) : catalog)
-  }, [])
-
-  /**
-   * Applies the live search string to a cached unfiltered catalog without a network round-trip.
-   */
-  const applyVisibleModules = useCallback((catalog: ApiTrainingModule[]) => {
-    applyCatalogFilter(catalog, searchRef.current)
-  }, [applyCatalogFilter])
-
-  /**
-   * Writes the cached catalog and the visible (search-filtered) list in one shot.
-   */
-  const commitCatalog = useCallback((next: ApiTrainingModule[]) => {
-    allModulesRef.current = next
-    applyVisibleModules(next)
-  }, [applyVisibleModules])
-
-  /**
-   * Loads the unfiltered catalog (parallel remaining pages). Search/sort stay client-side when complete.
+   * Loads one server page for the current URL contract. Does not walk all pages.
    */
   const fetchModules = useCallback(async () => {
     const requestId = ++fetchRequestIdRef.current
-    searchRequestIdRef.current += 1
-    const isFirstPaint = allModulesRef.current.length === 0
-    if (isFirstPaint) setLoading(true)
+    const isFirst = !hasLoadedOnceRef.current
+    if (isFirst) setInitialLoading(true)
+    else setRefreshing(true)
+    setLoadError(null)
     try {
       const params: trainingModulesApi.ListTrainingModulesParams = {
-        page: 1,
-        limit: ADMIN_MODULES_PAGE_LIMIT,
+        page: listState.page,
+        limit: listState.limit,
+        sortBy: toModulesApiSortBy(listState.sortBy),
+      }
+      if (listState.search.trim()) params.search = listState.search.trim()
+      if (listState.status === 'all') {
+        params.status = 'active'
+      } else {
+        params.status = listState.status
       }
 
       const response = await trainingModulesApi.listTrainingModules(params)
       if (requestId !== fetchRequestIdRef.current) return
-      const collected = await collectRemainingPages(
-        response,
-        (page) => trainingModulesApi.listTrainingModules({ ...params, page }),
-        () => requestId !== fetchRequestIdRef.current
-      )
-      if (requestId !== fetchRequestIdRef.current) return
-      const totalResults = response.totalResults ?? collected.length
-      catalogCompleteRef.current = collected.length >= totalResults
-      allModulesRef.current = collected
-      applyVisibleModules(collected)
-      setTotalPages(1)
+      setModules(response.results ?? [])
+      setTotalResults(response.totalResults ?? 0)
+      setTotalPages(Math.max(1, response.totalPages ?? 1))
+      hasLoadedOnceRef.current = true
     } catch (err) {
       if (requestId !== fetchRequestIdRef.current) return
       console.error('Error fetching modules:', err)
       const msg = mapTrainingModuleError(err, 'Failed to load modules.')
+      setLoadError(msg)
+      if (!hasLoadedOnceRef.current) {
+        setModules([])
+        setTotalResults(0)
+      }
       await Swal.fire({
         icon: 'error',
         title: 'Failed to load modules',
@@ -800,50 +812,16 @@ const TrainingModules = () => {
         showConfirmButton: false,
         timerProgressBar: true,
       })
-      allModulesRef.current = []
-      catalogCompleteRef.current = false
-      setModules([])
     } finally {
-      if (requestId === fetchRequestIdRef.current) setLoading(false)
-    }
-  }, [applyVisibleModules])
-
-  /**
-   * Server search only when the local catalog was truncated at MAX_CATALOG_RESULTS.
-   */
-  const fetchSearchFromApi = useCallback(async (q: string) => {
-    const requestId = ++searchRequestIdRef.current
-    try {
-      const params: trainingModulesApi.ListTrainingModulesParams = {
-        page: 1,
-        limit: ADMIN_MODULES_PAGE_LIMIT,
-        search: q,
+      if (requestId === fetchRequestIdRef.current) {
+        setInitialLoading(false)
+        setRefreshing(false)
       }
-      const response = await trainingModulesApi.listTrainingModules(params)
-      if (requestId !== searchRequestIdRef.current) return
-      const collected = await collectRemainingPages(
-        response,
-        (page) => trainingModulesApi.listTrainingModules({ ...params, page }),
-        () => requestId !== searchRequestIdRef.current
-      )
-      if (requestId !== searchRequestIdRef.current) return
-      setModules(collected)
-      setTotalPages(1)
-    } catch (err) {
-      if (requestId !== searchRequestIdRef.current) return
-      console.error('Error searching modules:', err)
-      const msg = mapTrainingModuleError(err, 'Failed to search modules.')
-      await Swal.fire({
-        icon: 'error',
-        title: 'Search failed',
-        text: msg,
-        toast: true,
-        position: 'top-end',
-        timer: 4000,
-        showConfirmButton: false,
-        timerProgressBar: true,
-      })
     }
+  }, [listState.page, listState.limit, listState.search, listState.status, listState.sortBy])
+
+  const commitPageModules = useCallback((next: ApiTrainingModule[]) => {
+    setModules(next)
   }, [])
 
   const handleBulkStatus = useCallback(async (status: ModuleLifecycleStatus) => {
@@ -862,11 +840,12 @@ const TrainingModules = () => {
       ids.map((id) => trainingModulesApi.updateTrainingModule(id, { status })),
     )
     const ok = fulfilledIds(ids, results)
-    if (ok.size > 0) commitCatalog(patchModulesInList(allModulesRef.current, ok, { status }))
+    if (ok.size > 0) commitPageModules(patchModulesInList(modules, ok, { status }))
     const success = ok.size
     const fail = results.length - success
     setBulkBusy(false)
     clearSelection()
+    void fetchLifecycleCounts()
     void Swal.fire({
       icon: fail > 0 ? 'warning' : 'success',
       title: `${success} updated${fail > 0 ? `, ${fail} failed` : ''}`,
@@ -876,7 +855,7 @@ const TrainingModules = () => {
       showConfirmButton: false,
       timerProgressBar: true,
     })
-  }, [selectedIds, clearSelection, commitCatalog])
+  }, [selectedIds, clearSelection, commitPageModules, modules, fetchLifecycleCounts])
 
   const handleBulkDelete = useCallback(async () => {
     if (selectedIds.size === 0) return
@@ -896,7 +875,11 @@ const TrainingModules = () => {
       ids.map((id) => trainingModulesApi.deleteTrainingModule(id)),
     )
     const ok = fulfilledIds(ids, results)
-    if (ok.size > 0) commitCatalog(removeModulesFromList(allModulesRef.current, ok))
+    if (ok.size > 0) {
+      commitPageModules(removeModulesFromList(modules, ok))
+      void fetchModules()
+      void fetchLifecycleCounts()
+    }
     const success = ok.size
     const fail = results.length - success
     setBulkBusy(false)
@@ -910,7 +893,7 @@ const TrainingModules = () => {
       showConfirmButton: false,
       timerProgressBar: true,
     })
-  }, [selectedIds, clearSelection, commitCatalog])
+  }, [selectedIds, clearSelection, commitPageModules, modules, fetchModules, fetchLifecycleCounts])
 
   const handleBulkFolderSave = useCallback(async (categoryIds: string[]) => {
     if (selectedIds.size === 0) return
@@ -922,7 +905,7 @@ const TrainingModules = () => {
     })
     const results = await Promise.allSettled(
       ids.map((id) => {
-        const current = allModulesRef.current.find((m) => m.id === id)
+        const current = modules.find((m) => m.id === id)
         const leaveArchive = statusWhenLeavingArchive(current?.status)
         return trainingModulesApi.setTrainingModuleFolders(
           id,
@@ -931,11 +914,11 @@ const TrainingModules = () => {
         )
       }),
     )
-    let next = allModulesRef.current
+    let next = modules
     results.forEach((result, index) => {
       const id = ids[index]
       if (!id || result.status !== 'fulfilled') return
-      const previous = allModulesRef.current.find((m) => m.id === id)
+      const previous = modules.find((m) => m.id === id)
       const leaveArchive = statusWhenLeavingArchive(previous?.status)
       next = replaceModuleInList(next, id, {
         ...result.value,
@@ -943,17 +926,16 @@ const TrainingModules = () => {
         status: result.value.status ?? leaveArchive ?? previous?.status ?? result.value.status,
       })
     })
-    if (next !== allModulesRef.current) commitCatalog(next)
+    if (next !== modules) commitPageModules(next)
     if (statusFilter === 'archived' && results.some((r) => r.status === 'fulfilled')) {
-      router.replace(`${pathname}${modulesListStatusSearchString(searchParams, 'published')}`, {
-        scroll: false,
-      })
+      replaceListUrl(modulesStateAfterFilterChange(listState, { status: 'published' }), 'replace')
     }
     const success = results.filter((r) => r.status === 'fulfilled').length
     const fail = results.length - success
     setBulkBusy(false)
     clearSelection()
     setBulkFolderOpen(false)
+    void fetchLifecycleCounts()
     void Swal.fire({
       icon: fail > 0 ? 'warning' : 'success',
       title: `${success} moved${fail > 0 ? `, ${fail} failed` : ''}`,
@@ -963,7 +945,7 @@ const TrainingModules = () => {
       showConfirmButton: false,
       timerProgressBar: true,
     })
-  }, [selectedIds, clearSelection, commitCatalog, categories, statusFilter, router, pathname, searchParams])
+  }, [selectedIds, clearSelection, commitPageModules, categories, statusFilter, modules, listState, replaceListUrl, fetchLifecycleCounts])
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -983,40 +965,6 @@ const TrainingModules = () => {
     fetchCategories()
   }, [fetchCategories])
 
-  /**
-   * Filters the cached catalog on every keystroke. Truncated catalogs still debounce the API.
-   * Opens folders while searching so matches are not hidden behind collapse.
-   */
-  const handleSearchInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = e.target.value
-      setSearch(value)
-      setCurrentPage(1)
-      applyCatalogFilter(allModulesRef.current, value)
-    },
-    [applyCatalogFilter],
-  )
-
-  /**
-   * Enter flushes server search immediately when the local catalog was truncated.
-   */
-  const handleSearchKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key !== 'Enter') return
-      e.preventDefault()
-      setCurrentPage(1)
-      const q = search.trim()
-      if (catalogCompleteRef.current || !q) {
-        applyCatalogFilter(allModulesRef.current, search)
-        return
-      }
-      if (allModulesRef.current.length === 0) return
-      clearTruncatedSearchTimer()
-      void fetchSearchFromApi(q)
-    },
-    [search, applyCatalogFilter, fetchSearchFromApi, clearTruncatedSearchTimer],
-  )
-
   useEffect(() => {
     void fetchModules()
     return () => {
@@ -1025,28 +973,59 @@ const TrainingModules = () => {
   }, [fetchModules])
 
   useEffect(() => {
-    if (catalogCompleteRef.current) return
-    const q = search.trim()
-    if (!q) {
-      clearTruncatedSearchTimer()
-      return
+    void fetchLifecycleCounts()
+  }, [fetchLifecycleCounts])
+
+  useEffect(() => {
+    setSearchDraft(listState.search)
+  }, [listState.search])
+
+  // Debounce search draft → URL (replace).
+  useEffect(() => {
+    if (searchDraft === listState.search) return
+    if (searchDebounceRef.current != null) window.clearTimeout(searchDebounceRef.current)
+    searchDebounceRef.current = window.setTimeout(() => {
+      searchDebounceRef.current = null
+      replaceListUrl(modulesStateAfterFilterChange(listState, { search: searchDraft }), 'replace')
+    }, 350)
+    return () => {
+      if (searchDebounceRef.current != null) window.clearTimeout(searchDebounceRef.current)
     }
-    if (allModulesRef.current.length === 0) return
-    clearTruncatedSearchTimer()
-    truncatedSearchTimerRef.current = window.setTimeout(() => {
-      truncatedSearchTimerRef.current = null
-      void fetchSearchFromApi(q)
-    }, 300)
-    return () => clearTruncatedSearchTimer()
-  }, [search, fetchSearchFromApi, clearTruncatedSearchTimer])
+  }, [searchDraft, listState, replaceListUrl])
+
+  const handleSearchInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchDraft(e.target.value)
+  }, [])
+
+  const handleSearchKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key !== 'Enter') return
+      e.preventDefault()
+      if (searchDebounceRef.current != null) {
+        window.clearTimeout(searchDebounceRef.current)
+        searchDebounceRef.current = null
+      }
+      replaceListUrl(modulesStateAfterFilterChange(listState, { search: searchDraft }), 'push')
+    },
+    [searchDraft, listState, replaceListUrl]
+  )
 
   const handleStatusFilterChange = useCallback(
     (next: ReturnType<typeof parseModulesListStatus>) => {
-      router.replace(`${pathname}${modulesListStatusSearchString(searchParams, next)}`, {
-        scroll: false,
-      })
+      replaceListUrl(modulesStateAfterFilterChange(listState, { status: next }), 'push')
     },
-    [pathname, router, searchParams],
+    [listState, replaceListUrl]
+  )
+
+  const handleSortChange = useCallback(
+    (option: { value: string; label: string }) => {
+      const allowed = new Set(MODULES_SORT_OPTIONS.map((o) => o.value))
+      const sortBy = (allowed.has(option.value as ModulesSortValue)
+        ? option.value
+        : DEFAULT_MODULES_SORT) as ModulesSortValue
+      replaceListUrl(modulesStateAfterFilterChange(listState, { sortBy }), 'push')
+    },
+    [listState, replaceListUrl]
   )
 
   const handleClone = useCallback(async (moduleId: string) => {
@@ -1066,8 +1045,8 @@ const TrainingModules = () => {
       try {
         const updated = await trainingModulesApi.updateTrainingModule(moduleId, { status })
         const nextStatus = updated.status ?? status
-        commitCatalog(
-          patchModuleInList(allModulesRef.current, moduleId, {
+        commitPageModules(
+          patchModuleInList(modules, moduleId, {
             status: nextStatus,
           }),
         )
@@ -1075,10 +1054,14 @@ const TrainingModules = () => {
           prev?.id === moduleId ? { ...prev, status: nextStatus } : prev,
         )
         if (statusFilter === 'archived' && nextStatus !== 'archived') {
-          router.replace(`${pathname}${modulesListStatusSearchString(searchParams, nextStatus === 'draft' ? 'draft' : 'published')}`, {
-            scroll: false,
-          })
+          replaceListUrl(
+            modulesStateAfterFilterChange(listState, {
+              status: nextStatus === 'draft' ? 'draft' : 'published',
+            }),
+            'replace'
+          )
         }
+        void fetchLifecycleCounts()
         void Swal.fire({
           icon: 'success',
           title: 'Status updated',
@@ -1105,19 +1088,21 @@ const TrainingModules = () => {
         setStatusUpdatingId(null)
       }
     },
-    [commitCatalog, statusFilter, router, pathname, searchParams],
+    [commitPageModules, statusFilter, modules, listState, replaceListUrl, fetchLifecycleCounts],
   )
 
   const handleDelete = useCallback(async (moduleId: string) => {
     try {
       await trainingModulesApi.deleteTrainingModule(moduleId)
-      commitCatalog(removeModuleFromList(allModulesRef.current, moduleId))
+      commitPageModules(removeModuleFromList(modules, moduleId))
       setSelectedIds((prev) => {
         if (!prev.has(moduleId)) return prev
         const next = new Set(prev)
         next.delete(moduleId)
         return next
       })
+      void fetchModules()
+      void fetchLifecycleCounts()
       void Swal.fire({
         icon: 'success',
         title: 'Module deleted',
@@ -1140,7 +1125,7 @@ const TrainingModules = () => {
         showConfirmButton: false,
       })
     }
-  }, [commitCatalog])
+  }, [commitPageModules, modules, fetchModules, fetchLifecycleCounts])
 
   const handleView = useCallback(async (moduleId: string) => {
     setDetailModalOpen(true)
@@ -1176,29 +1161,22 @@ const TrainingModules = () => {
   const assignFoldersModule =
     assignFoldersModuleId != null ? modules.find((m) => m.id === assignFoldersModuleId) ?? null : null
 
-  const lifecycleCounts = useMemo(
-    () =>
-      countModulesByLifecycle(
-        allModulesRef.current.length > 0 ? allModulesRef.current : modules,
-      ),
-    [modules],
-  )
-
   const folderRows = useMemo(
     () =>
       groupTrainingModulesIntoFolders(
         modules,
         categories,
         sortValue,
-        search.trim().length > 0,
+        listState.search.trim().length > 0,
         {
           statusFilter,
           includeEmptyDrafts: false,
           includeArchivedOnAll: false,
-          includeEmptyCategories: true,
+          // Paginated module pages: only folders that have modules on this page.
+          includeEmptyCategories: false,
         },
       ),
-    [modules, categories, sortValue, search, statusFilter],
+    [modules, categories, sortValue, listState.search, statusFilter],
   )
 
   const showFolderHeaders = statusFilter === 'all' || statusFilter === 'published'
@@ -1271,18 +1249,17 @@ const TrainingModules = () => {
         return { id, name: match?.name ?? id }
       })
       const nextStatus = updated.status ?? leaveArchive ?? mod.status
-      commitCatalog(
-        replaceModuleInList(allModulesRef.current, mod.id, {
+      commitPageModules(
+        replaceModuleInList(modules, mod.id, {
           ...updated,
           categories: resolvedModuleCategories(updated, cats),
           status: nextStatus,
         }),
       )
       if (statusFilter === 'archived' && nextStatus !== 'archived') {
-        router.replace(`${pathname}${modulesListStatusSearchString(searchParams, 'published')}`, {
-          scroll: false,
-        })
+        replaceListUrl(modulesStateAfterFilterChange(listState, { status: 'published' }), 'replace')
       }
+      void fetchLifecycleCounts()
       const folderLabel =
         cats.length > 0 ? cats.map((c) => c.name).join(', ') : 'Uncategorized'
       void Swal.fire({
@@ -1323,22 +1300,42 @@ const TrainingModules = () => {
     }
   }, [detailModalOpen, closeDetailModal])
 
+  const hasActiveFilters =
+    Boolean(listState.search.trim()) || listState.status !== 'all'
+  const startIndex = totalResults === 0 ? 0 : (listState.page - 1) * listState.limit + 1
+  const endIndex = Math.min(listState.page * listState.limit, totalResults)
+
+  const clearFilters = () => {
+    setSearchDraft('')
+    replaceListUrl(
+      modulesStateAfterFilterChange(listState, {
+        search: '',
+        status: 'all',
+        sortBy: DEFAULT_MODULES_SORT,
+      }),
+      'push'
+    )
+  }
+
   return (
     <Fragment>
       <Seo title="Training Modules" />
       <div className="mt-5 grid grid-cols-12 gap-6 sm:mt-6">
         <div className="xl:col-span-12 col-span-12">
           <ModulesListToolbar
-            search={search}
+            search={searchDraft}
             onSearchChange={handleSearchInputChange}
             onSearchKeyDown={handleSearchKeyDown}
             sortValue={sortValue}
             sortOptions={SORT_OPTIONS}
-            onSortChange={setSortValue}
+            onSortChange={handleSortChange}
             statusFilter={statusFilter}
             lifecycleCounts={lifecycleCounts}
             hrefForStatus={(id) =>
-              `${pathname}${modulesListStatusSearchString(searchParams, id)}`
+              buildModulesListHref(
+                pathname,
+                modulesStateAfterFilterChange(listState, { status: id })
+              )
             }
             onStatusChange={handleStatusFilterChange}
             showFolderHeaders={showFolderHeaders}
@@ -1351,7 +1348,7 @@ const TrainingModules = () => {
             }}
           />
         </div>
-      </div> 
+      </div>
 
       {selectedIds.size > 0 ? (
         <ModulesBulkActionsBar
@@ -1364,70 +1361,128 @@ const TrainingModules = () => {
         />
       ) : null}
 
-      {loading ? (
+      {initialLoading ? (
         <ModulesListSkeleton />
-      ) : search.trim() && modules.length === 0 ? (
-        <p className="text-[0.8125rem] text-[#8c9097] dark:text-white/50 py-6 mb-0 text-center">
-          No modules match your search.
-        </p>
-      ) : folderRows.length === 0 ? (
-        <ModulesListEmptyState
-          statusFilter={statusFilter}
-          archivedCount={lifecycleCounts.archived}
-        />
+      ) : loadError && modules.length === 0 ? (
+        <div className="box custom-box text-center py-12 mt-4">
+          <p className="font-medium text-defaulttextcolor dark:text-white mb-1">
+            Could not load modules
+          </p>
+          <p className="text-[0.8125rem] text-[#8c9097] dark:text-white/50 mb-3">{loadError}</p>
+          <button
+            type="button"
+            className="ti-btn ti-btn-primary-full !mb-0"
+            onClick={() => void fetchModules()}
+          >
+            Retry
+          </button>
+        </div>
+      ) : totalResults === 0 ? (
+        hasActiveFilters ? (
+          <div className="text-center py-10">
+            <p className="text-[0.875rem] text-defaulttextcolor dark:text-white mb-1">
+              No modules match your filters
+            </p>
+            <p className="text-[0.8125rem] text-[#8c9097] dark:text-white/50 mb-3">
+              Try a different search or clear status/search filters.
+            </p>
+            <button type="button" className="ti-btn ti-btn-light !mb-0" onClick={clearFilters}>
+              Clear filters
+            </button>
+          </div>
+        ) : (
+          <ModulesListEmptyState
+            statusFilter={statusFilter}
+            archivedCount={lifecycleCounts.archived}
+          />
+        )
       ) : (
-        <ModulesFolderCardGrid
-          folderRows={folderRows}
-          collapsedFolderIds={collapsedFolderIds}
-          onToggleFolder={toggleFolder}
-          onPositionsChanged={fetchModules}
-          selectedIds={selectedIds}
-          statusUpdatingId={statusUpdatingId}
-          showFolderHeaders={showFolderHeaders}
-          onSelectAllInFolder={selectAllInFolder}
-          onDelete={handleDelete}
-          onView={handleView}
-          onClone={handleClone}
-          onAssignFolders={handleAssignFolders}
-          onSetStatus={handleSetModuleStatus}
-          onToggleSelect={toggleSelect}
-        />
+        <div
+          className={
+            refreshing
+              ? 'pointer-events-none opacity-60 transition-opacity'
+              : 'transition-opacity'
+          }
+          aria-busy={refreshing}
+        >
+          <ModulesFolderCardGrid
+            folderRows={folderRows}
+            collapsedFolderIds={collapsedFolderIds}
+            onToggleFolder={toggleFolder}
+            onPositionsChanged={fetchModules}
+            selectedIds={selectedIds}
+            statusUpdatingId={statusUpdatingId}
+            showFolderHeaders={showFolderHeaders}
+            onSelectAllInFolder={selectAllInFolder}
+            onDelete={handleDelete}
+            onView={handleView}
+            onClone={handleClone}
+            onAssignFolders={handleAssignFolders}
+            onSetStatus={handleSetModuleStatus}
+            onToggleSelect={toggleSelect}
+          />
+        </div>
       )}
 
-      {totalPages > 1 && (
-        <nav aria-label="Page navigation">
-          <ul className="ti-pagination ltr:float-right rtl:float-left mb-4">
-            <li className={`page-item ${currentPage === 1 ? 'disabled' : ''}`}>
-              <button
-                className="page-link px-3 py-[0.375rem]"
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-              >
-                Previous
-              </button>
-            </li>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-              <li key={page} className={`page-item ${currentPage === page ? 'active' : ''}`}>
+      <div className="mt-4 mb-4 flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2">
+          <select
+            className="form-control select-show-page-size !w-auto !py-1 !px-4 !text-[0.75rem]"
+            style={{ colorScheme: 'light' }}
+            value={listState.limit}
+            onChange={(e) =>
+              replaceListUrl(
+                modulesStateAfterFilterChange(listState, {
+                  limit: Number(e.target.value),
+                }),
+                'push'
+              )
+            }
+            aria-label="Entries per page"
+            disabled={refreshing}
+          >
+            {MODULES_PAGE_SIZE_OPTIONS.map((size) => (
+              <option key={size} value={size}>
+                Show {size}
+              </option>
+            ))}
+          </select>
+          <span className="text-[0.8125rem] text-[#8c9097] dark:text-white/50">
+            Showing {startIndex} to {endIndex} of {totalResults} entries
+          </span>
+        </div>
+        {totalPages > 1 ? (
+          <nav aria-label="Page navigation" className="ms-auto">
+            <ul className="ti-pagination mb-0">
+              <li className={`page-item ${listState.page === 1 ? 'disabled' : ''}`}>
                 <button
                   className="page-link px-3 py-[0.375rem]"
-                  onClick={() => setCurrentPage(page)}
+                  onClick={() =>
+                    replaceListUrl({ ...listState, page: Math.max(1, listState.page - 1) }, 'push')
+                  }
+                  disabled={listState.page === 1 || refreshing}
                 >
-                  {page}
+                  Previous
                 </button>
               </li>
-            ))}
-            <li className={`page-item ${currentPage === totalPages ? 'disabled' : ''}`}>
-              <button
-                className="page-link px-3 py-[0.375rem]"
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-              >
-                Next
-              </button>
-            </li>
-          </ul>
-        </nav>
-      )}
+              <li className={`page-item ${listState.page >= totalPages ? 'disabled' : ''}`}>
+                <button
+                  className="page-link px-3 py-[0.375rem]"
+                  onClick={() =>
+                    replaceListUrl(
+                      { ...listState, page: Math.min(totalPages, listState.page + 1) },
+                      'push'
+                    )
+                  }
+                  disabled={listState.page >= totalPages || refreshing}
+                >
+                  Next
+                </button>
+              </li>
+            </ul>
+          </nav>
+        ) : null}
+      </div>
 
       <ModuleDetailModal
         open={detailModalOpen}

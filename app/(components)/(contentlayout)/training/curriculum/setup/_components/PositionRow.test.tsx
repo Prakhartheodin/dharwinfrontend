@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { PositionRosterItem } from "@/shared/lib/api/positions"
 import PositionRow from "./PositionRow"
@@ -35,6 +35,12 @@ vi.mock("@/shared/lib/api/positions", async (importOriginal) => {
     updatePosition: vi.fn().mockResolvedValue({}),
   }
 })
+
+vi.mock("sweetalert2", () => ({
+  default: { fire: vi.fn().mockResolvedValue({ isConfirmed: true }) },
+}))
+
+import * as positionsApi from "@/shared/lib/api/positions"
 
 const basePosition = {
   id: "p1",
@@ -120,7 +126,7 @@ describe("PositionRow", () => {
       />
     )
     expect(screen.getByText("8")).toBeInTheDocument()
-    expect(screen.getByText(/8 · 3 trainable/i)).toBeInTheDocument()
+    expect(screen.getByText(/3 of 8 trainable/i)).toBeInTheDocument()
   })
 
   it("renders only one badge when employee and student counts match", () => {
@@ -133,5 +139,46 @@ describe("PositionRow", () => {
     )
     expect(screen.getByText("8")).toBeInTheDocument()
     expect(screen.queryByText(/trainable/i)).not.toBeInTheDocument()
+  })
+
+  it("toggles auto-enrol optimistically and skips onPositionsChanged", async () => {
+    const user = userEvent.setup()
+    const onPositionsChanged = vi.fn()
+    const onAutoEnrollChange = vi.fn()
+    vi.mocked(positionsApi.updatePosition).mockResolvedValue({} as never)
+
+    renderRow(
+      <PositionRow
+        position={basePosition}
+        expanded={false}
+        {...noop}
+        onPositionsChanged={onPositionsChanged}
+        onAutoEnrollChange={onAutoEnrollChange}
+      />
+    )
+
+    const toggle = screen.getByRole("switch", { name: /auto-enrol new hires/i })
+    expect(toggle).toHaveTextContent(/auto-enrol off/i)
+    await user.click(toggle)
+
+    expect(toggle).toHaveTextContent(/auto-enrol on/i)
+    expect(positionsApi.updatePosition).toHaveBeenCalledTimes(1)
+    expect(positionsApi.updatePosition).toHaveBeenCalledWith("p1", { autoEnrollNewHires: true })
+    expect(onAutoEnrollChange).toHaveBeenCalledWith("p1", true)
+    expect(onPositionsChanged).not.toHaveBeenCalled()
+  })
+
+  it("reverts auto-enrol when updatePosition fails", async () => {
+    const user = userEvent.setup()
+    vi.mocked(positionsApi.updatePosition).mockRejectedValueOnce(new Error("nope"))
+
+    renderRow(<PositionRow position={basePosition} expanded={false} {...noop} />)
+
+    const toggle = screen.getByRole("switch", { name: /auto-enrol new hires/i })
+    await user.click(toggle)
+
+    await waitFor(() => {
+      expect(toggle).toHaveTextContent(/auto-enrol off/i)
+    })
   })
 })

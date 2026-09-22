@@ -51,6 +51,24 @@ describe("filterPositions", () => {
     expect(filterPositions(rows, "design", ["f-eng"], foldersByModuleId)).toHaveLength(0)
   })
 
+  it("ORs multiple selected folders", () => {
+    expect(
+      filterPositions(rows, "", ["f-product", "f-eng"], foldersByModuleId).map((r) => r.id).sort()
+    ).toEqual(["p1", "p2"])
+  })
+
+  it("keeps positions with no folder membership when no folders are selected", () => {
+    const orphan = [
+      {
+        ...rows[0],
+        id: "orphan",
+        assignedModules: [{ id: "m-orphan", name: "Loose" }],
+      },
+    ] as PositionRosterItem[]
+    expect(filterPositions(orphan, "", [], foldersByModuleId)).toHaveLength(1)
+    expect(filterPositions(orphan, "", ["f-product"], foldersByModuleId)).toHaveLength(0)
+  })
+
   it("matches a position whose modules span two folders on either folder id", () => {
     const spanning = [
       {

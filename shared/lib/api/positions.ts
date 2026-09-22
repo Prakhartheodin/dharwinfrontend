@@ -69,9 +69,34 @@ export async function getAllPositions(): Promise<Position[]> {
   return data;
 }
 
-/** Positions with active employee counts (single request). */
-export async function getPositionRoster(): Promise<PositionRosterItem[]> {
-  const { data } = await apiClient.get<PositionRosterItem[]>("/positions/roster");
+export interface PositionRosterListResponse {
+  results: PositionRosterItem[];
+  page: number;
+  limit: number;
+  totalPages: number;
+  totalResults: number;
+}
+
+export interface ListPositionRosterParams {
+  search?: string;
+  /** Comma-separated category (folder) ids. */
+  folderIds?: string;
+  sortBy?: string;
+  limit?: number;
+  page?: number;
+}
+
+/**
+ * Positions with active employee counts.
+ * Pass page/limit/search/folderIds/sortBy for Curriculum Setup table paging.
+ * Omit limit to receive every matching row (FolderPositionsPopover / bulk assign).
+ */
+export async function getPositionRoster(
+  params?: ListPositionRosterParams
+): Promise<PositionRosterListResponse> {
+  const { data } = await apiClient.get<PositionRosterListResponse>("/positions/roster", {
+    params,
+  });
   return data;
 }
 

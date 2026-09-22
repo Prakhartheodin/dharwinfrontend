@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import React, { useState } from "react"
+import React, { useEffect, useState } from "react"
 import Swal from "sweetalert2"
 import { AxiosError } from "axios"
 import type { Mentor } from "@/shared/lib/api/mentors"
@@ -23,6 +23,8 @@ export interface PositionRowProps {
   expanded: boolean
   onToggle: () => void
   onPositionsChanged: () => void
+  /** Patch auto-enrol on one roster row without a full reload. */
+  onAutoEnrollChange?: (positionId: string, autoEnrollNewHires: boolean) => void
   canManage: boolean
   canAssign: boolean
   mentors: Mentor[]
@@ -44,6 +46,7 @@ export default function PositionRow({
   expanded,
   onToggle,
   onPositionsChanged,
+  onAutoEnrollChange,
   canManage,
   canAssign,
   mentors,
@@ -63,15 +66,23 @@ export default function PositionRow({
   const [autoEnroll, setAutoEnroll] = useState(Boolean(position.autoEnrollNewHires))
   const [togglingAuto, setTogglingAuto] = useState(false)
 
-  const handleAutoEnrollToggle = async () => {
+  useEffect(() => {
+    setAutoEnroll(Boolean(position.autoEnrollNewHires))
+  }, [position.autoEnrollNewHires])
+
+  const handleAutoEnrollToggle = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
     if (!canManage || unlinked || togglingAuto) return
+    const previous = autoEnroll
     const next = !autoEnroll
+    setAutoEnroll(next)
     setTogglingAuto(true)
     try {
       await positionsApi.updatePosition(id, { autoEnrollNewHires: next })
-      setAutoEnroll(next)
-      onPositionsChanged()
+      onAutoEnrollChange?.(id, next)
     } catch (err) {
+      setAutoEnroll(previous)
       const msg =
         err instanceof AxiosError && err.response?.data?.message
           ? String(err.response.data.message)
@@ -122,15 +133,21 @@ export default function PositionRow({
             </button>
 
             <div className="flex flex-wrap items-center gap-1.5 ps-5">
-              <span className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[0.7rem] font-medium text-primary">
-                {employeeCount}
+              <span
+                role="img"
+                aria-label={`${employeeCount} employee${employeeCount === 1 ? "" : "s"} in this position`}
+                title={`${employeeCount} employee${employeeCount === 1 ? "" : "s"} in this position`}
+                className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[0.7rem] font-medium leading-none text-primary"
+              >
+                <i className="ri-user-line shrink-0 text-[0.75rem] leading-none" aria-hidden />
+                <span className="tabular-nums leading-none">{employeeCount}</span>
               </span>
               {showTrainableGap ? (
                 <span
-                  className="inline-flex items-center rounded-full border border-defaultborder/60 bg-white/10 px-2 py-0.5 text-[0.65rem] font-medium text-defaulttextcolor/55"
+                  className="inline-flex items-center rounded-full border border-defaultborder/60 bg-defaulttextcolor/5 px-2 py-0.5 text-[0.65rem] font-medium text-defaulttextcolor/70"
                   title="Only employees with a training profile can be enrolled"
                 >
-                  {employeeCount} · {studentCount} trainable
+                  {studentCount} of {employeeCount} trainable
                 </span>
               ) : null}
               {unlinked ? (
@@ -145,7 +162,7 @@ export default function PositionRow({
 
         <td className="!min-w-[8rem]">
           {folders.length === 0 ? (
-            <span className="text-defaulttextcolor/50">—</span>
+            <span className="text-defaulttextcolor/50">-</span>
           ) : (
             <div className="flex flex-wrap gap-1.5">
               {folders.map((folder) => (
@@ -166,7 +183,7 @@ export default function PositionRow({
 
         <td className="!min-w-[10rem]">
           {(position.assignedModules ?? []).length === 0 ? (
-            <span className="text-defaulttextcolor/50">—</span>
+            <span className="text-defaulttextcolor/50">-</span>
           ) : (
             <div className="flex flex-wrap gap-1.5">
               {(position.assignedModules ?? []).map((mod) => (
@@ -183,7 +200,7 @@ export default function PositionRow({
 
         <td className="!min-w-[10rem]">
           {(position.assignedEmployees ?? []).length === 0 ? (
-            <span className="text-defaulttextcolor/50">—</span>
+            <span className="text-defaulttextcolor/50">-</span>
           ) : (
             <div className="flex flex-wrap gap-1.5">
               {(position.assignedEmployees ?? []).map((employee) => (
@@ -207,11 +224,11 @@ export default function PositionRow({
               aria-checked={autoEnroll}
               aria-label="Auto-enrol new hires"
               disabled={togglingAuto}
-              onClick={() => void handleAutoEnrollToggle()}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.7rem] font-semibold transition-colors ${
+              onClick={(e) => void handleAutoEnrollToggle(e)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.7rem] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-50 ${
                 autoEnroll
                   ? "border-success/40 bg-success/15 text-success"
-                  : "border-defaultborder/70 bg-white/10 text-defaulttextcolor/60"
+                  : "border-defaultborder/70 bg-defaulttextcolor/5 text-defaulttextcolor/70"
               }`}
             >
               <span
@@ -220,7 +237,14 @@ export default function PositionRow({
               />
               {autoEnroll ? "Auto-enrol on" : "Auto-enrol off"}
             </button>
-          ) : null}
+          ) : (
+            <span
+              className="text-defaulttextcolor/50"
+              title={unlinked ? "Not in catalog: add the position to set auto-enrol" : "You cannot change auto-enrol"}
+            >
+              -
+            </span>
+          )}
         </td>
 
         <td className="text-center !min-w-[5rem]">

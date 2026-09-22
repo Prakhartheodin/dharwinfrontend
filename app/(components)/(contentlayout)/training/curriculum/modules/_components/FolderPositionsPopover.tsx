@@ -83,8 +83,8 @@ export default function FolderPositionsPopover({
     let cancelled = false
     positionsApi
       .getPositionRoster()
-      .then((rows) => {
-        if (!cancelled) setRoster(rows)
+      .then((res) => {
+        if (!cancelled) setRoster(res.results ?? [])
       })
       .catch(() => {
         if (!cancelled) setLoadError('Could not load positions.')

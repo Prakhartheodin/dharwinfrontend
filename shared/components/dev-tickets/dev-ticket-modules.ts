@@ -64,7 +64,7 @@ export const DEV_TICKET_MODULE_GROUPS: DevTicketModuleGroup[] = [
   {
     label: "Training Management",
     pages: [
-      { label: "Categories & Positions", path: "/training/curriculum/setup?tab=categories" },
+      { label: "Categories & Positions", path: "/training/curriculum/setup" },
       { label: "Training Modules", path: "/training/curriculum/modules" },
       { label: "Attendance Tracking", path: "/training/attendance" },
       { label: "Mentors", path: "/training/mentors" },

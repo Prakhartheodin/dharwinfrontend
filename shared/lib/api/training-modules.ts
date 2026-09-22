@@ -110,7 +110,7 @@ export interface ListTrainingModulesParams {
   search?: string;
   category?: string;
   instructor?: string;
-  status?: "draft" | "published" | "archived";
+  status?: "draft" | "published" | "archived" | "active";
   /** Restrict to modules the current user is assigned to (as student or mentor). */
   mine?: boolean;
   sortBy?: string;

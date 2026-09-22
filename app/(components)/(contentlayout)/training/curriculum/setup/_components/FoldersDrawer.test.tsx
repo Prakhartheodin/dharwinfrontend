@@ -83,6 +83,17 @@ describe("FoldersDrawer", () => {
     expect((screen.getByLabelText(/select all/i) as HTMLInputElement).indeterminate).toBe(true)
   })
 
+  it("Escape dismisses the name dialog without closing the drawer", async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(<FoldersDrawer open categories={[]} onChanged={vi.fn()} onClose={onClose} />)
+    await user.click(screen.getByRole("button", { name: /^create$/i }))
+    await user.type(screen.getByLabelText(/category name/i), "Onboarding")
+    await user.keyboard("{Escape}")
+    expect(screen.queryByLabelText(/category name/i)).not.toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
   it("closes on Escape and returns focus to the trigger", async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()

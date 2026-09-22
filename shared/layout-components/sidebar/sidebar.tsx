@@ -164,14 +164,12 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 			if (setupChild) {
 				if (posView && !catView) {
 					setupChild.title = "Positions";
-					setupChild.path = "/training/curriculum/setup?tab=positions";
 				} else if (catView && !posView) {
 					setupChild.title = "Categories";
-					setupChild.path = "/training/curriculum/setup?tab=categories";
 				} else {
 					setupChild.title = "Categories & Positions";
-					setupChild.path = "/training/curriculum/setup?tab=categories";
 				}
+				setupChild.path = "/training/curriculum/setup";
 				// Hide the Categories/Positions link entirely when the user can view neither.
 				setupChild.hidden = !(catView || posView);
 			}

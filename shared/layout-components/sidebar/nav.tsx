@@ -383,7 +383,7 @@ export const MenuItems: any = [
                 icon: CategoriesIcon,
                 title: "Categories & Positions",
                 type: "link",
-                path: "/training/curriculum/setup?tab=categories",
+                path: "/training/curriculum/setup",
                 active: false,
                 selected: false,
                 dirchange: false,

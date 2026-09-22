@@ -1,6 +1,14 @@
 import { normalizedSearchIncludes } from "@/shared/lib/training/normalize-search-term"
 import type { PositionRosterItem } from "@/shared/lib/api/positions"
 
+/**
+ * Filters the position roster by text query and optional folder (category) ids.
+ *
+ * Folder semantics: empty `folderIds` = no folder filter (show all).
+ * Multiple selected folders = OR — a position matches if any of its
+ * assigned modules belongs to any selected folder.
+ * Text query and folder chips compose as AND (both must pass).
+ */
 export function filterPositions(
   rows: PositionRosterItem[],
   query: string,
