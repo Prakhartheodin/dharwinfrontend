@@ -241,14 +241,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        const me = await authApi.getMe();
+        // Two independent endpoints, so they go out together. Every page behind
+        // PermissionGuard stays unmounted until this resolves, which made the serial
+        // version cost a full extra round trip before the page could even start
+        // fetching its own data. Both helpers swallow their errors and resolve to
+        // null, so neither can reject the pair.
+        const [me, permResult] = await Promise.all([
+          authApi.getMe(),
+          authApi.getMyPermissions(),
+        ]);
         if (!cancelled && me) {
           setUser(me.user ?? null);
           setImpersonation(me.impersonation ?? null);
           setSessions(me.sessions ?? []);
           setCapabilities(me.capabilities ?? {});
           setPermissionsLoaded(false);
-          const perm = await authApi.getMyPermissions();
+          const perm = permResult;
           if (!cancelled && perm) {
             setPermissions(perm.permissions ?? []);
             setRoleNames(perm.roleNames ?? []);

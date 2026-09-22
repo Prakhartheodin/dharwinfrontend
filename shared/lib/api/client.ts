@@ -134,6 +134,26 @@ function isAuthEndpoint(url: string): boolean {
   );
 }
 
+/**
+ * In-flight refresh, shared by every request that 401s at the same time.
+ *
+ * Refresh tokens rotate, so two parallel refreshes mean the second one presents a
+ * token the first already consumed. That second call fails, and its failure path is
+ * `onSessionExpired()` — a forced sign-out. Any page loading two resources at once
+ * hits this whenever the access token has expired, so the refresh has to be a single
+ * shared promise rather than one per failed request.
+ */
+let refreshInFlight: Promise<unknown> | null = null;
+
+function refreshTokensOnce(): Promise<unknown> {
+  if (!refreshInFlight) {
+    refreshInFlight = apiClient.post(AUTH_ENDPOINTS.refreshTokens, {}).finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
@@ -147,7 +167,7 @@ apiClient.interceptors.response.use(
     config._retry = true;
 
     try {
-      await apiClient.post(AUTH_ENDPOINTS.refreshTokens, {});
+      await refreshTokensOnce();
       return apiClient(config);
     } catch (refreshErr) {
       const data = (refreshErr as AxiosError)?.response?.data as { errorCode?: string } | undefined;
