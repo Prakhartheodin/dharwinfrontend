@@ -148,6 +148,13 @@ function ModuleCardCover({
         <img
           src={url}
           alt=""
+          // The virtualizer keeps 8 rows of overscan mounted below the fold, and each
+          // cover is a full-size S3 original. `lazy` holds those back until they are
+          // actually scrolled to. The wrapper is a fixed h-36 box and the image is
+          // absolutely positioned inside it, so the space is already reserved and
+          // deferring the load cannot shift layout.
+          loading="lazy"
+          decoding="async"
           className="absolute inset-0 h-full w-full object-cover"
           onError={() => setBroken(true)}
         />
