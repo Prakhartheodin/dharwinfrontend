@@ -459,12 +459,15 @@ const CreateModule = () => {
   const router = useRouter()
   const searchParams = useSearchParams()
   const moduleId = searchParams.get('id')
+  // Set by "Add module to this folder" on the catalog, so the new module opens
+  // already filed where the person clicked from.
+  const presetCategoryId = searchParams.get('category')
   const isEditMode = Boolean(moduleId)
   const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } =
     usePmReactSelectStyles()
   const [activeTab, setActiveTab] = useState<'info' | 'playlist'>('info')
   const [formData, setFormData] = useState<ModuleFormData>({
-    categoryIds: [],
+    categoryIds: presetCategoryId ? [presetCategoryId] : [],
     positionIds: [],
     name: '',
     coverImage: '',

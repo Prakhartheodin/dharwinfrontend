@@ -20,7 +20,7 @@ import {
 } from '@/shared/lib/training/group-modules-into-folders'
 import { type ModuleLifecycleStatus } from './_components/ModuleStatusBadge'
 import { ModulesBulkActionsBar } from './_components/ModulesBulkActionsBar'
-import { ModulesFolderList } from './_components/ModulesFolderList'
+import { ModulesFolderCardGrid } from './_components/ModulesFolderCardGrid'
 import { ModulesListEmptyState } from './_components/ModulesListEmptyState'
 import { ModulesListSkeleton } from './_components/ModulesListSkeleton'
 import { ModulesListToolbar } from './_components/ModulesListToolbar'
@@ -675,7 +675,6 @@ const TrainingModules = () => {
   const statusFilter = parseModulesListStatus(searchParams.get('status'))
   const [search, setSearch] = useState('')
   const [sortValue, setSortValue] = useState(SORT_OPTIONS[0])
-  const [collapsedCategoryIds, setCollapsedCategoryIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [modules, setModules] = useState<ApiTrainingModule[]>([])
   const [categories, setCategories] = useState<ApiCategory[]>([])
@@ -691,6 +690,8 @@ const TrainingModules = () => {
   const [assignFoldersModuleId, setAssignFoldersModuleId] = useState<string | null>(null)
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  /** Shut folder cards. Held here so the toolbar's collapse-all can drive every card. */
+  const [collapsedFolderIds, setCollapsedFolderIds] = useState<Set<string>>(new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkFolderOpen, setBulkFolderOpen] = useState(false)
 
@@ -992,7 +993,6 @@ const TrainingModules = () => {
       setSearch(value)
       setCurrentPage(1)
       applyCatalogFilter(allModulesRef.current, value)
-      if (value.trim()) setCollapsedCategoryIds(new Set())
     },
     [applyCatalogFilter],
   )
@@ -1048,10 +1048,6 @@ const TrainingModules = () => {
     },
     [pathname, router, searchParams],
   )
-
-  useEffect(() => {
-    setCollapsedCategoryIds(new Set())
-  }, [statusFilter])
 
   const handleClone = useCallback(async (moduleId: string) => {
     try {
@@ -1168,15 +1164,6 @@ const TrainingModules = () => {
     setDetailModalOpen(false)
   }, [])
 
-  const toggleCategory = useCallback((categoryId: string) => {
-    setCollapsedCategoryIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(categoryId)) next.delete(categoryId)
-      else next.add(categoryId)
-      return next
-    })
-  }, [])
-
   const handleAssignFolders = useCallback((id: string) => {
     setAssignFoldersModuleId(id)
   }, [])
@@ -1208,7 +1195,7 @@ const TrainingModules = () => {
           statusFilter,
           includeEmptyDrafts: false,
           includeArchivedOnAll: false,
-          includeEmptyCategories: false,
+          includeEmptyCategories: true,
         },
       ),
     [modules, categories, sortValue, search, statusFilter],
@@ -1217,19 +1204,23 @@ const TrainingModules = () => {
   const showFolderHeaders = statusFilter === 'all' || statusFilter === 'published'
   const folderIds = useMemo(() => folderRows.map((f) => f.id), [folderRows])
   const allCollapsed =
-    folderIds.length > 0 && folderIds.every((id) => collapsedCategoryIds.has(id))
+    folderIds.length > 0 && folderIds.every((id) => collapsedFolderIds.has(id))
 
   /**
-   * Expand all when every folder is collapsed; otherwise collapse all (partial counts as expanded).
+   * Expand all when every folder is shut; otherwise collapse all (partial counts as open).
    */
   const toggleAllFolders = useCallback(() => {
-    if (allCollapsed) {
-      setCollapsedCategoryIds(new Set())
-      return
-    }
-    setCollapsedCategoryIds(new Set(folderIds))
+    setCollapsedFolderIds(allCollapsed ? new Set() : new Set(folderIds))
   }, [allCollapsed, folderIds])
 
+  const toggleFolder = useCallback((folderId: string) => {
+    setCollapsedFolderIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(folderId)) next.delete(folderId)
+      else next.add(folderId)
+      return next
+    })
+  }, [])
   const handleCreateFolder = async () => {
     const name = newFolderName.trim()
     if (!name) return
@@ -1385,13 +1376,14 @@ const TrainingModules = () => {
           archivedCount={lifecycleCounts.archived}
         />
       ) : (
-        <ModulesFolderList
+        <ModulesFolderCardGrid
           folderRows={folderRows}
-          collapsedCategoryIds={collapsedCategoryIds}
+          collapsedFolderIds={collapsedFolderIds}
+          onToggleFolder={toggleFolder}
+          onPositionsChanged={fetchModules}
           selectedIds={selectedIds}
           statusUpdatingId={statusUpdatingId}
           showFolderHeaders={showFolderHeaders}
-          onToggleCategory={toggleCategory}
           onSelectAllInFolder={selectAllInFolder}
           onDelete={handleDelete}
           onView={handleView}

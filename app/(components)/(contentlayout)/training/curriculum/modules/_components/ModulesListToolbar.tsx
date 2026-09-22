@@ -41,6 +41,7 @@ export interface ModulesListToolbarProps {
   lifecycleCounts: TrainingModuleLifecycleCounts
   hrefForStatus: (id: TrainingModulesListStatus) => string
   onStatusChange: (next: TrainingModulesListStatus) => void
+  /** False on Drafts / Archived, where there are no folder cards to collapse. */
   showFolderHeaders: boolean
   allCollapsed: boolean
   folderCount: number
