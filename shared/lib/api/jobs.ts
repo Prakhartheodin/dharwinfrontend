@@ -44,6 +44,22 @@ export interface JobSalaryRange {
   currency?: string;
 }
 
+export type HireForecastConfidence = "low" | "medium" | "high";
+export type HireForecastSource = "heuristic" | "llm";
+
+/** Remaining-days forecast attached to staff `GET /jobs` rows. */
+export interface HireForecast {
+  daysLow: number;
+  daysHigh: number;
+  confidence: HireForecastConfidence;
+  label: string;
+  rationale: string;
+  source: HireForecastSource;
+  applicants: number;
+  strongFits: number;
+  remainingVacancies: number;
+}
+
 export interface Job {
   _id?: string;
   id?: string;
@@ -60,6 +76,8 @@ export interface Job {
   maxExperience?: number | null;
   /** Number of openings for this posting. */
   vacancies?: number | null;
+  /** Remaining-days hire forecast for the staff jobs list. Absent on browse/public. */
+  hireForecast?: HireForecast | null;
   applicationDeadline?: string | null;
   status: string;
   /** internal = ATS-created; external = mirrored from saved external listing */

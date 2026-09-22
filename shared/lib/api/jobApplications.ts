@@ -4,6 +4,17 @@ import { apiClient } from "@/shared/lib/api/client";
 
 export type JobApplicationStatus = "Applied" | "Screening" | "Interview" | "Shortlisted" | "Offered" | "Hired" | "Rejected";
 
+export type ApplicantCulturalFit = "fit" | "not_fit" | "unclear";
+
+export interface ApplicantFit {
+  successProbability: number;
+  successLabel: string;
+  culturalFit: ApplicantCulturalFit;
+  culturalLabel: string;
+  rationale: string;
+  source: "llm" | "heuristic";
+}
+
 export interface JobApplication {
   _id: string;
   id?: string;
@@ -34,6 +45,8 @@ export interface JobApplication {
    */
   applicantUser?: { _id?: string; id?: string; name?: string; email?: string } | null;
   status: JobApplicationStatus;
+  /** Staff-list overlay: JD vs resume-skills success + cultural fit. */
+  applicantFit?: ApplicantFit | null;
   coverLetter?: string | null;
   submittedResume?: {
     slot?: string;

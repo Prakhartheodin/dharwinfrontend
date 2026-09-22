@@ -1,4 +1,4 @@
-import type { Job } from "@/shared/lib/api/jobs";
+import type { HireForecast, Job } from "@/shared/lib/api/jobs";
 
 const EXPERIENCE_MAP: Record<string, string> = {
   "Entry Level": "0-2 years",
@@ -145,6 +145,8 @@ export interface DisplayJob {
   postedById?: string;
   /** Number of openings/vacancies for this job posting (defaults to 1 on backend). */
   vacancies?: number | null;
+  /** Remaining-days hire forecast from the staff jobs list. */
+  hireForecast?: HireForecast | null;
   /** Raw numeric experience years — preferred over the string for range filtering. */
   minExperienceNum?: number | null;
   maxExperienceNum?: number | null;
@@ -188,6 +190,7 @@ export function mapJobToDisplay(apiJob: Job): DisplayJob {
     postedByEmail,
     postedById,
     vacancies: apiJob.vacancies ?? null,
+    hireForecast: apiJob.hireForecast ?? null,
     minExperienceNum:
       typeof apiJob.minExperience === "number" && Number.isFinite(apiJob.minExperience)
         ? apiJob.minExperience

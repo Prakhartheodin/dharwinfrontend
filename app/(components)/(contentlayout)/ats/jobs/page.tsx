@@ -9,6 +9,8 @@ import JobsFilterPanel from './_components/JobsFilterPanel'
 import { DROPDOWN_ITEM, PortalDropdown } from './_components/PortalDropdown'
 import JobPreviewPanel from './_components/JobPreviewPanel'
 import JobShareModal from './_components/JobShareModal'
+import { HireForecastCell, HireForecastChip } from './_components/HireForecastCell'
+import { HireForecastColumnHeader, HireForecastInfoDrawer } from './_components/HireForecastInfoDrawer'
 import ListPagination from '@/shared/components/ListPagination'
 import { CompanyWebsiteLink } from '@/shared/components/ats/CompanyWebsiteLink'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
@@ -168,6 +170,7 @@ const COLUMN_VISIBILITY: Record<string, string> = {
   jobTitle: 'max-w-[22rem] min-w-0 overflow-hidden whitespace-normal',
   company: '',
   vacancies: 'hidden xl:table-cell',
+  hireForecast: 'hidden lg:table-cell',
   postingDate: 'hidden w-0 max-w-0 !p-0 !border-0 overflow-hidden',
   salary: 'hidden md:table-cell',
   jobOrigin: 'hidden xl:table-cell',
@@ -1004,6 +1007,12 @@ const Jobs = () => {
         },
       },
       {
+        Header: HireForecastColumnHeader,
+        accessor: 'hireForecast',
+        disableSortBy: true,
+        Cell: ({ row }: any) => <HireForecastCell forecast={row.original.hireForecast} />,
+      },
+      {
         Header: 'Salary',
         accessor: 'salary',
         disableSortBy: true,
@@ -1726,6 +1735,7 @@ const Jobs = () => {
                               {job.vacancies}
                             </span>
                           )}
+                          <HireForecastChip forecast={job.hireForecast} />
                           <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ${
                             job.jobOrigin === 'external'
                               ? 'bg-info/15 text-info border border-info/30'
@@ -1891,6 +1901,8 @@ const Jobs = () => {
                                   onChange={handleSelectAll}
                                   aria-label="Select all"
                                 />
+                              ) : column.id === 'hireForecast' ? (
+                                column.render('Header')
                               ) : (
                                 <div className="flex items-center gap-2">
                                   <span className="tabletitle">{column.render('Header')}</span>
@@ -2346,6 +2358,8 @@ const Jobs = () => {
           setJobShareRefLoading(false)
         }}
       />
+
+      <HireForecastInfoDrawer />
 
       {/* Apply Candidate Modal */}
       {applyModalOpen && applyJob && (
