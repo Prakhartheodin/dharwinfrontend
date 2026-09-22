@@ -4,6 +4,7 @@ import React, { useId, useRef } from "react";
 import { YmdFilterDateInput } from "@/shared/components/filters/YmdFilterDateInput";
 import { useWorkforceStore } from "../state/workforce.store";
 import { useEadCardExtract } from "../resources/useEadCardExtract";
+import { useVisaExtract } from "../resources/useVisaExtract";
 import { EadScanNotice } from "../components/EadScanNotice";
 import { useWizardContext } from "../engine/WizardContext";
 import { getPhoneCountry } from "@/shared/lib/phoneCountries";
@@ -163,6 +164,8 @@ export function PersonalInfoStep() {
   const setPersonalInfo = useWorkforceStore((s) => s.setPersonalInfo);
   const eadFileRef = useRef<HTMLInputElement | null>(null);
   const ead = useEadCardExtract((patch) => setPersonalInfo(patch));
+  const visaFileRef = useRef<HTMLInputElement | null>(null);
+  const visa = useVisaExtract((patch) => setPersonalInfo(patch));
   const { issuesByField, mode, currentIndex, steps, submitAttempted } = useWizardContext();
   const auth = useAuth();
   const fileInputId = useId();
@@ -478,21 +481,30 @@ export function PersonalInfoStep() {
             />
           </Field>
 
-          <Field
-            id="ead"
-            label="EAD"
-            optional
-            hint={adminOwnedReadOnly ? hrOwnedHint : undefined}
-          >
-            <input
-              type="text"
-              value={pi.ead}
-              onChange={onText("ead")}
-              readOnly={adminOwnedReadOnly}
-              className={inputClass(false, adminOwnedReadOnly)}
-              placeholder="Employment authorization"
-            />
-          </Field>
+          {/* Legacy free-text box, shown only where it still holds a value. Two fields
+              both labelled EAD read as a bug on a record that has never used the old one;
+              hiding it when empty retires it quietly without losing any existing data. */}
+          {pi.ead ? (
+            <Field
+              id="ead"
+              label="EAD (legacy)"
+              optional
+              hint={
+                adminOwnedReadOnly
+                  ? hrOwnedHint
+                  : "Superseded by EAD card number. Clear this once the value has been moved across."
+              }
+            >
+              <input
+                type="text"
+                value={pi.ead}
+                onChange={onText("ead")}
+                readOnly={adminOwnedReadOnly}
+                className={inputClass(false, adminOwnedReadOnly)}
+                placeholder="Employment authorization"
+              />
+            </Field>
+          ) : null}
 
           <Field
             id="eadCardNumber"
@@ -638,6 +650,109 @@ export function PersonalInfoStep() {
               />
             </Field>
           ) : null}
+
+          <Field
+            id="visaNumber"
+            label="Visa number"
+            optional
+            hint={
+              adminOwnedReadOnly
+                ? hrOwnedHint
+                : "Printed in red on the visa, not the passport number."
+            }
+          >
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={pi.visaNumber}
+                onChange={onText("visaNumber")}
+                readOnly={adminOwnedReadOnly}
+                className={inputClass(
+                  visa.needsReview.includes("visaNumber"),
+                  adminOwnedReadOnly,
+                )}
+                placeholder="e.g. 00000001"
+              />
+              {!adminOwnedReadOnly && (
+                <>
+                  <input
+                    ref={visaFileRef}
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      // Reset first: picking the same file twice fires no change event otherwise.
+                      e.target.value = "";
+                      if (file) {
+                        void visa.scanVisa(file, {
+                          visaNumber: pi.visaNumber,
+                          visaIssueDate: pi.visaIssueDate,
+                          visaExpiryDate: pi.visaExpiryDate,
+                        });
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-primary-full whitespace-nowrap !mb-0"
+                    disabled={visa.scanning}
+                    onClick={() => visaFileRef.current?.click()}
+                  >
+                    {visa.scanning ? "Reading…" : "Scan visa"}
+                  </button>
+                </>
+              )}
+            </div>
+            <EadScanNotice
+              pending={visa.pendingReplacements.visaNumber}
+              onReplace={() => visa.applyReplacement("visaNumber")}
+              onKeep={() => visa.dismissReplacement("visaNumber")}
+            />
+            {visa.warnings.map((w) => (
+              <p key={w} className="text-xs text-warning mt-1">
+                {w}
+              </p>
+            ))}
+          </Field>
+
+          <Field id="visaIssueDate" label="Visa issued" optional>
+            <YmdFilterDateInput
+              label="Visa issued"
+              hideLabel
+              variant="form"
+              inputId="visaIssueDate"
+              portalId="visa-issue-datepicker"
+              popperClassName="!z-[10050]"
+              value={pi.visaIssueDate}
+              disabled={adminOwnedReadOnly}
+              onCommit={(ymd) => setPersonalInfo({ visaIssueDate: ymd })}
+            />
+            <EadScanNotice
+              pending={visa.pendingReplacements.visaIssueDate}
+              onReplace={() => visa.applyReplacement("visaIssueDate")}
+              onKeep={() => visa.dismissReplacement("visaIssueDate")}
+            />
+          </Field>
+
+          <Field id="visaExpiryDate" label="Visa expires" optional>
+            <YmdFilterDateInput
+              label="Visa expires"
+              hideLabel
+              variant="form"
+              inputId="visaExpiryDate"
+              portalId="visa-expiry-datepicker"
+              popperClassName="!z-[10050]"
+              value={pi.visaExpiryDate}
+              disabled={adminOwnedReadOnly}
+              onCommit={(ymd) => setPersonalInfo({ visaExpiryDate: ymd })}
+            />
+            <EadScanNotice
+              pending={visa.pendingReplacements.visaExpiryDate}
+              onReplace={() => visa.applyReplacement("visaExpiryDate")}
+              onKeep={() => visa.dismissReplacement("visaExpiryDate")}
+            />
+          </Field>
 
           <Field
             id="salaryRange"

@@ -150,6 +150,10 @@ export function mapToFormState(source: WorkforceSource): WorkforceFormState {
     // viewer west of UTC — an off-by-one on a work-authorisation expiry is an I-9 error.
     eadValidFrom: asString(migrated.eadValidFrom, "").slice(0, 10),
     eadValidTo: asString(migrated.eadValidTo, "").slice(0, 10),
+    visaNumber: asString(migrated.visaNumber, empty.personalInfo.visaNumber),
+    // ISO prefix, never local Date getters -- see the eadValidFrom note above.
+    visaIssueDate: asString(migrated.visaIssueDate, "").slice(0, 10),
+    visaExpiryDate: asString(migrated.visaExpiryDate, "").slice(0, 10),
     supervisorName: asString(migrated.supervisorName, empty.personalInfo.supervisorName),
     supervisorContact: asString(migrated.supervisorContact, empty.personalInfo.supervisorContact),
     supervisorCountryCode: asString(

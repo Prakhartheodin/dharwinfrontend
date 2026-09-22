@@ -278,6 +278,41 @@ export async function extractEadCard(file: File): Promise<ExtractEadCardResponse
   return data;
 }
 
+/** The three visa fields, as ISO YYYY-MM-DD strings. Null means "not readable", never "empty". */
+export interface VisaFields {
+  visaNumber: string | null;
+  issueDate: string | null;
+  expiryDate: string | null;
+}
+
+export interface ExtractVisaResponse {
+  fields: VisaFields;
+  needsReview: string[];
+  warnings: string[];
+}
+
+/** Read Visa Number, Issue Date and Expiration Date off a photo of a visa. Stores nothing. */
+export async function extractVisa(file: File): Promise<ExtractVisaResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  // Do not set Content-Type — apiClient defaults to JSON; FormData needs the browser to set
+  // multipart/form-data WITH its boundary, or multer can't parse the file and req.file is undefined.
+  const { data } = await apiClient.post<ExtractVisaResponse>(
+    AUTH_ENDPOINTS.extractVisa,
+    formData,
+    {
+      timeout: 120000,
+      transformRequest: [
+        (body: unknown, headers: Record<string, string>) => {
+          delete headers["Content-Type"];
+          return body;
+        },
+      ],
+    } as any
+  );
+  return data;
+}
+
 /** Payload for POST /auth/me/recommend-skills-by-role — OpenAI gap analysis vs target role. */
 export interface RecommendSkillsByRolePayload {
   role: string;

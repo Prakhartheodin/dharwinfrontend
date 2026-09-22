@@ -25,6 +25,10 @@ export type PersonalInfoSlice = {
   /** YYYY-MM-DD, never a Date and never an ISO timestamp. See mapper.ts for why. */
   eadValidFrom: string;
   eadValidTo: string;
+  visaNumber: string;
+  /** YYYY-MM-DD, never a Date and never an ISO timestamp. See mapper.ts for why. */
+  visaIssueDate: string;
+  visaExpiryDate: string;
   supervisorName: string;
   supervisorContact: string;
   supervisorCountryCode: string;
@@ -120,6 +124,10 @@ export type NormalizedWorkforce = {
   /** YYYY-MM-DD, never a Date and never an ISO timestamp. See mapper.ts for why. */
   eadValidFrom: string;
   eadValidTo: string;
+  visaNumber: string;
+  /** YYYY-MM-DD, never a Date and never an ISO timestamp. See mapper.ts for why. */
+  visaIssueDate: string;
+  visaExpiryDate: string;
   supervisorName: string;
   supervisorContact: string;
   supervisorCountryCode: string;

@@ -23,6 +23,7 @@ import {
   resolveGenericDocumentUploadLabel,
 } from "@/shared/components/candidates/documentUploadUx";
 import { useEadCardExtract } from "@/shared/workforce-profile/resources/useEadCardExtract";
+import { useVisaExtract } from "@/shared/workforce-profile/resources/useVisaExtract";
 import { EadScanNotice } from "@/shared/workforce-profile/components/EadScanNotice";
 import { listDepartments, type Department } from "@/shared/lib/api/departments";
 import { resolveDownloadUrlForBrowser } from "@/shared/lib/api/client";
@@ -620,7 +621,7 @@ export const EmployeeForm = ({
   }, [canManageEmployees]);
 
   const [formData, setFormData] = useState({ 
-    fullName: "", email: "", phoneNumber: "", countryCode: "IN", shortBio: "", sevisId: "", ead: "", eadCardNumber: "", eadValidFrom: "", eadValidTo: "", degree: "", designation: "", compensationType: "", employmentType: "", supervisorName: "", supervisorContact: "", supervisorCountryCode: "IN", visaType: "", customVisaType: "", salaryRange: "", streetAddress: "", streetAddress2: "", city: "", state: "", zipCode: "", country: "", password: "",
+    fullName: "", email: "", phoneNumber: "", countryCode: "IN", shortBio: "", sevisId: "", ead: "", eadCardNumber: "", eadValidFrom: "", eadValidTo: "", visaNumber: "", visaIssueDate: "", visaExpiryDate: "", degree: "", designation: "", compensationType: "", employmentType: "", supervisorName: "", supervisorContact: "", supervisorCountryCode: "IN", visaType: "", customVisaType: "", salaryRange: "", streetAddress: "", streetAddress2: "", city: "", state: "", zipCode: "", country: "", password: "",
     companyAssignedEmail: "",
     companyEmailProvider: "" as "" | "gmail" | "outlook" | "unknown",
     departmentId: "",
@@ -794,6 +795,10 @@ export const EmployeeForm = ({
 
   const eadFileRef = useRef<HTMLInputElement | null>(null);
   const ead = useEadCardExtract((patch) =>
+    setFormData((prev) => ({ ...prev, ...patch }))
+  );
+  const visaFileRef = useRef<HTMLInputElement | null>(null);
+  const visa = useVisaExtract((patch) =>
     setFormData((prev) => ({ ...prev, ...patch }))
   );
   const newDocumentsRef = useRef<HTMLDivElement>(null);
@@ -1932,6 +1937,9 @@ export const EmployeeForm = ({
         // viewer west of UTC — an off-by-one EAD expiry is an I-9 error, not a cosmetic one.
         eadValidFrom: String(initialData.eadValidFrom ?? "").slice(0, 10),
         eadValidTo: String(initialData.eadValidTo ?? "").slice(0, 10),
+        visaNumber: initialData.visaNumber || "",
+        visaIssueDate: String(initialData.visaIssueDate ?? "").slice(0, 10),
+        visaExpiryDate: String(initialData.visaExpiryDate ?? "").slice(0, 10),
         degree: initialData.degree || "",
         designation: resolveEmployeeJobTitle(initialData) || initialData.designation || "",
         compensationType: initialData.compensationType || "",
@@ -2271,6 +2279,9 @@ export const EmployeeForm = ({
         // timezone shift the read side above exists to avoid. Empty clears the field.
         eadValidFrom: formData.eadValidFrom || null,
         eadValidTo: formData.eadValidTo || null,
+        visaNumber: formData.visaNumber,
+        visaIssueDate: formData.visaIssueDate || null,
+        visaExpiryDate: formData.visaExpiryDate || null,
         degree: formData.degree,
         designation: formData.designation?.trim() || undefined,
         // Sent only when set. Unlike compensationType this needs no override flag: there is no
@@ -2740,10 +2751,16 @@ export const EmployeeForm = ({
                 <label htmlFor="sevisId" className="form-label">SEVIS ID</label>
                 <input type="text" name="sevisId" value={formData.sevisId} onChange={handleFormChange} className="form-control w-full !rounded-md" id="sevisId" placeholder="SEVIS ID" />
             </div>
+            {/* Legacy free-text box, shown only where it still holds a value. Two fields
+                both labelled EAD read as a bug on a record that has never used the old one;
+                hiding it when empty retires it quietly without losing any existing data. */}
+            {formData.ead ? (
             <div className="xl:col-span-6 col-span-12">
-                <label htmlFor="ead" className="form-label">EAD</label>
+                <label htmlFor="ead" className="form-label">EAD (legacy)</label>
                 <input type="text" name="ead" value={formData.ead} onChange={handleFormChange} className="form-control w-full !rounded-md" id="ead" placeholder="EAD" />
+                <p className="text-xs opacity-70 mt-1">Superseded by EAD card number. Clear this once the value has been moved across.</p>
             </div>
+            ) : null}
             <div className="xl:col-span-6 col-span-12">
                 <label htmlFor="eadCardNumber" className="form-label">EAD card number</label>
                 <div className="flex gap-2">
@@ -2825,6 +2842,89 @@ export const EmployeeForm = ({
                   pending={ead.pendingReplacements.eadValidTo}
                   onReplace={() => ead.applyReplacement("eadValidTo")}
                   onKeep={() => ead.dismissReplacement("eadValidTo")}
+                />
+            </div>
+            <div className="xl:col-span-6 col-span-12">
+                <label htmlFor="visaNumber" className="form-label">Visa number</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    name="visaNumber"
+                    value={formData.visaNumber}
+                    onChange={handleFormChange}
+                    className="form-control w-full !rounded-md"
+                    id="visaNumber"
+                    placeholder="e.g. 00000001"
+                  />
+                  <input
+                    ref={visaFileRef}
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      // Reset first: picking the same file twice fires no change event otherwise.
+                      e.target.value = "";
+                      if (file) {
+                        void visa.scanVisa(file, {
+                          visaNumber: formData.visaNumber,
+                          visaIssueDate: formData.visaIssueDate,
+                          visaExpiryDate: formData.visaExpiryDate,
+                        });
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-primary-full whitespace-nowrap !mb-0"
+                    disabled={visa.scanning}
+                    onClick={() => visaFileRef.current?.click()}
+                  >
+                    {visa.scanning ? "Reading…" : "Scan visa"}
+                  </button>
+                </div>
+                <p className="text-xs opacity-70 mt-1">Printed in red on the visa, not the passport number.</p>
+                <EadScanNotice
+                  pending={visa.pendingReplacements.visaNumber}
+                  onReplace={() => visa.applyReplacement("visaNumber")}
+                  onKeep={() => visa.dismissReplacement("visaNumber")}
+                />
+                {visa.warnings.map((w) => (
+                  <p key={w} className="text-xs text-warning mt-1">{w}</p>
+                ))}
+            </div>
+            <div className="xl:col-span-6 col-span-12">
+                <YmdFilterDateInput
+                  label="Visa issued"
+                  variant="form"
+                  inputId="visaIssueDate"
+                  portalId="admin-visa-issue-datepicker"
+                  value={formData.visaIssueDate}
+                  labelClassName="form-label"
+                  inputClassName="form-control w-full !rounded-md"
+                  onCommit={(ymd) => setFormData((prev) => ({ ...prev, visaIssueDate: ymd }))}
+                />
+                <EadScanNotice
+                  pending={visa.pendingReplacements.visaIssueDate}
+                  onReplace={() => visa.applyReplacement("visaIssueDate")}
+                  onKeep={() => visa.dismissReplacement("visaIssueDate")}
+                />
+            </div>
+            <div className="xl:col-span-6 col-span-12">
+                <YmdFilterDateInput
+                  label="Visa expires"
+                  variant="form"
+                  inputId="visaExpiryDate"
+                  portalId="admin-visa-expiry-datepicker"
+                  value={formData.visaExpiryDate}
+                  labelClassName="form-label"
+                  inputClassName="form-control w-full !rounded-md"
+                  onCommit={(ymd) => setFormData((prev) => ({ ...prev, visaExpiryDate: ymd }))}
+                />
+                <EadScanNotice
+                  pending={visa.pendingReplacements.visaExpiryDate}
+                  onReplace={() => visa.applyReplacement("visaExpiryDate")}
+                  onKeep={() => visa.dismissReplacement("visaExpiryDate")}
                 />
             </div>
             <div className="xl:col-span-6 col-span-12">
@@ -3756,8 +3856,12 @@ export const EmployeeForm = ({
                         />
                       </div>
 
+                      {/* Matches its two siblings exactly: no top offset, so all three
+                          labels sit on the row's top edge. An mt-6 here used to fake
+                          alignment against the file button and drifted the moment the
+                          other cells gained helper text. */}
                       {doc.file && (
-                        <div className="xl:col-span-4 col-span-12 mt-6">
+                        <div className="xl:col-span-4 col-span-12 flex flex-col">
                           <label className="form-label">File Preview</label>
                           <div className="flex items-center">
                             {getFileThumbnail(doc.file)}
@@ -3768,6 +3872,82 @@ export const EmployeeForm = ({
                               </div>
                             </div>
                           </div>
+                        </div>
+                      )}
+
+                      {/* Reading the card is offered here because this is where the card
+                          arrives, but the fields it fills live on the Personal step. The
+                          result is echoed below so the user sees what was read without
+                          navigating away; the file itself still uploads with the form. */}
+                      {doc.name === "EAD Card" && doc.file && (
+                        <div className="col-span-12 mt-2">
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-primary-full !mb-0"
+                            disabled={ead.scanning}
+                            onClick={() => {
+                              const file = doc.file;
+                              if (!file) return;
+                              void ead.scanCard(file, {
+                                eadCardNumber: formData.eadCardNumber,
+                                eadValidFrom: formData.eadValidFrom,
+                                eadValidTo: formData.eadValidTo,
+                              });
+                            }}
+                          >
+                            {ead.scanning ? "Reading card…" : "Read card details"}
+                          </button>
+
+                          {ead.lastResult && (
+                            <div className="text-xs mt-2 text-gray-600 dark:text-gray-400">
+                              <div>
+                                Card number: <strong>{ead.lastResult.eadCardNumber || "not readable"}</strong>
+                                {" · "}Valid from: <strong>{ead.lastResult.eadValidFrom || "not readable"}</strong>
+                                {" · "}Expires: <strong>{ead.lastResult.eadValidTo || "not readable"}</strong>
+                              </div>
+                              <div className="mt-1">Filled into the Personal step — review before saving.</div>
+                            </div>
+                          )}
+
+                          {ead.warnings.map((w) => (
+                            <p key={w} className="text-xs text-warning mt-1">{w}</p>
+                          ))}
+                        </div>
+                      )}
+
+                      {doc.name === "Visa" && doc.file && (
+                        <div className="col-span-12 mt-2">
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-primary-full !mb-0"
+                            disabled={visa.scanning}
+                            onClick={() => {
+                              const file = doc.file;
+                              if (!file) return;
+                              void visa.scanVisa(file, {
+                                visaNumber: formData.visaNumber,
+                                visaIssueDate: formData.visaIssueDate,
+                                visaExpiryDate: formData.visaExpiryDate,
+                              });
+                            }}
+                          >
+                            {visa.scanning ? "Reading visa…" : "Read visa details"}
+                          </button>
+
+                          {visa.lastResult && (
+                            <div className="text-xs mt-2 text-gray-600 dark:text-gray-400">
+                              <div>
+                                Visa number: <strong>{visa.lastResult.visaNumber || "not readable"}</strong>
+                                {" · "}Issued: <strong>{visa.lastResult.visaIssueDate || "not readable"}</strong>
+                                {" · "}Expires: <strong>{visa.lastResult.visaExpiryDate || "not readable"}</strong>
+                              </div>
+                              <div className="mt-1">Filled into the Personal step — review before saving.</div>
+                            </div>
+                          )}
+
+                          {visa.warnings.map((w) => (
+                            <p key={w} className="text-xs text-warning mt-1">{w}</p>
+                          ))}
                         </div>
                       )}
                     </div>

@@ -82,6 +82,10 @@ export function toCandidatePayload(
     // the timezone shift the mapper's read side exists to avoid.
     ...(n.eadValidFrom ? { eadValidFrom: n.eadValidFrom } : {}),
     ...(n.eadValidTo ? { eadValidTo: n.eadValidTo } : {}),
+    ...(n.visaNumber ? { visaNumber: n.visaNumber } : {}),
+    // Bare YMD, never toISOString() -- see the eadValidFrom note above.
+    ...(n.visaIssueDate ? { visaIssueDate: n.visaIssueDate } : {}),
+    ...(n.visaExpiryDate ? { visaExpiryDate: n.visaExpiryDate } : {}),
     ...(n.visaType ? { visaType: n.visaType } : {}),
     ...(n.customVisaType ? { customVisaType: n.customVisaType } : {}),
     ...(n.supervisorName ? { supervisorName: n.supervisorName } : {}),
