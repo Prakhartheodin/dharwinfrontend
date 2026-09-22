@@ -66,6 +66,14 @@ export interface TrainingModulePosition {
 
 export interface TrainingModule {
   id: string;
+  /** Present on list responses when `students` is omitted for payload size. */
+  studentCount?: number;
+  /**
+   * Present on list responses, where `playlist` is omitted for payload size. Counting
+   * lessons client-side meant downloading every one of them; the server totals them now.
+   * Absent on detail responses, which carry the full `playlist` instead.
+   */
+  playlistSummary?: { videos: number; pdfs: number; blogs: number; quiz: number; essays: number };
   categories: Array<{ id: string; name: string; createdAt?: string; updatedAt?: string }>;
   positions?: TrainingModulePosition[];
   moduleName: string;

@@ -218,8 +218,12 @@ function TrainingModuleCardInner({
   selected,
   onToggleSelect,
 }: TrainingModuleCardProps) {
-  const summary = calculateSummary(m.playlist || [])
-  const studentCount = m.students?.length || 0
+  // List responses carry `playlistSummary` and omit `playlist` entirely — counting it
+  // in the browser meant shipping every lesson of every module just to total them.
+  // The fallback keeps cards correct anywhere the full playlist is present (detail
+  // contexts, and against a backend that predates the summary).
+  const summary = m.playlistSummary ?? calculateSummary(m.playlist || [])
+  const studentCount = m.studentCount ?? m.students?.length ?? 0
   const coverUrl = m.coverImage?.url
   const statusBusy = statusUpdatingId === m.id
   const currentStatus: ModuleLifecycleStatus = (['draft', 'published', 'archived'] as const).includes(

@@ -1017,7 +1017,10 @@ const TrainingModules = () => {
   )
 
   useEffect(() => {
-    fetchModules()
+    void fetchModules()
+    return () => {
+      fetchRequestIdRef.current += 1
+    }
   }, [fetchModules])
 
   useEffect(() => {
