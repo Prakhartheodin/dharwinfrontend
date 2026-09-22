@@ -126,3 +126,27 @@ export async function setPositionModules(
   return data;
 }
 
+export interface BulkEnrollPayload {
+  moduleIds: string[];
+  action: "assign" | "remove";
+  studentIds?: string[];
+}
+
+export interface BulkEnrollResult {
+  enrolled: number;
+  skipped: number;
+  modules: string[];
+}
+
+/** Enrol or unenrol a position's students across modules in one server-side call. */
+export async function bulkEnroll(
+  positionId: string,
+  payload: BulkEnrollPayload
+): Promise<BulkEnrollResult> {
+  const { data } = await apiClient.post<BulkEnrollResult>(
+    `/positions/${positionId}/enrollments`,
+    payload
+  );
+  return data;
+}
+
