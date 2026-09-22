@@ -138,6 +138,19 @@ export default function AssignTrainingCourseSopModal({
   const mountedRef = useRef(true);
   const confirmLockRef = useRef(false);
 
+  const resolvePositionIdForModule = (moduleId: string): string => {
+    const mod = modules.find(
+      (m) => String(m.id ?? (m as { _id?: string })._id ?? "").trim() === moduleId
+    );
+    const positionId = mod?.positions?.[0]?.id?.trim() ?? "";
+    if (!positionId) {
+      throw new Error(
+        "This course has no mapped position. Map a position on the course before assigning."
+      );
+    }
+    return positionId;
+  };
+
   useEffect(() => {
     setMounted(true);
     mountedRef.current = true;
@@ -235,7 +248,9 @@ export default function AssignTrainingCourseSopModal({
         if (!mountedRef.current) return;
         setResolvedStudentId(sid);
       }
-      await addStudentToTrainingModule(moduleId, sid);
+      await addStudentToTrainingModule(moduleId, sid, {
+        positionId: resolvePositionIdForModule(moduleId),
+      });
       onAssigned();
       if (!mountedRef.current) return;
       setSuccessToast({ kind: "assign", course });
@@ -293,7 +308,9 @@ export default function AssignTrainingCourseSopModal({
       setPendingModuleId(moduleId);
       setError("");
       setRetryAction(null);
-      await removeStudentFromTrainingModule(moduleId, sid);
+      await removeStudentFromTrainingModule(moduleId, sid, {
+        positionId: resolvePositionIdForModule(moduleId),
+      });
       onAssigned();
       if (mountedRef.current) setSuccessToast({ kind: "unassign", course: title });
       if (!mountedRef.current) return;

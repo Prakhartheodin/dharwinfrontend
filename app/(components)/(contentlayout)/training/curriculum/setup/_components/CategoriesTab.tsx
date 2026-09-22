@@ -506,15 +506,35 @@ export default function CategoriesTab() {
       return
     }
 
+    const selectedStudent = (studentsByModuleId[moduleId] ?? []).find((s) => s.id === studentId)
+    const selectedModule = allModules.find((m) => m.id === moduleId)
+    const positionId =
+      selectedStudent?.position?.id?.trim() ||
+      selectedStudent?.position?._id?.trim() ||
+      selectedModule?.positions?.[0]?.id?.trim() ||
+      ''
+    if (!positionId) {
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Position required',
+        text: 'This employee has no position and the module has none mapped. Map a position before assigning.',
+        toast: true,
+        position: 'top-end',
+        timer: 4000,
+        showConfirmButton: false,
+      })
+      return
+    }
+
     setSavingCategoryId(category.id)
     try {
       if (action === 'assign') {
-        await trainingModulesApi.addStudentToTrainingModule(moduleId, studentId)
+        await trainingModulesApi.addStudentToTrainingModule(moduleId, studentId, { positionId })
         if (mentorId) {
           await trainingModulesApi.addMentorToTrainingModule(moduleId, mentorId)
         }
       } else {
-        await trainingModulesApi.removeStudentFromTrainingModule(moduleId, studentId)
+        await trainingModulesApi.removeStudentFromTrainingModule(moduleId, studentId, { positionId })
       }
       await refreshModule(moduleId)
       await loadEmployeesForModule(moduleId, true)

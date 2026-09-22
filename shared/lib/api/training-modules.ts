@@ -184,24 +184,21 @@ export async function listModuleEmployees(
   return data;
 }
 
-function studentIdsFromModule(mod: TrainingModule): string[] {
-  const ids: string[] = [];
-  for (const s of mod.students ?? []) {
-    const id = String(s.id ?? (s as { _id?: string })._id ?? "").trim();
-    if (id) ids.push(id);
-  }
-  return ids;
-}
-
-/** Add a training student to a module's roster (same as Curriculum module assign-students). Idempotent. */
-export async function addStudentToTrainingModule(moduleId: string, studentId: string): Promise<TrainingModule> {
+/** Add one student to a module roster. Server-side and idempotent. */
+export async function addStudentToTrainingModule(
+  moduleId: string,
+  studentId: string,
+  opts: { positionId: string }
+): Promise<void> {
   const sid = studentId.trim();
   if (!sid) throw new Error("studentId is required");
-  const mod = await getTrainingModule(moduleId);
-  const set = new Set(studentIdsFromModule(mod));
-  if (set.has(sid)) return mod;
-  set.add(sid);
-  return updateTrainingModule(moduleId, { students: Array.from(set) });
+  const positionId = opts.positionId?.trim();
+  if (!positionId) throw new Error("positionId is required");
+  await apiClient.post(`/positions/${positionId}/enrollments`, {
+    moduleIds: [moduleId],
+    action: "assign",
+    studentIds: [sid],
+  });
 }
 
 function mentorIdsFromModule(mod: TrainingModule): string[] {
@@ -213,16 +210,21 @@ function mentorIdsFromModule(mod: TrainingModule): string[] {
   return ids;
 }
 
-/** Remove a training student from a module roster. Idempotent. */
+/** Remove one student from a module roster. Server-side and idempotent. */
 export async function removeStudentFromTrainingModule(
   moduleId: string,
-  studentId: string
-): Promise<TrainingModule> {
+  studentId: string,
+  opts: { positionId: string }
+): Promise<void> {
   const sid = studentId.trim();
   if (!sid) throw new Error("studentId is required");
-  const mod = await getTrainingModule(moduleId);
-  const next = studentIdsFromModule(mod).filter((id) => id !== sid);
-  return updateTrainingModule(moduleId, { students: next });
+  const positionId = opts.positionId?.trim();
+  if (!positionId) throw new Error("positionId is required");
+  await apiClient.post(`/positions/${positionId}/enrollments`, {
+    moduleIds: [moduleId],
+    action: "remove",
+    studentIds: [sid],
+  });
 }
 
 /** Add a mentor to a module roster. Idempotent. */
