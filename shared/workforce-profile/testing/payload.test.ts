@@ -101,7 +101,7 @@ describe("payload.toSelfServicePayload (PATCH)", () => {
     expect(payload).not.toHaveProperty("salaryRange");
   });
 
-  it("omits HR-owned immigration and compensation fields from self-service payload", () => {
+  it("sends own immigration fields but omits HR-owned compensation from self-service payload", () => {
     const state = makeFormState({
       personalInfo: {
         ...makeFormState().personalInfo,
@@ -118,9 +118,10 @@ describe("payload.toSelfServicePayload (PATCH)", () => {
     const payload = toSelfServicePayload(normalize(state), {
       "personal-info": true,
     }) as Record<string, unknown>;
-    expect(payload).not.toHaveProperty("sevisId");
+    expect(payload.sevisId).toBe("N123");
+    expect(payload.visaType).toBe("H-1B");
+    // Legacy free-text EAD and an empty custom type stay out: "" would null-clear.
     expect(payload).not.toHaveProperty("ead");
-    expect(payload).not.toHaveProperty("visaType");
     expect(payload).not.toHaveProperty("customVisaType");
     expect(payload).not.toHaveProperty("supervisorName");
     expect(payload).not.toHaveProperty("supervisorContact");

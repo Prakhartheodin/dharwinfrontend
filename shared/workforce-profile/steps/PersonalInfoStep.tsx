@@ -188,13 +188,13 @@ export function PersonalInfoStep() {
   // discard changes silently or risk clearing server values on save.
   const adminOwnedReadOnly = isSelfService;
   /**
-   * The EAD and visa details a scan fills are NOT admin-owned. CANDIDATE_ME_FIELDS on
-   * the server has always accepted `ead`, `sevisId` and `visaType` from a person's own
-   * PATCH, so the scanned equivalents belong to them too — and locking them here would
-   * leave the scan button hidden for every employee and candidate in their own wizard.
+   * Immigration details are NOT admin-owned. CANDIDATE_ME_FIELDS on the server accepts
+   * `sevisId`, `visaType`, `customVisaType`, `ead` and the scanned EAD/visa equivalents
+   * from a person's own PATCH, so every one of them is theirs to edit — and locking them
+   * here also hid the scan buttons for every employee and candidate in their own wizard.
    * Job title, company mailbox and compensation stay behind adminOwnedReadOnly.
    */
-  const scannedIdReadOnly = false;
+  const immigrationReadOnly = false;
   const hrOwnedHint = "Managed by your administrator.";
 
   const fieldErr = (key: string): string | null => {
@@ -480,14 +480,14 @@ export function PersonalInfoStep() {
             id="sevisId"
             label="SEVIS ID"
             optional
-            hint={adminOwnedReadOnly ? hrOwnedHint : undefined}
+            hint={immigrationReadOnly ? hrOwnedHint : undefined}
           >
             <input
               type="text"
               value={pi.sevisId}
               onChange={onText("sevisId")}
-              readOnly={adminOwnedReadOnly}
-              className={inputClass(false, adminOwnedReadOnly)}
+              readOnly={immigrationReadOnly}
+              className={inputClass(false, immigrationReadOnly)}
               placeholder="If applicable"
             />
           </Field>
@@ -528,14 +528,14 @@ export function PersonalInfoStep() {
                 type="text"
                 value={pi.eadCardNumber}
                 onChange={onText("eadCardNumber")}
-                readOnly={scannedIdReadOnly}
+                readOnly={immigrationReadOnly}
                 className={inputClass(
                   ead.needsReview.includes("cardNumber"),
-                  scannedIdReadOnly,
+                  immigrationReadOnly,
                 )}
                 placeholder="e.g. SRC0000000701"
               />
-              {!scannedIdReadOnly && (
+              {!immigrationReadOnly && (
                 <>
                   <input
                     ref={eadFileRef}
@@ -589,7 +589,7 @@ export function PersonalInfoStep() {
               portalId="ead-valid-from-datepicker"
               popperClassName="!z-[10050]"
               value={pi.eadValidFrom}
-              disabled={scannedIdReadOnly}
+              disabled={immigrationReadOnly}
               onCommit={(ymd) => setPersonalInfo({ eadValidFrom: ymd })}
             />
           </Field>
@@ -603,7 +603,7 @@ export function PersonalInfoStep() {
               portalId="ead-valid-to-datepicker"
               popperClassName="!z-[10050]"
               value={pi.eadValidTo}
-              disabled={scannedIdReadOnly}
+              disabled={immigrationReadOnly}
               onCommit={(ymd) => setPersonalInfo({ eadValidTo: ymd })}
             />
           </Field>
@@ -614,14 +614,14 @@ export function PersonalInfoStep() {
             id="visaType"
             label="Visa type"
             error={fieldErr("visaType")}
-            hint={adminOwnedReadOnly ? hrOwnedHint : undefined}
+            hint={immigrationReadOnly ? hrOwnedHint : undefined}
           >
             <select
               value={pi.visaType}
               onChange={onText("visaType")}
               onBlur={markTouched("visaType")}
-              disabled={adminOwnedReadOnly}
-              className={`${styles.select} ${fieldErr("visaType") ? styles.inputError : ""} ${adminOwnedReadOnly ? styles.inputReadOnly : ""}`}
+              disabled={immigrationReadOnly}
+              className={`${styles.select} ${fieldErr("visaType") ? styles.inputError : ""} ${immigrationReadOnly ? styles.inputReadOnly : ""}`}
             >
               <option value="">Select visa type</option>
               {VISA_TYPES.map((v) => (
@@ -637,14 +637,14 @@ export function PersonalInfoStep() {
               id="customVisaType"
               label="Custom visa type"
               required
-              hint={adminOwnedReadOnly ? hrOwnedHint : undefined}
+              hint={immigrationReadOnly ? hrOwnedHint : undefined}
             >
               <input
                 type="text"
                 value={pi.customVisaType}
                 onChange={onText("customVisaType")}
-                readOnly={adminOwnedReadOnly}
-                className={inputClass(false, adminOwnedReadOnly)}
+                readOnly={immigrationReadOnly}
+                className={inputClass(false, immigrationReadOnly)}
                 placeholder="Enter visa type"
               />
             </Field>
@@ -661,14 +661,14 @@ export function PersonalInfoStep() {
                 type="text"
                 value={pi.visaNumber}
                 onChange={onText("visaNumber")}
-                readOnly={scannedIdReadOnly}
+                readOnly={immigrationReadOnly}
                 className={inputClass(
                   visa.needsReview.includes("visaNumber"),
-                  scannedIdReadOnly,
+                  immigrationReadOnly,
                 )}
                 placeholder="e.g. 00000001"
               />
-              {!scannedIdReadOnly && (
+              {!immigrationReadOnly && (
                 <>
                   <input
                     ref={visaFileRef}
@@ -724,7 +724,7 @@ export function PersonalInfoStep() {
               portalId="visa-issue-datepicker"
               popperClassName="!z-[10050]"
               value={pi.visaIssueDate}
-              disabled={scannedIdReadOnly}
+              disabled={immigrationReadOnly}
               onCommit={(ymd) => setPersonalInfo({ visaIssueDate: ymd })}
             />
           </Field>
@@ -738,7 +738,7 @@ export function PersonalInfoStep() {
               portalId="visa-expiry-datepicker"
               popperClassName="!z-[10050]"
               value={pi.visaExpiryDate}
-              disabled={scannedIdReadOnly}
+              disabled={immigrationReadOnly}
               onCommit={(ymd) => setPersonalInfo({ visaExpiryDate: ymd })}
             />
           </Field>

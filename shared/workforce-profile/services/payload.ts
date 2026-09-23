@@ -128,10 +128,13 @@ export function toSelfServicePayload(
     // in this wizard, and sending the "" the state holds for them would null-clear a
     // real value on save.
     //
-    // The EAD and visa fields are different — CANDIDATE_ME_FIELDS has always let a
+    // The immigration fields are different — CANDIDATE_ME_FIELDS has always let a
     // person set their own `ead`, `sevisId` and `visaType`, so the scanned equivalents
     // belong to them too. Each is sent only when non-empty, which keeps the clearing
     // risk that motivated the original omission off the table.
+    if (n.sevisId) out.sevisId = n.sevisId;
+    if (n.visaType) out.visaType = n.visaType;
+    if (n.customVisaType) out.customVisaType = n.customVisaType;
     if (n.eadCardNumber) out.eadCardNumber = n.eadCardNumber;
     if (n.eadValidFrom) out.eadValidFrom = n.eadValidFrom;
     if (n.eadValidTo) out.eadValidTo = n.eadValidTo;
