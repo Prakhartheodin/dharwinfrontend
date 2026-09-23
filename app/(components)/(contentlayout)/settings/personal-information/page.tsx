@@ -1620,6 +1620,8 @@ export default function PersonalInformationPage() {
                     <option value="E-3">E-3 (Australian Professional)</option>
                     <option value="B-1">B-1 (Business Visitor)</option>
                     <option value="B-2">B-2 (Tourist)</option>
+                    {/* Carried here too, or a profile saved as B-1/B-2 elsewhere renders blank. */}
+                    <option value="B-1/B-2">B-1/B-2 (Business &amp; Tourist)</option>
                     <option value="Other">Other</option>
                   </select>
                   {hrOwnedReadOnly ? (

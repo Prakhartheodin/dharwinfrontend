@@ -2880,6 +2880,7 @@ export const EmployeeForm = ({
                       if (file) {
                         void visa.scanVisa(file, {
                           visaNumber: formData.visaNumber,
+                          visaType: formData.visaType,
                           visaIssueDate: formData.visaIssueDate,
                           visaExpiryDate: formData.visaExpiryDate,
                         }, "fields");
@@ -2903,6 +2904,7 @@ export const EmployeeForm = ({
                   onKeepAll={visa.dismissAllReplacements}
                   items={[
                     { label: "Visa number", value: visa.pendingReplacements.visaNumber },
+                    { label: "Visa type", value: visa.pendingReplacements.visaType },
                     { label: "Issued", value: visa.pendingReplacements.visaIssueDate },
                     { label: "Expires", value: visa.pendingReplacements.visaExpiryDate },
                   ].filter((i): i is { label: string; value: string } => Boolean(i.value))}
@@ -3099,6 +3101,8 @@ export const EmployeeForm = ({
                   <option value="E-3">E-3 (Australian Professional)</option>
                   <option value="B-1">B-1 (Business Visitor)</option>
                   <option value="B-2">B-2 (Tourist)</option>
+                  {/* Printed as one class on the foil (B1/B2), so a scan has nothing else to select. */}
+                  <option value="B-1/B-2">B-1/B-2 (Business &amp; Tourist)</option>
                   <option value="Other">Other</option>
                 </select>
                 {fieldErrors['visaType'] && (
@@ -3946,6 +3950,7 @@ export const EmployeeForm = ({
                               if (!file) return;
                               void visa.scanVisa(file, {
                                 visaNumber: formData.visaNumber,
+                                visaType: formData.visaType,
                                 visaIssueDate: formData.visaIssueDate,
                                 visaExpiryDate: formData.visaExpiryDate,
                               }, "documents");
@@ -3959,6 +3964,7 @@ export const EmployeeForm = ({
                               filledInto="the Personal step"
                               items={[
                                 { label: "Visa number", value: visa.lastResult.visaNumber },
+                                { label: "Visa type", value: visa.lastResult.visaType },
                                 { label: "Issued", value: visa.lastResult.visaIssueDate },
                                 { label: "Expires", value: visa.lastResult.visaExpiryDate },
                               ]}
@@ -3971,6 +3977,7 @@ export const EmployeeForm = ({
                             onKeepAll={visa.dismissAllReplacements}
                             items={[
                               { label: "Visa number", value: visa.pendingReplacements.visaNumber },
+                              { label: "Visa type", value: visa.pendingReplacements.visaType },
                               { label: "Issued", value: visa.pendingReplacements.visaIssueDate },
                               { label: "Expires", value: visa.pendingReplacements.visaExpiryDate },
                             ].filter((i): i is { label: string; value: string } => Boolean(i.value))}

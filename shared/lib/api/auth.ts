@@ -278,9 +278,14 @@ export async function extractEadCard(file: File): Promise<ExtractEadCardResponse
   return data;
 }
 
-/** The three visa fields, as ISO YYYY-MM-DD strings. Null means "not readable", never "empty". */
+/**
+ * The four visa fields. Dates are ISO YYYY-MM-DD; null means "not readable", never
+ * "empty". `visaType` is already mapped onto a dropdown value (the foil prints B1/B2,
+ * the dropdown stores B-1/B-2), and is null when the printed class is not one it carries.
+ */
 export interface VisaFields {
   visaNumber: string | null;
+  visaType: string | null;
   issueDate: string | null;
   expiryDate: string | null;
 }
@@ -291,7 +296,7 @@ export interface ExtractVisaResponse {
   warnings: string[];
 }
 
-/** Read Visa Number, Issue Date and Expiration Date off a photo of a visa. Stores nothing. */
+/** Read Visa Number, Visa Type, Issue Date and Expiration Date off a photo of a visa. Stores nothing. */
 export async function extractVisa(file: File): Promise<ExtractVisaResponse> {
   const formData = new FormData();
   formData.append("file", file);

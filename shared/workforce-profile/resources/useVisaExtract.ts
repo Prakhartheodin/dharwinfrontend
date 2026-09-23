@@ -8,18 +8,18 @@ import {
   type ScanValues,
 } from "./useScannedDocumentFields";
 
-export type VisaFieldKey = "visaNumber" | "visaIssueDate" | "visaExpiryDate";
+export type VisaFieldKey = "visaNumber" | "visaType" | "visaIssueDate" | "visaExpiryDate";
 export type VisaCurrentValues = ScanValues<VisaFieldKey>;
 /** What the caller should write into its own form state. */
 export type VisaPatch = ScanPatch<VisaFieldKey>;
 
-const FIELD_ORDER: readonly VisaFieldKey[] = ["visaNumber", "visaIssueDate", "visaExpiryDate"];
+const FIELD_ORDER: readonly VisaFieldKey[] = ["visaNumber", "visaType", "visaIssueDate", "visaExpiryDate"];
 
 /**
  * Scan a visa foil and hand back the fields to write.
  *
  * All the behaviour lives in useScannedDocumentFields, which the EAD scanner shares;
- * this only names the endpoint and the three form fields a visa fills.
+ * this only names the endpoint and the four form fields a visa fills.
  *
  * @param onPatch called with the fields that should be written immediately
  */
@@ -30,6 +30,9 @@ export function useVisaExtract(onPatch: (patch: VisaPatch) => void) {
       scan: (file: File) => authApi.extractVisa(file),
       toValues: (res: authApi.ExtractVisaResponse): VisaCurrentValues => ({
         visaNumber: res.fields.visaNumber ?? "",
+        // Already a dropdown value, so it can be written into the select as-is. The
+        // server returns null rather than raw text for a class the dropdown lacks.
+        visaType: res.fields.visaType ?? "",
         visaIssueDate: res.fields.issueDate ?? "",
         visaExpiryDate: res.fields.expiryDate ?? "",
       }),

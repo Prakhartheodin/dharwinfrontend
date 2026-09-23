@@ -22,7 +22,7 @@ import styles from "./personal-info-step.module.css";
 
 const VISA_TYPES = [
   "F-1", "J-1", "H-1B", "H-2B", "L-1", "O-1", "P-1",
-  "R-1", "TN", "E-1", "E-2", "E-3", "B-1", "B-2", "Other",
+  "R-1", "TN", "E-1", "E-2", "E-3", "B-1", "B-2", "B-1/B-2", "Other",
 ];
 const VISA_LABELS: Record<string, string> = {
   "F-1": "F-1 (Student Visa)",
@@ -39,6 +39,8 @@ const VISA_LABELS: Record<string, string> = {
   "E-3": "E-3 (Australian Professional)",
   "B-1": "B-1 (Business Visitor)",
   "B-2": "B-2 (Tourist)",
+  // Printed as one class on the foil (B1/B2), so a scan has nothing else to select.
+  "B-1/B-2": "B-1/B-2 (Business & Tourist)",
   Other: "Other",
 };
 
@@ -680,6 +682,7 @@ export function PersonalInfoStep() {
                       if (file) {
                         void visa.scanVisa(file, {
                           visaNumber: pi.visaNumber,
+                          visaType: pi.visaType,
                           visaIssueDate: pi.visaIssueDate,
                           visaExpiryDate: pi.visaExpiryDate,
                         });
@@ -704,6 +707,7 @@ export function PersonalInfoStep() {
               onKeepAll={visa.dismissAllReplacements}
               items={[
                 { label: "Visa number", value: visa.pendingReplacements.visaNumber },
+                { label: "Visa type", value: visa.pendingReplacements.visaType },
                 { label: "Issued", value: visa.pendingReplacements.visaIssueDate },
                 { label: "Expires", value: visa.pendingReplacements.visaExpiryDate },
               ].filter((i): i is { label: string; value: string } => Boolean(i.value))}
