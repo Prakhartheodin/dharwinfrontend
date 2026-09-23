@@ -4,13 +4,43 @@ import {
   createVoicePreviewFromBlob,
   formatVoiceElapsed,
   revokeVoicePreviewUrl,
-  shouldUploadOnVoiceStop,
   VOICE_NOTE_MIN_BYTES,
+  pickRecorderMimeType,
+  voiceFileExtension,
+  voiceNoteBelongsTo,
 } from "./voiceNotePreview";
 
-describe("shouldUploadOnVoiceStop", () => {
-  it("never uploads on stop — preview holds the blob", () => {
-    expect(shouldUploadOnVoiceStop()).toBe(false);
+describe("voiceNoteBelongsTo", () => {
+  it("keeps a note recorded in the open conversation", () => {
+    expect(voiceNoteBelongsTo("A", "A")).toBe(true);
+  });
+  it("drops a note when the user switched chats while recording (R1)", () => {
+    expect(voiceNoteBelongsTo("A", "B")).toBe(false);
+    expect(voiceNoteBelongsTo("A", null)).toBe(false);
+  });
+  it("drops a note with no recorded conversation", () => {
+    expect(voiceNoteBelongsTo(null, "A")).toBe(false);
+    expect(voiceNoteBelongsTo("", "")).toBe(false);
+  });
+});
+
+describe("pickRecorderMimeType / voiceFileExtension", () => {
+  it("prefers webm/opus, falls back to ogg then mp4, then empty", () => {
+    expect(pickRecorderMimeType(() => true)).toBe("audio/webm;codecs=opus");
+    expect(pickRecorderMimeType((m) => m.startsWith("audio/ogg"))).toBe("audio/ogg;codecs=opus");
+    expect(pickRecorderMimeType((m) => m === "audio/mp4")).toBe("audio/mp4");
+    expect(pickRecorderMimeType(() => false)).toBe("");
+    expect(
+      pickRecorderMimeType(() => {
+        throw new Error("nope");
+      })
+    ).toBe("");
+  });
+  it("maps the recorder container to a file extension", () => {
+    expect(voiceFileExtension("audio/webm;codecs=opus")).toBe(".webm");
+    expect(voiceFileExtension("audio/ogg;codecs=opus")).toBe(".ogg");
+    expect(voiceFileExtension("audio/mp4")).toBe(".m4a");
+    expect(voiceFileExtension("")).toBe(".webm");
   });
 });
 

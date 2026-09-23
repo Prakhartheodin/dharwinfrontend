@@ -1,11 +1,4 @@
 /**
- * Close-panel decision: DM/group info close must not clear the selected conversation.
- */
-export function shouldClearConversationOnPanelClose(): false {
-  return false;
-}
-
-/**
  * Selected-member chip labels must survive search-result changes.
  * Store id→label when selecting; removing updates the same map + set.
  */

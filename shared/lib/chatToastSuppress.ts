@@ -76,6 +76,103 @@ export function shouldSuppressSystemChatToast(args: {
   return false;
 }
 
+/** Default cap for claim sets — enough to cover any realistic burst, small enough to never matter for memory. */
+export const CHAT_CLAIM_MAX = 500;
+
+/**
+ * Insertion-ordered Set with a size cap: adding past `max` evicts the oldest key, and
+ * re-adding an existing key refreshes it (so it is evicted last). The claim sets used to
+ * grow for the whole life of the tab.
+ */
+export class BoundedSet<T> extends Set<T> {
+  private readonly max: number;
+
+  constructor(max: number = CHAT_CLAIM_MAX) {
+    super();
+    this.max = max;
+  }
+
+  add(value: T): this {
+    if (super.has(value)) super.delete(value);
+    super.add(value);
+    while (this.size > this.max) {
+      const oldest = this.values().next().value as T;
+      super.delete(oldest);
+    }
+    return this;
+  }
+}
+
+/**
+ * Claim keys shared by every chat notification surface in this tab: the OS Notification
+ * (ChatSocketContext), the in-app socket toast and the SSE system toast
+ * (NotificationToastStack). Whichever surface claims `msg:<id>` first is the only one shown.
+ * Module-level on purpose — the surfaces live in different components.
+ */
+export const sharedChatClaims: Set<string> = new BoundedSet<string>(CHAT_CLAIM_MAX);
+
+export type ChatNotifyDecision =
+  /** Own message or no sender — nothing to do, claim nothing. */
+  | { action: "ignore" }
+  /**
+   * Conversation-room copy of a message for the open conversation (no `suppressInAppNotify`
+   * field). The user-room copy carrying the mute flag follows; decide on that one.
+   */
+  | { action: "defer" }
+  /** Muted or being viewed: claim (so the SSE twin is dropped) and show nothing. */
+  | { action: "suppress" }
+  | { action: "notify"; os: boolean; toast: boolean };
+
+/**
+ * One decision for a socket `new_message`, shared by the OS notification and the in-app toast.
+ * - `suppressInAppNotify: true` (muted) → nothing.
+ * - Hidden tab → prefer the OS notification; fall back to the in-page toast only when the
+ *   OS permission is not granted.
+ * - Visible tab → in-page toast unless the user is viewing that conversation.
+ */
+export function decideChatMessageNotify(input: {
+  selfId: string;
+  senderId: string;
+  conversationId: string;
+  suppressInAppNotify?: boolean | null;
+  loc: ChatToastLocation;
+  visibility: string;
+  osPermissionGranted: boolean;
+}): ChatNotifyDecision {
+  const senderId = normalizeId(input.senderId);
+  if (!senderId || senderId === normalizeId(input.selfId)) return { action: "ignore" };
+  const conv = normalizeId(input.conversationId);
+  const isActiveConv = Boolean(conv) && normalizeId(input.loc.activeConversationId) === conv;
+  const hasFlag = typeof input.suppressInAppNotify === "boolean";
+  if (!hasFlag && isActiveConv) return { action: "defer" };
+  if (input.suppressInAppNotify === true) return { action: "suppress" };
+
+  const viewing = shouldSuppressChatMessageToast(input.loc, conv);
+  if (input.visibility !== "visible") {
+    // Hidden tab: the open pane is not actually being looked at, so the OS notification
+    // still fires for the active conversation. The in-page toast never does.
+    const os = input.osPermissionGranted;
+    const toast = !os && !viewing;
+    if (!os && !toast) return { action: "suppress" };
+    return { action: "notify", os, toast };
+  }
+  if (viewing) return { action: "suppress" };
+  return { action: "notify", os: false, toast: true };
+}
+
+/**
+ * SSE `chat_message` while the tab is hidden: the socket path owns it (OS notification),
+ * so skip the in-page toast — but only when the socket is up to deliver that notification.
+ * Do not claim in this case, or the socket path would find the key taken.
+ */
+export function shouldDeferSseChatToastToOs(args: {
+  visibility: string;
+  osPermissionGranted: boolean;
+  socketConnected: boolean;
+}): boolean {
+  return args.visibility !== "visible" && args.osPermissionGranted && args.socketConnected;
+}
+
 /** Register all dedupe keys a socket new_message should claim. Returns false if already claimed. */
 export function claimChatToastKeys(
   claimed: Set<string>,

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyConversationConvParam,
   conversationConvMatches,
+  isConversationUnavailableError,
 } from "./conversationConvQuery";
 
 describe("applyConversationConvParam", () => {
@@ -38,5 +39,18 @@ describe("conversationConvMatches", () => {
     expect(conversationConvMatches(new URLSearchParams(""), null)).toBe(true);
     expect(conversationConvMatches(new URLSearchParams("conv=a"), "a")).toBe(true);
     expect(conversationConvMatches(new URLSearchParams("conv=a"), "b")).toBe(false);
+  });
+});
+
+describe("isConversationUnavailableError", () => {
+  it("treats 400/403/404 as unavailable (clear ?conv=)", () => {
+    for (const status of [400, 403, 404]) {
+      expect(isConversationUnavailableError({ response: { status } })).toBe(true);
+    }
+  });
+  it("keeps the URL on network errors and 5xx so a retry can succeed", () => {
+    expect(isConversationUnavailableError({ response: { status: 500 } })).toBe(false);
+    expect(isConversationUnavailableError(new Error("Network Error"))).toBe(false);
+    expect(isConversationUnavailableError(undefined)).toBe(false);
   });
 });

@@ -9,6 +9,12 @@ import {
   matchesSearchQuery,
   findMentionToken,
   insertMentionText,
+  callStatusLabel,
+  formatCallClock,
+  timelineCallPillText,
+  groupReactions,
+  applyReactionLocally,
+  mentionsForSend,
 } from "./chatHelpers";
 
 describe("myReactionEmoji", () => {
@@ -195,5 +201,82 @@ describe("insertMentionText", () => {
     const out = insertMentionText("hello@ha", { start: 5, end: 8 }, "Admin");
     expect(out.value).toBe("hello @Admin");
     expect(out.caret).toBe("hello @Admin".length);
+  });
+});
+
+describe("callStatusLabel", () => {
+  it("labels missed-type outcomes by direction", () => {
+    for (const status of ["cancelled", "no_answer", "missed"]) {
+      expect(callStatusLabel({ status, direction: "incoming" })).toEqual({ label: "Missed", tone: "danger" });
+    }
+    expect(callStatusLabel({ status: "cancelled", direction: "outgoing" })).toEqual({ label: "Cancelled", tone: "neutral" });
+    expect(callStatusLabel({ status: "no_answer", direction: "outgoing" }).label).toBe("No answer");
+    expect(callStatusLabel({ status: "missed", direction: "outgoing" }).label).toBe("No answer");
+  });
+
+  it("maps the remaining statuses and never leaks a raw status word", () => {
+    expect(callStatusLabel({ status: "declined" }).label).toBe("Declined");
+    expect(callStatusLabel({ status: "failed" }).label).toBe("Failed");
+    expect(callStatusLabel({ status: "completed", durationSeconds: 125 }).label).toBe("Ended · 2:05");
+    expect(callStatusLabel({ status: "completed", duration: 9 }).label).toBe("Ended · 0:09");
+    expect(callStatusLabel({ status: "completed" }).label).toBe("Ended");
+    expect(callStatusLabel({ status: "ringing" }).label).toBe("Ringing");
+    expect(callStatusLabel({ status: "initiated" }).label).toBe("Ringing");
+    expect(callStatusLabel({ status: "ongoing" }).label).toBe("Ongoing");
+    expect(callStatusLabel({ status: "weird_new_state" }).label).toBe("");
+  });
+
+  it("feeds the thread pill text", () => {
+    expect(
+      timelineCallPillText({ direction: "outgoing", peer: { name: "Ada" }, callType: "audio", status: "cancelled" })
+    ).toBe("You called Ada · Voice · Cancelled");
+    expect(
+      timelineCallPillText({ direction: "incoming", peer: { name: "Ada" }, callType: "video", status: "no_answer" })
+    ).toBe("Ada called · Video · Missed");
+  });
+});
+
+describe("formatCallClock", () => {
+  it("formats m:ss", () => {
+    expect(formatCallClock(0)).toBe("0:00");
+    expect(formatCallClock(61)).toBe("1:01");
+    expect(formatCallClock(undefined)).toBe("0:00");
+  });
+});
+
+describe("groupReactions / applyReactionLocally", () => {
+  const reactions = [
+    { user: { id: "u1", name: "Ada" }, emoji: "❤️" },
+    { user: { id: "me", name: "Me" }, emoji: "❤️" },
+    { user: "u3", emoji: "👍" },
+  ];
+
+  it("groups by emoji, flags mine and lists names", () => {
+    expect(groupReactions(reactions, "me")).toEqual([
+      { emoji: "❤️", count: 2, mine: true, names: ["Ada", "You"] },
+      { emoji: "👍", count: 1, mine: false, names: [] },
+    ]);
+  });
+
+  it("chip click on my emoji removes it; on another emoji switches to it", () => {
+    const mine = myReactionEmoji(reactions, "me");
+    expect(reactionToggleEmoji(mine, "❤️")).toBe("");
+    expect(reactionToggleEmoji(mine, "👍")).toBe("👍");
+    const removed = applyReactionLocally(reactions, { id: "me" }, "");
+    expect(groupReactions(removed, "me")[0]).toMatchObject({ emoji: "❤️", count: 1, mine: false });
+    const switched = applyReactionLocally(reactions, { id: "me", name: "Me" }, "👍");
+    expect(groupReactions(switched, "me").find((c) => c.emoji === "👍")).toMatchObject({ count: 2, mine: true });
+  });
+});
+
+describe("mentionsForSend", () => {
+  it("keeps only mentions still present in the text, deduped", () => {
+    const picked = [
+      { userId: "u1", displayName: "Ada Lovelace" },
+      { userId: "u2", displayName: "Grace" },
+      { userId: "u1", displayName: "Ada Lovelace" },
+    ];
+    expect(mentionsForSend("hi @Ada Lovelace", picked)).toEqual([{ userId: "u1", displayName: "Ada Lovelace" }]);
+    expect(mentionsForSend("no mentions", picked)).toEqual([]);
   });
 });

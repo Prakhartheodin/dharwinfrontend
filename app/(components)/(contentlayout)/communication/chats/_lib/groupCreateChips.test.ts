@@ -1,15 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   selectedMemberChipEntries,
-  shouldClearConversationOnPanelClose,
   toggleSelectedMemberChip,
 } from "./groupCreateChips";
-
-describe("shouldClearConversationOnPanelClose", () => {
-  it("close panel does not clear conversation", () => {
-    expect(shouldClearConversationOnPanelClose()).toBe(false);
-  });
-});
 
 describe("toggleSelectedMemberChip", () => {
   it("chips survive search change and support removal", () => {

@@ -27,9 +27,27 @@ export interface Conversation {
   /** Convenience: same as avatar.url when present */
   avatarUrl?: string;
   createdBy?: { id: string; name: string; email?: string };
-  lastMessage?: { content: string; sender?: string; createdAt: string };
+  lastMessage?: {
+    content: string;
+    sender?: string;
+    createdAt: string;
+    id?: string;
+    senderId?: string;
+    /** Receipt state of the last message, only meaningful when senderId is the viewer. */
+    status?: "sent" | "delivered" | "read";
+  };
   unreadCount?: number;
   lastMessageAt?: string;
+  /** Viewer-level preference (not visible to other participants). */
+  muted?: boolean;
+  pinned?: boolean;
+}
+
+/** One delivery/read receipt as normalized by the backend. `user` is an id string. */
+export interface MessageReceipt {
+  user: string;
+  /** Null for legacy receipts that never carried a timestamp. */
+  at?: string | null;
 }
 
 export interface Message {
@@ -41,7 +59,8 @@ export interface Message {
   attachments?: Attachment[];
   replyTo?: { id: string; content: string; type: string; sender?: { name: string }; createdAt: string };
   reactions?: { user: { id: string; name?: string }; emoji: string }[];
-  readBy?: string[];
+  readBy?: MessageReceipt[];
+  deliveredTo?: MessageReceipt[];
   createdAt: string;
   deletedAt?: string;
   deletedFor?: "me" | "everyone";
@@ -73,6 +92,7 @@ export interface ChatCall {
   status: string;
   livekitRoom?: string;
   duration?: number;
+  durationSeconds?: number;
   createdAt: string;
   /** Presigned playback URL when call was recorded via LiveKit Egress */
   recordingUrl?: string | null;
@@ -82,6 +102,9 @@ export interface ChatCall {
 }
 
 const BASE = "/chats";
+
+/** Ids come from URLs (`?conv=`) and socket payloads; never splice them into a path unencoded. */
+const seg = (id: string) => encodeURIComponent(String(id));
 
 export async function listConversations(
   params?: {
@@ -126,19 +149,19 @@ export async function createConversation(body: {
 }
 
 export async function getConversation(id: string): Promise<Conversation> {
-  const { data } = await apiClient.get(`${BASE}/conversations/${id}`);
+  const { data } = await apiClient.get(`${BASE}/conversations/${seg(id)}`);
   return data;
 }
 
 export async function deleteConversation(conversationId: string): Promise<void> {
-  await apiClient.delete(`${BASE}/conversations/${conversationId}`);
+  await apiClient.delete(`${BASE}/conversations/${seg(conversationId)}`);
 }
 
 export async function getMessages(
   conversationId: string,
   params?: { before?: string; limit?: number }
 ): Promise<Message[]> {
-  const { data } = await apiClient.get(`${BASE}/conversations/${conversationId}/messages`, {
+  const { data } = await apiClient.get(`${BASE}/conversations/${seg(conversationId)}/messages`, {
     params,
   });
   return data;
@@ -147,9 +170,15 @@ export async function getMessages(
 export async function sendMessage(
   conversationId: string,
   content: string,
-  options?: { type?: "text" | "image" | "file"; attachments?: Attachment[]; replyTo?: string }
+  options?: {
+    type?: "text" | "image" | "file";
+    attachments?: Attachment[];
+    replyTo?: string;
+    /** Group mentions; backend keeps only current participants (chat.validation sendMessage). */
+    mentions?: { userId: string; displayName?: string }[];
+  }
 ): Promise<Message> {
-  const { data } = await apiClient.post(`${BASE}/conversations/${conversationId}/messages`, {
+  const { data } = await apiClient.post(`${BASE}/conversations/${seg(conversationId)}/messages`, {
     content,
     ...options,
   });
@@ -168,7 +197,7 @@ export async function uploadChatFiles(
   if (replyTo) formData.append("replyTo", replyTo);
   // Don't set Content-Type - let browser set multipart/form-data with boundary
   const { data } = await apiClient.post(
-    `${BASE}/conversations/${conversationId}/messages/upload`,
+    `${BASE}/conversations/${seg(conversationId)}/messages/upload`,
     formData,
     {
       transformRequest: [
@@ -188,7 +217,7 @@ export async function reactToMessage(
   emoji: string = "👍"
 ): Promise<Message> {
   const { data } = await apiClient.post(
-    `${BASE}/conversations/${conversationId}/messages/${messageId}/react`,
+    `${BASE}/conversations/${seg(conversationId)}/messages/${seg(messageId)}/react`,
     { emoji }
   );
   return data;
@@ -199,7 +228,7 @@ export async function deleteMessage(
   messageId: string,
   deleteFor: "me" | "everyone" = "me"
 ): Promise<Message> {
-  const { data } = await apiClient.delete(`${BASE}/conversations/${conversationId}/messages/${messageId}`, {
+  const { data } = await apiClient.delete(`${BASE}/conversations/${seg(conversationId)}/messages/${seg(messageId)}`, {
     data: { deleteFor },
   });
   return data;
@@ -211,7 +240,7 @@ export async function forwardMessage(
   targetConversationIds: string[]
 ): Promise<{ count: number; messages: Message[] }> {
   const { data } = await apiClient.post(
-    `${BASE}/conversations/${conversationId}/messages/${messageId}/forward`,
+    `${BASE}/conversations/${seg(conversationId)}/messages/${seg(messageId)}/forward`,
     { targetConversationIds }
   );
   return data;
@@ -224,19 +253,28 @@ export async function setMessagePinned(
   pinned: boolean
 ): Promise<Message> {
   const { data } = await apiClient.post(
-    `${BASE}/conversations/${conversationId}/messages/${messageId}/pin`,
+    `${BASE}/conversations/${seg(conversationId)}/messages/${seg(messageId)}/pin`,
     { pinned }
   );
   return data;
 }
 
 export async function listPinnedMessages(conversationId: string): Promise<Message[]> {
-  const { data } = await apiClient.get(`${BASE}/conversations/${conversationId}/pinned`);
+  const { data } = await apiClient.get(`${BASE}/conversations/${seg(conversationId)}/pinned`);
   return data?.results || [];
 }
 
+/** Viewer-only conversation preferences (PATCH /chats/conversations/:id/preferences). */
+export async function setConversationPreferences(
+  conversationId: string,
+  prefs: { muted?: boolean; pinned?: boolean }
+): Promise<Conversation> {
+  const { data } = await apiClient.patch(`${BASE}/conversations/${seg(conversationId)}/preferences`, prefs);
+  return data;
+}
+
 export async function markAsRead(conversationId: string): Promise<void> {
-  await apiClient.patch(`${BASE}/conversations/${conversationId}/read`);
+  await apiClient.patch(`${BASE}/conversations/${seg(conversationId)}/read`);
 }
 
 export async function initiateCall(
@@ -244,7 +282,7 @@ export async function initiateCall(
   callType: "audio" | "video" = "audio"
 ): Promise<{ call: ChatCall; roomName: string }> {
   const { data } = await apiClient.post(
-    `${BASE}/conversations/${conversationId}/call`,
+    `${BASE}/conversations/${seg(conversationId)}/call`,
     { callType }
   );
   return data;
@@ -274,7 +312,7 @@ export async function getCallsForConversation(
   conversationId: string,
   params?: { limit?: number }
 ): Promise<ChatCall[]> {
-  const { data } = await apiClient.get(`${BASE}/conversations/${conversationId}/calls`, { params });
+  const { data } = await apiClient.get(`${BASE}/conversations/${seg(conversationId)}/calls`, { params });
   return data;
 }
 
@@ -282,7 +320,7 @@ export async function getCallsForConversation(
 export async function getActiveCallForConversation(
   conversationId: string
 ): Promise<(ChatCall & { liveParticipantCount?: number }) | null> {
-  const { data } = await apiClient.get(`${BASE}/conversations/${conversationId}/active-call`);
+  const { data } = await apiClient.get(`${BASE}/conversations/${seg(conversationId)}/active-call`);
   return data;
 }
 
@@ -290,7 +328,7 @@ export async function updateCall(
   callId: string,
   body: { status?: string; duration?: number; recordRoomJoin?: true }
 ): Promise<ChatCall> {
-  const { data } = await apiClient.patch(`${BASE}/calls/${callId}`, body);
+  const { data } = await apiClient.patch(`${BASE}/calls/${seg(callId)}`, body);
   return data;
 }
 
@@ -374,7 +412,7 @@ export async function addParticipants(
   participantIds: string[]
 ): Promise<Conversation> {
   const { data } = await apiClient.post(
-    `${BASE}/conversations/${conversationId}/participants`,
+    `${BASE}/conversations/${seg(conversationId)}/participants`,
     { participantIds }
   );
   return data;
@@ -386,7 +424,7 @@ export async function removeParticipant(
 ): Promise<Conversation | null> {
   try {
     const { data } = await apiClient.delete(
-      `${BASE}/conversations/${conversationId}/participants/${userId}`
+      `${BASE}/conversations/${seg(conversationId)}/participants/${seg(userId)}`
     );
     return data ?? null;
   } catch {
@@ -400,7 +438,7 @@ export async function setParticipantRole(
   role: "admin" | "member"
 ): Promise<Conversation> {
   const { data } = await apiClient.patch(
-    `${BASE}/conversations/${conversationId}/participants/${userId}/role`,
+    `${BASE}/conversations/${seg(conversationId)}/participants/${seg(userId)}/role`,
     { role }
   );
   return data;
@@ -411,7 +449,7 @@ export async function updateGroupName(
   name: string
 ): Promise<Conversation> {
   const { data } = await apiClient.patch(
-    `${BASE}/conversations/${conversationId}`,
+    `${BASE}/conversations/${seg(conversationId)}`,
     { name }
   );
   return data;
@@ -421,7 +459,7 @@ export async function uploadGroupAvatar(conversationId: string, file: File): Pro
   const formData = new FormData();
   formData.append("avatar", file);
   const { data } = await apiClient.post(
-    `${BASE}/conversations/${conversationId}/avatar`,
+    `${BASE}/conversations/${seg(conversationId)}/avatar`,
     formData,
     {
       transformRequest: [

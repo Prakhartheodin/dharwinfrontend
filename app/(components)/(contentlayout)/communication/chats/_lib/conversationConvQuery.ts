@@ -24,3 +24,12 @@ export function conversationConvMatches(
   const have = String(current.get("conv") ?? "").trim();
   return want === have;
 }
+
+/**
+ * `getConversation` failures that mean "this id is not yours to open" (malformed id, forbidden,
+ * gone). These clear `?conv=`; other failures (network, 5xx) leave the URL alone so a retry works.
+ */
+export function isConversationUnavailableError(err: unknown): boolean {
+  const status = (err as { response?: { status?: number } })?.response?.status;
+  return status === 400 || status === 403 || status === 404;
+}

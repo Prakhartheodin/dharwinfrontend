@@ -16,8 +16,6 @@ import {
   setParticipantRole,
   updateGroupName,
   uploadGroupAvatar,
-  initiateCall,
-  endCallByRoom,
   getActiveCallForConversation,
   getCallsForConversation,
   deleteMessage,
@@ -27,6 +25,7 @@ import {
   listPinnedMessages,
   uploadChatFiles,
   deleteConversation as deleteConversationApi,
+  setConversationPreferences,
   type ChatCall,
   type Conversation,
   type Message,
@@ -44,7 +43,22 @@ import {
   conversationPreviewAfterDelete,
   findMentionToken,
   insertMentionText,
+  callStatusLabel,
+  timelineCallPillText,
+  callsTabHeadline,
+  callJoinedParticipantsLine,
+  groupReactions,
+  applyReactionLocally,
+  mentionsForSend,
+  type PickedMention,
 } from "./_utils/chatHelpers";
+import { ReceiptTick } from "./_components/ReceiptTick";
+import {
+  applyReceiptEvent,
+  messageTickStatus,
+  upgradeTickStatus,
+  type TickStatus,
+} from "./_lib/chatReceipts";
 import { ChatToast, useChatToast } from "./_components/ChatToast";
 import EmailLookupPanel from "./_components/EmailLookupPanel";
 import {
@@ -65,12 +79,18 @@ import {
 import {
   applyConversationConvParam,
   conversationConvMatches,
+  isConversationUnavailableError,
 } from "./_lib/conversationConvQuery";
 import {
   canSendVoicePreview,
   createVoicePreviewFromBlob,
   formatVoiceElapsed,
   revokeVoicePreviewUrl,
+  pickRecorderMimeType,
+  voiceFileExtension,
+  voiceNoteBelongsTo,
+  VOICE_NOTE_MAX_MS,
+  VOICE_NOTE_WARN_REMAINING_MS,
   type VoiceNotePreview,
 } from "./_lib/voiceNotePreview";
 import {
@@ -128,15 +148,6 @@ const PreviewText = ({ text, className }: { text: string; className?: string }) 
   </span>
 );
 
-function callLogStatusLabel(status: string | undefined): string {
-  if (!status || status === "ongoing") return "";
-  if (status === "completed" || status === "ended") return "Ended";
-  if (status === "missed") return "Missed";
-  if (status === "declined") return "Declined";
-  if (status === "initiated") return "Started";
-  return status;
-}
-
 type DeleteConfirmMode = "me" | "everyone" | "chat";
 
 function getDeleteConfirmCopy(mode: DeleteConfirmMode, isGroup: boolean) {
@@ -168,73 +179,30 @@ function getDeleteConfirmCopy(mode: DeleteConfirmMode, isGroup: boolean) {
   };
 }
 
-/** Short line for merged thread timeline (enriched calls from getCallsForConversation). */
-function timelineCallPillText(call: {
-  direction?: "incoming" | "outgoing";
-  peer?: { name?: string; isGroup?: boolean };
-  callType?: string;
-  status?: string;
-}): string {
-  const kind = call.callType === "video" ? "Video" : "Voice";
-  const dir = call.direction === "outgoing" ? "Outgoing" : "Incoming";
-  const status = callLogStatusLabel(call.status);
-  const peerName = (call.peer?.name || "Unknown").trim() || "Unknown";
-  const chunks: string[] = [];
-  if (call.peer?.isGroup) {
-    chunks.push(`${peerName} · ${kind} · ${dir}`);
-  } else if (call.direction === "outgoing") {
-    chunks.push(`You called ${peerName} · ${kind}`);
-  } else if (call.direction === "incoming") {
-    chunks.push(`${peerName} called · ${kind}`);
-  } else {
-    chunks.push(`${kind} call`);
-  }
-  if (status) chunks.push(status);
-  return chunks.join(" · ");
-}
-
-function participantIdFromCallUser(p: { id?: string; _id?: string } | null | undefined): string {
-  if (!p) return "";
-  return String((p as { id?: string }).id ?? (p as { _id?: string })._id ?? "").trim();
-}
-
-/** Calls list row title: explicit callee (outgoing) or caller (incoming); group name for group calls. */
-function callsTabHeadline(call: ChatCall): string {
-  const peer = call.peer;
-  const name = (peer?.name || (call.caller as { name?: string } | undefined)?.name || "Unknown").trim() || "Unknown";
-  if (peer?.isGroup) {
-    if (call.direction === "outgoing") return `You called ${name}`;
-    return name;
-  }
-  if (call.direction === "outgoing") return `You called ${name}`;
-  if (call.direction === "incoming") return `${name} called you`;
-  return name;
-}
-
-/** Names of users who actually joined the LiveKit room (You for viewer); omit if no join data. */
-function callJoinedParticipantsLine(
-  call: { roomJoinedUserIds?: Array<{ id?: string; _id?: string; name?: string }> },
-  myId: string | undefined
-): string | null {
-  const list = call.roomJoinedUserIds?.length ? call.roomJoinedUserIds : [];
-  if (list.length === 0) return null;
-  const labels: string[] = [];
-  const seen = new Set<string>();
-  for (const p of list) {
-    const pid = participantIdFromCallUser(p);
-    const label =
-      myId && pid && pid === String(myId) ? "You" : (p.name || "Unknown").trim() || "Unknown";
-    const dedupe = label.toLowerCase();
-    if (seen.has(dedupe)) continue;
-    seen.add(dedupe);
-    labels.push(label);
-  }
-  if (labels.length === 0) return null;
-  return labels.join(", ");
-}
-
 const getId = (x: { id?: string; _id?: string } | null | undefined) =>
   x && (x.id || (x as any)._id?.toString?.());
+
+/** Viewer-only mute switch shared by the contact and group info panels. */
+function MuteToggle({ muted, busy, onToggle }: { muted: boolean; busy: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={muted}
+      disabled={busy}
+      onClick={onToggle}
+      className={chatStyles.muteRow}
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <i className={muted ? "ri-notification-off-line" : "ri-notification-3-line"} aria-hidden />
+        <span className="truncate">Mute notifications</span>
+      </span>
+      <span className={`${chatStyles.muteSwitch} ${muted ? chatStyles.muteSwitchOn : ""}`} aria-hidden>
+        <span className={chatStyles.muteSwitchKnob} />
+      </span>
+    </button>
+  );
+}
 
 function GroupInfoPanel({
   conversation,
@@ -245,6 +213,9 @@ function GroupInfoPanel({
   onClose,
   onLeave,
   onCall,
+  muted,
+  muteBusy,
+  onToggleMute,
   addMemberSearch,
   setAddMemberSearch,
   addMemberResults,
@@ -261,10 +232,13 @@ function GroupInfoPanel({
   onClose: () => void;
   onLeave: () => void;
   onCall: (t: "audio" | "video") => void;
+  muted: boolean;
+  muteBusy: boolean;
+  onToggleMute: () => void;
   addMemberSearch: string;
   setAddMemberSearch: (v: string) => void;
-  addMemberResults: { id: string; name: string; email: string }[];
-  setAddMemberResults: (v: { id: string; name: string; email: string }[]) => void;
+  addMemberResults: { id: string; name: string; email?: string }[];
+  setAddMemberResults: (v: { id: string; name: string; email?: string }[]) => void;
   addMemberSelected: Set<string>;
   setAddMemberSelected: (v: Set<string>) => void;
   handleSearchUsers: () => void;
@@ -497,7 +471,10 @@ function GroupInfoPanel({
         </div>
       </div>
 
-      <PerfectScrollbar className={chatStyles.groupInfoScroll} style={{ maxHeight: "calc(100vh - 22rem)" }}>
+      <PerfectScrollbar className={chatStyles.groupInfoScroll}>
+        <div className="mb-4">
+          <MuteToggle muted={muted} busy={muteBusy} onToggle={onToggleMute} />
+        </div>
         <div className="mb-4">
           <div className={chatStyles.groupInfoSectionHead}>
             <p className={`${chatStyles.sectionLabel} !mb-0`}>Members</p>
@@ -688,14 +665,24 @@ const Chat = () => {
     },
     [pathname, router, searchParams]
   );
-  const replaceConvParam = useCallback(
-    (convId: string | null) => {
+  const writeConvParam = useCallback(
+    (convId: string | null, history: "push" | "replace") => {
       if (conversationConvMatches(searchParams, convId)) return;
       const params = applyConversationConvParam(searchParams, convId);
       const qs = params.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      const href = qs ? `${pathname}?${qs}` : pathname;
+      if (history === "push") router.push(href, { scroll: false });
+      else router.replace(href, { scroll: false });
     },
     [pathname, router, searchParams]
+  );
+  const replaceConvParam = useCallback(
+    (convId: string | null) => writeConvParam(convId, "replace"),
+    [writeConvParam]
+  );
+  const pushConvParam = useCallback(
+    (convId: string | null) => writeConvParam(convId, "push"),
+    [writeConvParam]
   );
   const callsListQuery = useMemo(() => parseCallsListQuery(searchParams), [searchParams]);
   const replaceCallsQuery = useCallback(
@@ -724,11 +711,17 @@ const Chat = () => {
     onMessagePinned,
     onTyping,
     onMessagesRead,
+    // FE-B contract (ChatSocketContext): delivery receipts, membership removal, reconnect.
+    onMessageDelivered,
+    onConversationDelivered,
+    onConversationRemoved,
+    onReconnected,
     emitTyping,
     emitMessageRead,
     onlineUsers,
     syncOnlineUsers,
     emitCallInitiate,
+    prepareCallWindow,
   } = useChatSocket();
 
   const [activeTab, setActiveTab] = useState<"recent" | "groups" | "calls">("recent");
@@ -750,13 +743,41 @@ const Chat = () => {
     refresh: refreshGroups,
   } = useConversationListPagination("group", groupsTabEnabled, { page: listPage, q: listQ });
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  /**
+   * True when the open chat was entered by a push from the bare list (no `?conv=` before it), so
+   * the in-app back button can pop that entry instead of stacking a new one (R2/R3).
+   */
+  const enteredFromListRef = useRef(false);
+  /** Explicit user choice (list click, new chat): push so browser Back returns to where they were. */
   const selectConversation = useCallback(
-    (c: Conversation | null) => {
+    (c: Conversation) => {
+      const id = getId(c) || null;
+      const current = searchParams.get("conv");
       setSelectedConversation(c);
-      replaceConvParam(c ? getId(c) || null : null);
+      if (current === id) return; // re-clicking the open chat is not a navigation
+      enteredFromListRef.current = !current;
+      pushConvParam(id);
     },
-    [replaceConvParam]
+    [pushConvParam, searchParams]
   );
+  /**
+   * Programmatic deselect (delete, leave, removed, socket): REPLACE so Back never lands on a dead
+   * `?conv=` (R4/R5).
+   */
+  const deselectConversation = useCallback(() => {
+    enteredFromListRef.current = false;
+    setSelectedConversation(null);
+    replaceConvParam(null);
+  }, [replaceConvParam]);
+  /** In-app back button (mobile/tablet): pop our own push when we made one, else replace. */
+  const backToList = useCallback(() => {
+    if (enteredFromListRef.current && typeof window !== "undefined" && window.history.length > 1) {
+      enteredFromListRef.current = false;
+      router.back();
+      return;
+    }
+    deselectConversation();
+  }, [router, deselectConversation]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [convCalls, setConvCalls] = useState<any[]>([]);
   const [messageInput, setMessageInput] = useState("");
@@ -784,7 +805,7 @@ const Chat = () => {
   const [conversationSearch, setConversationSearch] = useState(listQ);
   const [newChatMode, setNewChatMode] = useState<"direct" | "group">("direct");
   const [userSearch, setUserSearch] = useState("");
-  const [searchResults, setSearchResults] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [searchResults, setSearchResults] = useState<{ id: string; name: string; email?: string }[]>([]);
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const [selectedUserLabels, setSelectedUserLabels] = useState<Record<string, string>>({});
   const [groupName, setGroupName] = useState("");
@@ -834,7 +855,7 @@ const Chat = () => {
       try {
         await deleteConversationApi(cid);
         setDeleteConfirm(null);
-        selectConversation(null);
+        deselectConversation();
         setIsOpen(false);
         await fetchConversations();
       } catch (e: any) {
@@ -859,7 +880,14 @@ const Chat = () => {
         setMessages((prev) =>
           prev.map((x) =>
             String((x as any).id || (x as any)._id) === mid
-              ? { ...x, deletedAt: new Date().toISOString(), deletedFor: "everyone" as const }
+              ? {
+                  ...x,
+                  deletedAt: new Date().toISOString(),
+                  deletedFor: "everyone" as const,
+                  content: "",
+                  attachments: [],
+                  reactions: [],
+                }
               : x
           )
         );
@@ -870,6 +898,8 @@ const Chat = () => {
           );
         }
       }
+      // A deleted message can no longer be pinned; the server drops it from the pinned list.
+      void fetchPinnedMessages(cid);
       setDeleteConfirm(null);
     } catch (e: any) {
       showToast(e?.response?.data?.message || "Could not delete message.");
@@ -890,10 +920,19 @@ const Chat = () => {
   const voiceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
   const voiceSendLockRef = useRef(false);
+  /** Conversation the in-flight recording belongs to (captured at start, R1). */
+  const voiceConvIdRef = useRef<string | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  /** Set by Cancel: the next onstop drops the blob instead of opening a preview. */
+  const voiceDiscardOnStopRef = useRef(false);
+  const [voiceStarting, setVoiceStarting] = useState(false);
+  const voiceStartingRef = useRef(false);
+  const [muteBusy, setMuteBusy] = useState(false);
+  const [pickedMentions, setPickedMentions] = useState<PickedMention[]>([]);
   const [groupInfoData, setGroupInfoData] = useState<Conversation | null>(null);
   const [groupInfoLoading, setGroupInfoLoading] = useState(false);
   const [addMemberSearch, setAddMemberSearch] = useState("");
-  const [addMemberResults, setAddMemberResults] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [addMemberResults, setAddMemberResults] = useState<{ id: string; name: string; email?: string }[]>([]);
   const [addMemberSelected, setAddMemberSelected] = useState<Set<string>>(new Set());
   const [dismissedCallNotificationPrompt, setDismissedCallNotificationPrompt] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -931,14 +970,15 @@ const Chat = () => {
     [selectedConversation, clearMentionState]
   );
   const applyMention = useCallback(
-    (name: string) => {
+    (member: { id: string; name: string }) => {
       if (!mentionToken) return;
       const { value, caret } = insertMentionText(
         messageInput,
         { start: mentionToken.start, end: mentionToken.end },
-        name
+        member.name
       );
       setMessageInput(value);
+      setPickedMentions((prev) => [...prev, { userId: member.id, displayName: member.name.trim() }]);
       clearMentionState();
       requestAnimationFrame(() => {
         const el = composerRef.current;
@@ -1041,9 +1081,20 @@ const Chat = () => {
     });
   }, []);
 
+  /**
+   * The conversation currently on screen, readable from async callbacks. Every async result that
+   * writes into the thread (fetch, send, upload, voice) checks it so a late response for chat A
+   * never lands in chat B.
+   */
+  const openConvIdRef = useRef<string | null>(null);
+  openConvIdRef.current = getId(selectedConversation) || null;
+  const fetchSeqRef = useRef(0);
+
   // ── Fetch helpers ──
   const fetchMessages = useCallback(async (convId: string) => {
     if (!convId) return;
+    const seq = ++fetchSeqRef.current;
+    const isStale = () => seq !== fetchSeqRef.current || openConvIdRef.current !== convId;
     setLoadingMessages(true);
     setHasMoreMessages(true);
     try {
@@ -1051,15 +1102,20 @@ const Chat = () => {
         getMessages(convId, { limit: 50 }),
         getCallsForConversation(convId, { limit: 50 }),
       ]);
+      if (isStale()) return;
       setMessages(msgs || []);
       setConvCalls(calls || []);
       setHasMoreMessages((msgs || []).length >= 50);
-      await markAsRead(convId);
+      // Only a visible tab has "read" anything; a background refetch must not clear unread.
+      if (typeof document === "undefined" || document.visibilityState === "visible") {
+        await markAsRead(convId).catch(() => {});
+      }
     } catch {
+      if (isStale()) return;
       setMessages([]);
       setConvCalls([]);
     } finally {
-      setLoadingMessages(false);
+      if (seq === fetchSeqRef.current) setLoadingMessages(false);
     }
   }, []);
 
@@ -1071,6 +1127,7 @@ const Chat = () => {
     setLoadingOlder(true);
     try {
       const older = await getMessages(cid, { before: oldestId, limit: 50 });
+      if (openConvIdRef.current !== cid) return;
       if ((older || []).length < 50) setHasMoreMessages(false);
       skipAutoScrollRef.current = true;
       setMessages((prev) => [...(older || []), ...prev]);
@@ -1124,10 +1181,15 @@ const Chat = () => {
   }, [conversations, groupConversations]);
 
   // URL `?conv=` is canonical: apply deep links (direct + group), do not snap back after select.
-  const convDeepLinkFailRef = useRef<string | null>(null);
+  // Runs only when the conv VALUE changes — list refreshes must not re-fetch a conversation that
+  // is not on the current list page. Lists are read through refs for the same reason.
+  const convParam = (searchParams.get("conv") || "").trim();
+  const listsRef = useRef({ conversations, groupConversations });
+  listsRef.current = { conversations, groupConversations };
+  const replaceConvParamRef = useRef(replaceConvParam);
+  replaceConvParamRef.current = replaceConvParam;
   const prevConvParamRef = useRef<string | null>(null);
   useEffect(() => {
-    const convParam = (searchParams.get("conv") || "").trim();
     const prevConv = prevConvParamRef.current;
     prevConvParamRef.current = convParam || null;
 
@@ -1136,38 +1198,37 @@ const Chat = () => {
       if (prevConv) setSelectedConversation(null);
       return;
     }
-    if (convDeepLinkFailRef.current === convParam) return;
+    if (openConvIdRef.current === convParam) return;
 
-    setSelectedConversation((sel) => {
-      if (sel && getId(sel) === convParam) return sel;
-      const found =
-        conversations.find((x) => getId(x) === convParam) ||
-        groupConversations.find((x) => getId(x) === convParam);
-      return found ?? sel;
-    });
-
-    const inLists =
-      conversations.some((x) => getId(x) === convParam) ||
-      groupConversations.some((x) => getId(x) === convParam);
-    if (inLists) {
-      convDeepLinkFailRef.current = null;
+    const { conversations: convs, groupConversations: groups } = listsRef.current;
+    const found =
+      convs.find((x) => getId(x) === convParam) || groups.find((x) => getId(x) === convParam);
+    if (found) {
+      setSelectedConversation(found);
       return;
     }
 
+    // Not blacklisted on failure: the next explicit navigation to this id tries again.
     let cancelled = false;
     getConversation(convParam)
       .then((conv) => {
         if (cancelled || !conv) return;
-        convDeepLinkFailRef.current = null;
         setSelectedConversation(conv);
       })
-      .catch(() => {
-        if (!cancelled) convDeepLinkFailRef.current = convParam;
+      .catch((err) => {
+        if (cancelled) return;
+        setSelectedConversation(null);
+        if (isConversationUnavailableError(err)) {
+          showToast("This conversation isn't available.");
+          replaceConvParamRef.current(null);
+        } else {
+          showToast("Couldn't open this conversation. Check your connection and try again.");
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [searchParams, conversations, groupConversations]);
+  }, [convParam, showToast]);
 
   const convId = getId(selectedConversation);
 
@@ -1183,10 +1244,11 @@ const Chat = () => {
       return;
     }
     try {
-      setPinnedMessages(await listPinnedMessages(cid));
+      const pins = await listPinnedMessages(cid);
+      if (openConvIdRef.current === cid) setPinnedMessages(pins);
     } catch {
       // A failed pin fetch must not blank the thread — the banner just stays hidden.
-      setPinnedMessages([]);
+      if (openConvIdRef.current === cid) setPinnedMessages([]);
     }
   }, []);
 
@@ -1259,11 +1321,22 @@ const Chat = () => {
       fetchConversations();
       if (convId) fetchMessages(convId);
     };
+    // Messages that arrived while the tab was hidden stay unread until it is actually visible.
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible" || !convId) return;
+      emitMessageRead(convId);
+      fetchConversations();
+    };
     window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [convId, fetchConversations, fetchMessages]);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [convId, fetchConversations, fetchMessages, emitMessageRead]);
 
   useEffect(() => {
+    setPickedMentions([]);
     if (convId) {
       fetchMessages(convId);
       joinConversation(convId);
@@ -1274,6 +1347,16 @@ const Chat = () => {
       setReplyingTo(null);
     }
   }, [convId, fetchMessages, joinConversation, leaveConversation]);
+
+  // After a socket reconnect the context re-joins the room, but anything sent while we were
+  // disconnected never arrived: refetch the open thread and the list.
+  useEffect(() => {
+    return onReconnected(() => {
+      const cid = openConvIdRef.current;
+      if (cid) fetchMessages(cid);
+      fetchConversations();
+    });
+  }, [onReconnected, fetchMessages, fetchConversations]);
 
   useEffect(() => {
     const userIds = [...conversations, ...groupConversations]
@@ -1300,7 +1383,8 @@ const Chat = () => {
           if (exists) return prev;
           return [...prev, msg as Message];
         });
-        emitMessageRead(convId);
+        // A hidden tab has not read it; visibilitychange marks it read when the user comes back.
+        if (document.visibilityState === "visible") emitMessageRead(convId);
       }
       fetchConversations();
     });
@@ -1340,17 +1424,28 @@ const Chat = () => {
       if (!deletedId) return;
       setConversations((prev) => prev.filter((c) => getId(c) !== deletedId));
       setGroupConversations((prev) => prev.filter((c) => getId(c) !== deletedId));
-      setSelectedConversation((prev) => {
-        if (prev && getId(prev) === deletedId) {
-          setIsOpen(false);
-          replaceConvParam(null);
-          return null;
-        }
-        return prev;
-      });
+      if (openConvIdRef.current === deletedId) {
+        setIsOpen(false);
+        deselectConversation();
+      }
     });
     return unsub;
-  }, [onConversationDeleted, replaceConvParam]);
+  }, [onConversationDeleted, deselectConversation]);
+
+  // Removed from a group by an admin: drop it from the lists and close it if it is open.
+  useEffect(() => {
+    return onConversationRemoved((data) => {
+      const removedId = data?.conversationId && String(data.conversationId);
+      if (!removedId) return;
+      setConversations((prev) => prev.filter((c) => getId(c) !== removedId));
+      setGroupConversations((prev) => prev.filter((c) => getId(c) !== removedId));
+      if (openConvIdRef.current === removedId) {
+        setIsOpen(false);
+        deselectConversation();
+        showToast("You're no longer a member of this conversation.");
+      }
+    });
+  }, [onConversationRemoved, deselectConversation, showToast, setConversations, setGroupConversations]);
 
   // Typing indicator with proper cleanup
   useEffect(() => {
@@ -1375,23 +1470,76 @@ const Chat = () => {
     };
   }, [onTyping, convId, myId]);
 
-  // Read receipts
+  // ── Receipts (delivered / read) ──
+  // Thread: push normalized {user, at} receipts onto my messages. List: 1:1 rows update their
+  // lastMessage tick in place; group rows need every member, so they refetch (debounced).
+  const listRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fetchConversationsRef = useRef(fetchConversations);
+  fetchConversationsRef.current = fetchConversations;
+  useEffect(
+    () => () => {
+      if (listRefreshTimerRef.current) clearTimeout(listRefreshTimerRef.current);
+    },
+    []
+  );
+  const bumpListTick = useCallback(
+    (conversationId: string, userId: string, status: TickStatus, messageIds?: string[]) => {
+      if (!conversationId || !userId || !myId || String(userId) === String(myId)) return;
+      const { conversations: convs, groupConversations: groups } = listsRef.current;
+      const row = [...convs, ...groups].find((c) => getId(c) === String(conversationId));
+      const lm = row?.lastMessage;
+      if (!row || !lm?.senderId || String(lm.senderId) !== String(myId)) return;
+      if (messageIds?.length && lm.id && !messageIds.map(String).includes(String(lm.id))) return;
+      if (row.type === "group") {
+        if (listRefreshTimerRef.current) clearTimeout(listRefreshTimerRef.current);
+        listRefreshTimerRef.current = setTimeout(() => void fetchConversationsRef.current(), 800);
+        return;
+      }
+      const update = (prev: Conversation[]) =>
+        prev.map((c) => {
+          if (getId(c) !== String(conversationId) || !c.lastMessage) return c;
+          const next = upgradeTickStatus(c.lastMessage.status, status);
+          return next === c.lastMessage.status ? c : { ...c, lastMessage: { ...c.lastMessage, status: next } };
+        });
+      setConversations(update);
+      setGroupConversations(update);
+    },
+    [myId, setConversations, setGroupConversations]
+  );
+
   useEffect(() => {
     const unsub = onMessagesRead((data) => {
-      if (data.conversationId === convId) {
+      const d = data as { conversationId: string; userId: string; readAt?: string; messageIds?: string[] };
+      if (String(d.conversationId) === String(convId)) {
         setMessages((prev) =>
-          prev.map((m) => {
-            const senderId = (m.sender as any)?.id || (m.sender as any)?._id;
-            if (String(senderId) === myId && !(m.readBy || []).includes(data.userId)) {
-              return { ...m, readBy: [...(m.readBy || []), data.userId] };
-            }
-            return m;
-          })
+          applyReceiptEvent(prev, { kind: "read", userId: d.userId, at: d.readAt, messageIds: d.messageIds })
         );
       }
+      bumpListTick(d.conversationId, d.userId, "read", d.messageIds);
     });
     return unsub;
-  }, [onMessagesRead, convId, myId]);
+  }, [onMessagesRead, convId, bumpListTick]);
+
+  useEffect(() => {
+    const offMessage = onMessageDelivered((d) => {
+      if (String(d.conversationId) === String(convId)) {
+        setMessages((prev) =>
+          applyReceiptEvent(prev, { kind: "delivered", userId: d.userId, at: d.at, messageIds: d.messageIds })
+        );
+      }
+      bumpListTick(d.conversationId, d.userId, "delivered", d.messageIds);
+    });
+    const offConversation = onConversationDelivered((d) => {
+      if (String(d.conversationId) === String(convId)) {
+        setMessages((prev) => applyReceiptEvent(prev, { kind: "delivered", userId: d.userId, at: d.at }));
+      }
+      bumpListTick(d.conversationId, d.userId, "delivered");
+    });
+    return () => {
+      offMessage();
+      offConversation();
+    };
+  }, [onMessageDelivered, onConversationDelivered, convId, bumpListTick]);
 
   // Active call for rejoin bar
   useEffect(() => {
@@ -1401,19 +1549,30 @@ const Chat = () => {
   }, [convId, fetchActiveCallForConv]);
 
   // Fetch group info when opening panel for a group
+  // Keyed on the id, not the object: list refreshes and the mute toggle replace the object and
+  // must not re-fetch (and flash a spinner in) an already-open panel.
+  const selectedType = selectedConversation?.type;
   useEffect(() => {
-    if (!isOpen || !selectedConversation || selectedConversation.type !== "group") {
+    if (!isOpen || !convId || selectedType !== "group") {
       setGroupInfoData(null);
       return;
     }
-    const cid = getId(selectedConversation);
-    if (!cid) return;
+    let cancelled = false;
     setGroupInfoLoading(true);
-    getConversation(cid)
-      .then((data) => setGroupInfoData(data))
-      .catch(() => setGroupInfoData(null))
-      .finally(() => setGroupInfoLoading(false));
-  }, [isOpen, selectedConversation]);
+    getConversation(convId)
+      .then((data) => {
+        if (!cancelled) setGroupInfoData(data);
+      })
+      .catch(() => {
+        if (!cancelled) setGroupInfoData(null);
+      })
+      .finally(() => {
+        if (!cancelled) setGroupInfoLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, convId, selectedType]);
 
   // call_ended: clear active call for that conversation
   useEffect(() => {
@@ -1453,34 +1612,80 @@ const Chat = () => {
           prev.map((m) => {
             const id = String((m as any).id || (m as any)._id);
             if (id === String(data.messageId)) {
-              return { ...m, deletedAt: new Date().toISOString(), deletedFor: "everyone" as const };
+              return {
+                ...m,
+                deletedAt: new Date().toISOString(),
+                deletedFor: "everyone" as const,
+                content: "",
+                attachments: [],
+                reactions: [],
+              };
             }
             return m;
           })
         );
+        // The pinned bar may be showing the deleted message.
+        fetchPinnedMessages(convId);
+        setReactionPickerFor((cur) => (cur === String(data.messageId) ? null : cur));
       }
     });
     return unsub;
-  }, [onMessageDeleted, convId, fetchConversations]);
+  }, [onMessageDeleted, convId, fetchConversations, fetchPinnedMessages]);
 
-  // Escape key to close lightbox, forward modal, delete confirm, or side panel
+  // Group info panel state is per conversation: never carry a draft or pick-list across chats.
   useEffect(() => {
-    if (!imagePreview && !forwardingMessage && !deleteConfirm && !isOpen) return;
+    setAddMemberSearch("");
+    setAddMemberResults([]);
+    setAddMemberSelected(new Set());
+  }, [convId]);
+
+  // Escape closes the topmost layer only.
+  useEffect(() => {
+    if (!imagePreview && !forwardingMessage && !deleteConfirm && !showNewChat && !isOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (imagePreview) setImagePreview(null);
       else if (forwardingMessage) closeForwardModal();
       else if (deleteConfirm) closeDeleteConfirm();
+      else if (showNewChat) closeNewChatModal();
+      // A message menu / picker is above the panel; its own listener closes it first.
+      else if (reactionPickerFor || messageMenuFor) return;
       else if (isOpen) setIsOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [imagePreview, forwardingMessage, deleteConfirm, isOpen, closeForwardModal, closeDeleteConfirm]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- closeNewChatModal is recreated each render
+  }, [
+    imagePreview,
+    forwardingMessage,
+    deleteConfirm,
+    showNewChat,
+    isOpen,
+    reactionPickerFor,
+    messageMenuFor,
+    closeForwardModal,
+    closeDeleteConfirm,
+  ]);
 
   useEffect(() => {
     if (!deleteConfirm) return;
     deleteConfirmCancelRef.current?.focus();
   }, [deleteConfirm]);
+
+  // Overlay sheet (<1024px): move focus into the panel on open, hand it back to the opener on close.
+  const sidePanelRef = useRef<HTMLDivElement>(null);
+  const panelOpenerRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!isOpen) return;
+    const overlay = typeof window !== "undefined" && window.matchMedia("(max-width: 1023.98px)").matches;
+    if (overlay) sidePanelRef.current?.focus();
+    return () => {
+      // By cleanup time the panel is unmounted, so focus has fallen back to <body>.
+      if (overlay && (!document.activeElement || document.activeElement === document.body)) {
+        panelOpenerRef.current?.focus();
+      }
+    };
+  }, [isOpen]);
 
   // Close the reaction bar / message menu on outside-click or Escape.
   useEffect(() => {
@@ -1518,16 +1723,23 @@ const Chat = () => {
     const cid = getId(selectedConversation);
     if (!content || !cid || sending) return;
     setSending(true);
+    const mentions =
+      selectedConversation?.type === "group" ? mentionsForSend(content, pickedMentions) : [];
     try {
       const msg = await sendMessage(cid, content, {
         replyTo: replyingTo ? String((replyingTo as any).id || (replyingTo as any)._id) : undefined,
+        ...(mentions.length ? { mentions } : {}),
       });
+      fetchConversations();
+      // Clear the composer only if it still holds what was sent (the user may have moved on).
+      setMessageInput((cur) => (cur.trim() === content ? "" : cur));
+      // The user may have switched chats while the request was in flight.
+      if (openConvIdRef.current !== cid) return;
       setMessages((prev) => addMessageIfNew(prev, msg));
-      setMessageInput("");
+      setPickedMentions([]);
       clearMentionState();
       if (composerRef.current) composerRef.current.style.height = "auto";
       setReplyingTo(null);
-      fetchConversations();
     } catch {
       showToast("Message failed to send. Your text was kept — try again.");
     } finally {
@@ -1556,9 +1768,11 @@ const Chat = () => {
     try {
       const replyToId = replyingTo ? String((replyingTo as any).id || (replyingTo as any)._id) : undefined;
       const msg = await uploadChatFiles(cid, files, undefined, replyToId);
-      setMessages((prev) => addMessageIfNew(prev, msg));
-      setReplyingTo(null);
       fetchConversations();
+      if (openConvIdRef.current === cid) {
+        setMessages((prev) => addMessageIfNew(prev, msg));
+        setReplyingTo(null);
+      }
     } catch (err) {
       showToast(uploadErrorMessage(err));
     } finally {
@@ -1589,57 +1803,122 @@ const Chat = () => {
     setVoiceElapsedMs(0);
   }, []);
 
-  const startVoiceNote = useCallback(async () => {
-    if (!navigator.mediaDevices?.getUserMedia) return;
-    const cid = getId(selectedConversation);
-    if (!cid || voiceSending) return;
-    discardVoicePreview();
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "audio/webm";
-      const recorder = new MediaRecorder(stream);
-      chunksRef.current = [];
-      recorder.ondataavailable = (e) => {
-        if (e.data.size) chunksRef.current.push(e.data);
-      };
-      // Stop must NOT upload — hold blob for preview (Send uses upload once).
-      recorder.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
-        clearVoiceTimer();
-        const elapsed = Math.max(0, Date.now() - voiceStartedAtRef.current);
-        setVoiceElapsedMs(elapsed);
-        const blob = new Blob(chunksRef.current, { type: mime });
-        const preview = createVoicePreviewFromBlob(blob, mime, elapsed);
-        if (!preview) {
-          setIsRecording(false);
-          return;
-        }
-        setVoicePreview(preview);
-        setIsRecording(false);
-      };
-      recorder.start();
-      mediaRecorderRef.current = recorder;
-      voiceStartedAtRef.current = Date.now();
-      setVoiceElapsedMs(0);
-      clearVoiceTimer();
-      voiceTimerRef.current = setInterval(() => {
-        setVoiceElapsedMs(Date.now() - voiceStartedAtRef.current);
-      }, 250);
-      setIsRecording(true);
-    } catch {
-      // Permission denied or not supported
-    }
-  }, [selectedConversation, voiceSending, discardVoicePreview, clearVoiceTimer]);
+  const stopVoiceStream = useCallback(() => {
+    voiceStreamRef.current?.getTracks().forEach((t) => t.stop());
+    voiceStreamRef.current = null;
+  }, []);
 
   const stopVoiceNote = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current = null;
-      // isRecording cleared in onstop after preview is ready
+    const rec = mediaRecorderRef.current;
+    if (rec && rec.state === "recording") {
+      // isRecording / preview are resolved in onstop (it fires asynchronously).
+      rec.stop();
     }
   }, []);
+
+  /** Cancel while recording: stop the mic and throw the audio away (no preview). */
+  const cancelVoiceRecording = useCallback(() => {
+    voiceDiscardOnStopRef.current = true;
+    const rec = mediaRecorderRef.current;
+    if (rec && rec.state === "recording") {
+      rec.stop();
+      return;
+    }
+    clearVoiceTimer();
+    stopVoiceStream();
+    mediaRecorderRef.current = null;
+    voiceConvIdRef.current = null;
+    setIsRecording(false);
+    setVoiceElapsedMs(0);
+  }, [clearVoiceTimer, stopVoiceStream]);
+
+  const startVoiceNote = useCallback(async () => {
+    // Guard double-clicks: a second click while getUserMedia is pending would open a second mic.
+    if (voiceStartingRef.current || mediaRecorderRef.current) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      showToast("Voice notes aren't supported in this browser.");
+      return;
+    }
+    const cid = getId(selectedConversation);
+    if (!cid || voiceSending) return;
+    voiceStartingRef.current = true;
+    setVoiceStarting(true);
+    discardVoicePreview();
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      showToast("Microphone access is blocked. Allow it in your browser to record a voice note.");
+      return;
+    } finally {
+      voiceStartingRef.current = false;
+      setVoiceStarting(false);
+    }
+    // The user may have switched chats while the permission prompt was open.
+    if (openConvIdRef.current !== cid) {
+      stream.getTracks().forEach((t) => t.stop());
+      return;
+    }
+    stopVoiceStream();
+    voiceStreamRef.current = stream;
+    const requestedMime = pickRecorderMimeType((m) => MediaRecorder.isTypeSupported(m));
+    let recorder: MediaRecorder;
+    try {
+      recorder = requestedMime ? new MediaRecorder(stream, { mimeType: requestedMime }) : new MediaRecorder(stream);
+    } catch {
+      stopVoiceStream();
+      showToast("Couldn't start recording. Try again.");
+      return;
+    }
+    chunksRef.current = [];
+    voiceConvIdRef.current = cid;
+    voiceDiscardOnStopRef.current = false;
+    recorder.ondataavailable = (e) => {
+      if (e.data.size) chunksRef.current.push(e.data);
+    };
+    // Stop must NOT upload — hold blob for preview (Send uses upload once).
+    recorder.onstop = () => {
+      stopVoiceStream();
+      clearVoiceTimer();
+      mediaRecorderRef.current = null;
+      setIsRecording(false);
+      const recordedIn = voiceConvIdRef.current;
+      voiceConvIdRef.current = null;
+      const discard = voiceDiscardOnStopRef.current;
+      voiceDiscardOnStopRef.current = false;
+      // Cancelled, or the user left the chat it was recorded in (R1): never surface it elsewhere.
+      if (discard || !voiceNoteBelongsTo(recordedIn, openConvIdRef.current)) {
+        chunksRef.current = [];
+        setVoiceElapsedMs(0);
+        return;
+      }
+      const elapsed = Math.max(0, Date.now() - voiceStartedAtRef.current);
+      setVoiceElapsedMs(elapsed);
+      // Use what the recorder actually produced, not what we asked for (Safari → audio/mp4).
+      const mime = recorder.mimeType || requestedMime || "audio/webm";
+      const blob = new Blob(chunksRef.current, { type: mime });
+      chunksRef.current = [];
+      const preview = createVoicePreviewFromBlob(blob, mime, elapsed);
+      if (!preview) {
+        setVoiceElapsedMs(0);
+        showToast("Recording was too short. Hold the mic a little longer.");
+        return;
+      }
+      setVoicePreview({ ...preview, conversationId: recordedIn! });
+    };
+    recorder.start();
+    mediaRecorderRef.current = recorder;
+    voiceStartedAtRef.current = Date.now();
+    setVoiceElapsedMs(0);
+    clearVoiceTimer();
+    voiceTimerRef.current = setInterval(() => {
+      const elapsed = Date.now() - voiceStartedAtRef.current;
+      setVoiceElapsedMs(elapsed);
+      // Hard cap: stop into preview rather than recording forever.
+      if (elapsed >= VOICE_NOTE_MAX_MS && recorder.state === "recording") recorder.stop();
+    }, 250);
+    setIsRecording(true);
+  }, [selectedConversation, voiceSending, discardVoicePreview, clearVoiceTimer, stopVoiceStream, showToast]);
 
   const toggleVoicePreviewPlayback = useCallback(() => {
     const preview = voicePreview;
@@ -1659,8 +1938,9 @@ const Chat = () => {
   }, [voicePreview, voicePlaying]);
 
   const sendVoicePreview = useCallback(async () => {
-    const cid = getId(selectedConversation);
     const preview = voicePreview;
+    // Target the conversation the note was recorded in — never the current selection (R1).
+    const cid = preview?.conversationId;
     if (!cid || !preview) return;
     if (!canSendVoicePreview({ phase: "preview", blob: preview.blob, sending: voiceSending })) return;
     if (voiceSendLockRef.current) return;
@@ -1668,12 +1948,15 @@ const Chat = () => {
     setVoiceSending(true);
     setUploading(true);
     try {
-      const file = new File([preview.blob], "voice-note.webm", { type: preview.mime || preview.blob.type });
+      const type = preview.mime || preview.blob.type;
+      const file = new File([preview.blob], `voice-note${voiceFileExtension(type)}`, { type });
       const replyToId = replyingTo ? String((replyingTo as any).id || (replyingTo as any)._id) : undefined;
       const msg = await uploadChatFiles(cid, [file], undefined, replyToId);
-      setMessages((prev) => addMessageIfNew(prev, msg));
-      setReplyingTo(null);
       fetchConversations();
+      if (openConvIdRef.current === cid) {
+        setMessages((prev) => addMessageIfNew(prev, msg));
+        setReplyingTo(null);
+      }
       discardVoicePreview();
     } catch {
       showToast("Voice note failed to send.");
@@ -1682,36 +1965,36 @@ const Chat = () => {
     } finally {
       setUploading(false);
     }
-  }, [
-    selectedConversation,
-    voicePreview,
-    voiceSending,
-    replyingTo,
-    showToast,
-    fetchConversations,
-    discardVoicePreview,
-  ]);
+  }, [voicePreview, voiceSending, replyingTo, showToast, fetchConversations, discardVoicePreview]);
 
-  // Drop in-progress / preview voice note when leaving the conversation
+  // Leaving the conversation (or the page) stops the mic; onstop sees the flag and drops the audio.
   useEffect(() => {
     return () => {
       clearVoiceTimer();
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      const rec = mediaRecorderRef.current;
+      if (rec && rec.state === "recording") {
+        voiceDiscardOnStopRef.current = true;
         try {
-          mediaRecorderRef.current.stop();
+          rec.stop();
         } catch {
           /* ignore */
         }
-        mediaRecorderRef.current = null;
+      } else {
+        stopVoiceStream();
       }
     };
-  }, [convId, clearVoiceTimer]);
+  }, [convId, clearVoiceTimer, stopVoiceStream]);
 
   useEffect(() => {
     discardVoicePreview();
     setIsRecording(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on conversation change
   }, [convId]);
+
+  // Revoke a pending preview's object URL when the page unmounts.
+  const voicePreviewRef = useRef(voicePreview);
+  voicePreviewRef.current = voicePreview;
+  useEffect(() => () => revokeVoicePreviewUrl(voicePreviewRef.current?.objectUrl), []);
 
   const handleTyping = () => {
     const cid = getId(selectedConversation);
@@ -1728,6 +2011,9 @@ const Chat = () => {
     if (!cid || !selectedConversation) return;
     const isGroup = selectedConversation.type === "group";
     const participantCount = selectedConversation.participants?.length || 0;
+    // Must run synchronously inside the click so the browser allows the popup; the context closes
+    // this placeholder window itself if the initiate fails, and falls back to this tab if blocked.
+    prepareCallWindow();
     emitCallInitiate(cid, callType, {
       calleeName: displayName(selectedConversation),
       callScope: isGroup ? "group" : "direct",
@@ -1742,23 +2028,30 @@ const Chat = () => {
     setDeleteConfirm({ mode: "chat" });
   };
 
+  /** Latest user-search request; older responses that land late are dropped. */
+  const userSearchSeqRef = useRef(0);
   const handleSearchUsers = async () => {
     if (!userSearch.trim()) return;
     // Do not call the directory at `none` scope — the API 403s by design. Also wait for scopeReady
     // (permissions AND flag), or the directory flashes to a restricted user on first paint. Spec §7.1.
     if (!scopeReady || scope === "none") return;
+    const seq = ++userSearchSeqRef.current;
     try {
       const res = await searchUsers({ search: userSearch.trim(), limit: 20 });
-      setSearchResults(res.results || []);
+      if (seq === userSearchSeqRef.current) setSearchResults(res.results || []);
     } catch {
-      setSearchResults([]);
+      if (seq === userSearchSeqRef.current) setSearchResults([]);
     }
   };
 
   // ponytail: live search — debounce keystrokes so results appear as you type; Enter/button still work.
   useEffect(() => {
     const q = userSearch.trim();
-    if (!q) { setSearchResults([]); return; }
+    if (!q) {
+      userSearchSeqRef.current += 1; // an in-flight search must not repopulate a cleared box
+      setSearchResults([]);
+      return;
+    }
     if (!scopeReady || scope === "none") return;
     const t = setTimeout(() => { handleSearchUsers(); }, 300);
     return () => clearTimeout(t);
@@ -1785,12 +2078,10 @@ const Chat = () => {
     try {
       const conv = await createConversation({ type: "direct", participantIds: [String(userId)] });
       selectConversation(conv);
-      setShowNewChat(false);
-      setUserSearch("");
-      setSearchResults([]);
+      closeNewChatModal();
       fetchConversations();
-    } catch {
-      // Error
+    } catch (e: any) {
+      showToast(e?.response?.data?.message || "Couldn't start the chat. Try again.");
     }
   };
 
@@ -1805,16 +2096,12 @@ const Chat = () => {
         name: groupName.trim() || undefined,
       });
       selectConversation(conv);
-      setShowNewChat(false);
-      setUserSearch("");
-      setSearchResults([]);
-      setSelectedUserIds(new Set());
-      setSelectedUserLabels({});
-      setGroupName("");
+      closeNewChatModal();
       setNewChatMode("direct");
       fetchConversations();
-    } catch {
-      // Error
+    } catch (e: any) {
+      // 400 (validation) / 403 (directory scope) carry a server message worth showing.
+      showToast(e?.response?.data?.message || "Couldn't create the group. Try again.");
     } finally {
       setCreatingGroup(false);
     }
@@ -1826,12 +2113,35 @@ const Chat = () => {
     setSelectedUserLabels(next.labels);
   };
 
-  const openNewChatModal = (mode: "direct" | "group" = "direct") => {
-    setNewChatMode(mode);
+  const resetNewChatDraft = () => {
+    userSearchSeqRef.current += 1;
+    setUserSearch("");
+    setSearchResults([]);
     setSelectedUserIds(new Set());
     setSelectedUserLabels({});
     setGroupName("");
+  };
+
+  const openNewChatModal = (mode: "direct" | "group" = "direct") => {
+    setNewChatMode(mode);
+    resetNewChatDraft();
     setShowNewChat(true);
+  };
+
+  /** Every close path (Cancel, backdrop, Escape, success) resets search + selection. */
+  const closeNewChatModal = () => {
+    setShowNewChat(false);
+    resetNewChatDraft();
+  };
+
+  /** Group → Direct drops the group pick-list; a direct chat starts from one click. */
+  const switchNewChatMode = (mode: "direct" | "group") => {
+    if (mode === newChatMode) return;
+    if (mode === "direct") {
+      setSelectedUserIds(new Set());
+      setSelectedUserLabels({});
+    }
+    setNewChatMode(mode);
   };
 
   // ── Display helpers ──
@@ -1867,7 +2177,9 @@ const Chat = () => {
       const pid = (x.user as any)?.id || (x.user as any)?._id?.toString?.();
       return pid && myId && String(pid) === String(myId);
     }) as any;
-    return p?.role === "admin";
+    if (p?.role) return p.role === "admin";
+    // Same fallback as backend ensureAdmin: a creator row without a role is an admin.
+    return !!p && !!isCreator(c);
   };
 
   const isCreator = (c: Conversation) => {
@@ -1953,6 +2265,97 @@ const Chat = () => {
     if (r.type === "audio") return "Voice note";
     return (r.content || "").slice(0, 60) + ((r.content || "").length > 60 ? "…" : "");
   };
+
+  // ── Message actions (reactions, copy, download, long-press) ──
+  const messageIdOf = (m: Message) => String((m as any).id || (m as any)._id || "");
+
+  /** Optimistic react / un-react ('' removes mine), rolled back with a toast if the server refuses. */
+  const handleReact = async (m: Message, emoji: string) => {
+    const cid = getId(selectedConversation);
+    const mid = messageIdOf(m);
+    if (!cid || !mid || !myId || m.deletedAt) return;
+    const before = m.reactions || [];
+    const setReactions = (reactions: Message["reactions"]) =>
+      setMessages((prev) => prev.map((x) => (messageIdOf(x) === mid ? { ...x, reactions } : x)));
+    setReactionPickerFor(null);
+    setReactions(
+      applyReactionLocally(before, { id: String(myId), name: (user as any)?.name }, emoji) as Message["reactions"]
+    );
+    try {
+      const updated = await reactToMessage(cid, mid, emoji);
+      if (openConvIdRef.current === cid) setReactions(updated?.reactions || []);
+    } catch (e: any) {
+      if (openConvIdRef.current === cid) setReactions(before);
+      showToast(e?.response?.data?.message || "Couldn't update your reaction.");
+    }
+  };
+
+  const copyMessageText = async (m: Message) => {
+    setMessageMenuFor(null);
+    try {
+      await navigator.clipboard.writeText(m.content || "");
+      showToast("Copied", "success");
+    } catch {
+      showToast("Couldn't copy. Select the text and copy it instead.");
+    }
+  };
+
+  /** Presigned S3 URLs are cross-origin, so `download` may be ignored and the file opens in a tab. */
+  const downloadAttachments = (m: Message) => {
+    setMessageMenuFor(null);
+    for (const a of m.attachments || []) {
+      if (!a.url) continue;
+      const link = document.createElement("a");
+      link.href = a.url;
+      link.download = a.originalName || "";
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+  };
+
+  const LONG_PRESS_MS = 500;
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFiredRef = useRef(false);
+  const cancelLongPress = () => {
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+  };
+  /** Long-press (touch) and right-click (desktop) open the same menu as the ⋮ button. */
+  const messageGestureProps = (m: Message) => {
+    const mid = messageIdOf(m);
+    return {
+      onTouchStart: () => {
+        longPressFiredRef.current = false;
+        cancelLongPress();
+        longPressTimerRef.current = setTimeout(() => {
+          longPressFiredRef.current = true;
+          setReactionPickerFor(null);
+          setMessageMenuFor(mid);
+        }, LONG_PRESS_MS);
+      },
+      onTouchMove: cancelLongPress,
+      onTouchEnd: cancelLongPress,
+      onTouchCancel: cancelLongPress,
+      onContextMenu: (e: React.MouseEvent) => {
+        // Keep the native menu for links and selected text (open in new tab, copy selection).
+        if ((e.target as HTMLElement).closest("a") || window.getSelection()?.toString()) return;
+        e.preventDefault();
+        setReactionPickerFor(null);
+        setMessageMenuFor(mid);
+      },
+      // The click that ends a long-press must not also open an image or follow a link.
+      onClickCapture: (e: React.MouseEvent) => {
+        if (!longPressFiredRef.current) return;
+        longPressFiredRef.current = false;
+        e.preventDefault();
+        e.stopPropagation();
+      },
+    };
+  };
+  useEffect(() => () => cancelLongPress(), []);
 
   const renderMessageContent = (m: Message) => {
     const isDeleted = !!(m as any).deletedAt;
@@ -2113,21 +2516,19 @@ const Chat = () => {
     return withDateSeparators;
   }, [messages, convCalls]);
 
-  const formatCallDuration = (seconds: number) => {
-    if (!seconds || seconds < 0) return "";
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return m > 0 ? `${m}:${s.toString().padStart(2, "0")}` : `${s}s`;
-  };
+  /** Everyone in the open conversation except me: the audience a tick is measured against. */
+  const recipientIds = useMemo(
+    () =>
+      ((selectedConversation?.participants || []) as any[])
+        .map((p) => String(p?.user?.id || p?.user?._id || ""))
+        .filter((id) => id && id !== String(myId || "")),
+    [selectedConversation, myId]
+  );
 
   const renderReadStatus = (m: Message) => {
     const senderId = (m.sender as any)?.id || (m.sender as any)?._id?.toString?.();
-    if (String(senderId) !== myId) return null;
-    const readCount = (m.readBy || []).length;
-    if (readCount > 0) {
-      return <i className="ri-check-double-line text-primary ms-1" title="Read" />;
-    }
-    return <i className="ri-check-double-line text-[#8c9097] ms-1" title="Delivered" />;
+    if (String(senderId) !== String(myId) || m.deletedAt) return null;
+    return <ReceiptTick status={messageTickStatus(m, recipientIds)} className="ms-1" />;
   };
 
   const showCallNotificationBanner =
@@ -2138,7 +2539,32 @@ const Chat = () => {
 
   const handleEnableCallNotifications = () => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
-    Notification.requestPermission();
+    // Permission is not React state; hide the strip once the browser prompt resolves.
+    void Notification.requestPermission().finally(() => setDismissedCallNotificationPrompt(true));
+  };
+
+  // Mute is viewer-only; the list row and panel read `muted` from the conversation payload.
+  const handleToggleMute = async () => {
+    const cid = getId(selectedConversation);
+    if (!cid || muteBusy) return;
+    const next = !selectedConversation?.muted;
+    const patch = (c: Conversation) => (getId(c) === cid ? { ...c, muted: next } : c);
+    setMuteBusy(true);
+    setSelectedConversation((prev) => (prev ? patch(prev) : prev));
+    setConversations((prev) => prev.map(patch));
+    setGroupConversations((prev) => prev.map(patch));
+    try {
+      await setConversationPreferences(cid, { muted: next });
+      showToast(next ? "Notifications muted." : "Notifications unmuted.", "success");
+    } catch (e: any) {
+      const undo = (c: Conversation) => (getId(c) === cid ? { ...c, muted: !next } : c);
+      setSelectedConversation((prev) => (prev ? undo(prev) : prev));
+      setConversations((prev) => prev.map(undo));
+      setGroupConversations((prev) => prev.map(undo));
+      showToast(e?.response?.data?.message || "Couldn't update notifications.");
+    } finally {
+      setMuteBusy(false);
+    }
   };
 
   const handleDismissCallNotificationPrompt = () => {
@@ -2147,37 +2573,8 @@ const Chat = () => {
   };
 
   return (
-    <div className={`mt-5 sm:mt-6 ${chatStyles.shell}`}>
+    <div className={chatStyles.shell}>
       <Seo title="Chat" />
-      {showCallNotificationBanner && (
-        <div className={chatStyles.notifBanner}>
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <span className={chatStyles.notifIcon}>
-              <i className="ri-notification-3-line text-lg" />
-            </span>
-            <p className="mb-0 min-w-0 text-sm text-defaulttextcolor dark:text-defaulttextcolor/90">
-              Get notified of incoming chats and calls when this tab is in the background.
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-nowrap items-center justify-end gap-2 sm:justify-start">
-            <button
-              type="button"
-              className="ti-btn ti-btn-sm ti-btn-primary !inline-flex !h-8 !w-auto !min-w-0 items-center gap-1.5 !whitespace-nowrap !py-1.5 !px-3"
-              onClick={handleEnableCallNotifications}
-            >
-              <i className="ri-bell-line shrink-0 text-sm" />
-              <span>Enable</span>
-            </button>
-            <button
-              type="button"
-              className="ti-btn ti-btn-sm ti-btn-outline-secondary !inline-flex !h-8 !w-auto !min-w-0 items-center !whitespace-nowrap !py-1.5 !px-3"
-              onClick={handleDismissCallNotificationPrompt}
-            >
-              <span>Not now</span>
-            </button>
-          </div>
-        </div>
-      )}
       <div
         className={`main-chart-wrapper ${chatStyles.grid} ${
           selectedConversation ? chatStyles.gridConversationOpen : ""
@@ -2196,6 +2593,25 @@ const Chat = () => {
               <i className="ri-add-line" />
             </button>
           </div>
+          {/* Compact strip inside the list column so it never pushes the thread below the fold. */}
+          {showCallNotificationBanner && (
+            <div className={chatStyles.notifBanner} role="region" aria-label="Notification permission">
+              <i className={`ri-notification-3-line ${chatStyles.notifIcon}`} aria-hidden />
+              <p className={chatStyles.notifText}>Get notified of chats and calls in the background.</p>
+              <button type="button" className={chatStyles.notifEnable} onClick={handleEnableCallNotifications}>
+                Enable
+              </button>
+              <button
+                type="button"
+                className={chatStyles.notifDismiss}
+                onClick={handleDismissCallNotificationPrompt}
+                aria-label="Dismiss notification prompt"
+                title="Not now"
+              >
+                <i className="ri-close-line" aria-hidden />
+              </button>
+            </div>
+          )}
           <div className={chatStyles.railSearch}>
             <div className={chatStyles.searchField}>
               <label htmlFor="chat-conversation-search" className="sr-only">
@@ -2294,7 +2710,13 @@ const Chat = () => {
                                 </span>
                                 <div className="flex-grow min-w-0">
                                   <p className={`${chatStyles.convName} truncate`}>
-                                    {displayName(c)}
+                                    <span className="truncate">{displayName(c)}</span>
+                                    {c.muted && (
+                                      <span className="inline-flex shrink-0 text-[#8c9097] dark:text-[#9ca3af]" title="Muted">
+                                        <i className="ri-notification-off-line text-[0.8rem]" aria-hidden />
+                                        <span className="sr-only">Muted</span>
+                                      </span>
+                                    )}
                                     {hasActiveCall && (
                                       <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/15 px-1.5 py-0.5 text-[0.65rem] font-medium text-primary" title="Call in progress">
                                         <i className="ri-phone-fill text-[0.65rem]" />
@@ -2303,6 +2725,11 @@ const Chat = () => {
                                     )}
                                   </p>
                                   <p className={`${chatStyles.convPreview} truncate`}>
+                                    {c.lastMessage?.status &&
+                                      myId &&
+                                      String(c.lastMessage.senderId || "") === String(myId) && (
+                                        <ReceiptTick status={c.lastMessage.status} className="me-1 align-[-1px]" />
+                                      )}
                                     <PreviewText text={conversationPreviewText(c.lastMessage)} />
                                   </p>
                                 </div>
@@ -2356,7 +2783,15 @@ const Chat = () => {
                           <span className="avatar avatar-md avatar-rounded flex-shrink-0">
                             <img src={conversationAvatar(c)} alt="" />
                           </span>
-                          <p className={`${chatStyles.convName} mb-0`}>{displayName(c)}</p>
+                          <p className={`${chatStyles.convName} mb-0`}>
+                            <span className="truncate">{displayName(c)}</span>
+                            {c.muted && (
+                              <span className="inline-flex shrink-0 text-[#8c9097] dark:text-[#9ca3af]" title="Muted">
+                                <i className="ri-notification-off-line text-[0.8rem]" aria-hidden />
+                                <span className="sr-only">Muted</span>
+                              </span>
+                            )}
+                          </p>
                         </div>
                       </li>
                     ))}
@@ -2411,7 +2846,8 @@ const Chat = () => {
                       const isOutgoing = call.direction === "outgoing";
                       const dirLabel = isOutgoing ? "Outgoing" : "Incoming";
                       const typeLabel = call.callType === "video" ? "Video" : "Voice";
-                      const statusText = callLogStatusLabel(call.status);
+                      // Direction-aware label; completed calls carry their m:ss duration.
+                      const { label: statusText, tone: statusTone } = callStatusLabel(call);
                       const timeText =
                         call.createdAt &&
                         formatDistanceToNow(new Date(call.createdAt), { addSuffix: true });
@@ -2448,8 +2884,8 @@ const Chat = () => {
                                 {title}
                               </p>
                               <p
-                                className={`mb-0 text-[0.75rem] ${
-                                  call.status === "missed"
+                                className={`mb-0 text-[0.75rem] tabular-nums ${
+                                  statusTone === "danger"
                                     ? "text-rose-600 dark:text-rose-400"
                                     : "text-[#8c9097] dark:text-[#9ca3af]"
                                 }`}
@@ -2534,7 +2970,7 @@ const Chat = () => {
                   <button
                     type="button"
                     className={chatStyles.threadBackBtn}
-                    onClick={() => selectConversation(null)}
+                    onClick={backToList}
                     aria-label="Back to conversations"
                   >
                     <i className="ri-arrow-left-line" />
@@ -2551,6 +2987,7 @@ const Chat = () => {
                           if (!selectedConversation) return;
                           setIsOpen((open) => !open);
                         }}
+                        ref={panelOpenerRef}
                         aria-expanded={!!selectedConversation && isOpen}
                         aria-controls="chat-side-details-panel"
                       >
@@ -2571,6 +3008,7 @@ const Chat = () => {
                     type="button"
                     className={chatStyles.toolBtn}
                     title="Voice call"
+                    aria-label="Voice call"
                     onClick={() => handleCall("audio")}
                   >
                     <i className="ri-phone-line" />
@@ -2579,6 +3017,7 @@ const Chat = () => {
                     type="button"
                     className={chatStyles.toolBtn}
                     title="Video call"
+                    aria-label="Video call"
                     onClick={() => handleCall("video")}
                   >
                     <i className="ri-vidicon-line" />
@@ -2587,6 +3026,7 @@ const Chat = () => {
                     type="button"
                     className={`${chatStyles.toolBtn} ${chatStyles.toolBtnDanger}`}
                     title="Delete chat"
+                    aria-label="Delete chat"
                     disabled={deletingChat}
                     onClick={handleDeleteChat}
                   >
@@ -2694,12 +3134,11 @@ const Chat = () => {
                         if (item.type === "call") {
                           const call = item.data as any;
                           const hasEnriched = call.direction && call.peer;
+                          // Label carries the direction-aware outcome and, for completed calls, m:ss.
+                          const bareStatus = callStatusLabel(call).label;
                           const callLabel = hasEnriched
                             ? timelineCallPillText(call)
-                            : call.callType === "video"
-                              ? "Video call"
-                              : "Voice call";
-                          const duration = call.duration ? formatCallDuration(call.duration) : null;
+                            : `${call.callType === "video" ? "Video call" : "Voice call"}${bareStatus ? ` · ${bareStatus}` : ""}`;
                           const callDate = call.endedAt || call.createdAt || call.startedAt;
                           const isOutgoing = call.direction === "outgoing";
                           const joinedThread = callJoinedParticipantsLine(call, myId);
@@ -2720,9 +3159,8 @@ const Chat = () => {
                                       aria-hidden
                                     />
                                   )}
-                                  <span className="min-w-0">
+                                  <span className="min-w-0 tabular-nums">
                                     {callLabel}
-                                    {duration && ` (${duration})`}
                                     {callDate && ` · ${format(new Date(callDate), "h:mm a")}`}
                                   </span>
                                 </div>
@@ -2739,6 +3177,19 @@ const Chat = () => {
                         const m = item.data;
                         const senderId = (m.sender as any)?.id || (m.sender as any)?._id?.toString?.();
                         const isMe = !!senderId && !!myId && String(senderId) === String(myId);
+                        const mid = messageIdOf(m);
+                        const isDeletedMsg = !!(m as any).deletedAt;
+                        const menuOpen = messageMenuFor === mid;
+                        const pickerOpen = !isDeletedMsg && reactionPickerFor === mid;
+                        // Copy is for text bodies only; voice/image/file get Download instead.
+                        const canCopy = !isDeletedMsg && m.type === "text" && !!m.content?.trim();
+                        const canDownload = !isDeletedMsg && m.type !== "text" && (m.attachments?.length || 0) > 0;
+                        const chips = isDeletedMsg ? [] : groupReactions(m.reactions, myId);
+                        const myEmoji = myReactionEmoji(m.reactions, myId);
+                        const closeMenuThen = (fn: () => void) => () => {
+                          setMessageMenuFor(null);
+                          fn();
+                        };
                         return (
                           <li
                             key={m.id || (m as any)._id}
@@ -2754,100 +3205,128 @@ const Chat = () => {
                               </span>
                               <div className={`min-w-0 flex-1 ${isMe ? "text-end" : ""}`}>
                                 <span className={`${chatStyles.msgMeta} ${isMe ? chatStyles.msgMetaMe : ""}`}>
-                                  {!(m as any).deletedAt && (
-                                    <span
-                                      ref={messageMenuFor === String((m as any).id || (m as any)._id) ? messageMenuRef : undefined}
-                                      className="relative inline-flex"
+                                  <span ref={menuOpen ? messageMenuRef : undefined} className="relative inline-flex">
+                                    <button
+                                      type="button"
+                                      className={chatStyles.msgActionBtn}
+                                      title="Message actions"
+                                      aria-label="Message actions"
+                                      aria-haspopup="menu"
+                                      aria-expanded={menuOpen}
+                                      onClick={() => {
+                                        setReactionPickerFor(null);
+                                        setMessageMenuFor((prev) => (prev === mid ? null : mid));
+                                      }}
                                     >
-                                      <button
-                                        type="button"
-                                        className="opacity-70 group-hover:opacity-100 focus-visible:opacity-100 p-1 rounded hover:bg-white/10 transition-opacity shrink-0"
-                                        title="Message actions"
+                                      <i className="ri-more-2-fill text-sm" aria-hidden />
+                                    </button>
+                                    {menuOpen && (
+                                      <div
+                                        role="menu"
                                         aria-label="Message actions"
-                                        aria-haspopup="menu"
-                                        aria-expanded={messageMenuFor === String((m as any).id || (m as any)._id)}
-                                        onClick={() =>
-                                          setMessageMenuFor((prev) =>
-                                            prev === String((m as any).id || (m as any)._id)
-                                              ? null
-                                              : String((m as any).id || (m as any)._id)
-                                          )
-                                        }
+                                        className={`absolute top-full mt-1 min-w-[11rem] rounded-lg bg-white dark:bg-bodybg shadow-lg border border-black/5 dark:border-white/10 py-1 text-start ${chatStyles.messageActionMenu} ${
+                                          isMe ? "right-0 origin-top-right" : "left-0 origin-top-left"
+                                        }`}
                                       >
-                                        <i className="ri-more-2-fill text-sm" />
-                                      </button>
-                                      {messageMenuFor === String((m as any).id || (m as any)._id) && (
-                                        <div
-                                          className={`absolute top-full mt-1 min-w-[11rem] rounded-lg bg-white dark:bg-gray-800 shadow-lg border border-black/5 dark:border-white/10 py-1 text-start ${chatStyles.messageActionMenu} ${
-                                            isMe ? "right-0 origin-top-right" : "left-0 origin-top-left"
-                                          }`}
+                                        {/* A deleted message offers nothing but removing it from my view. */}
+                                        {!isDeletedMsg && (
+                                          <>
+                                            <button
+                                              type="button"
+                                              role="menuitem"
+                                              className={chatStyles.menuItem}
+                                              onClick={closeMenuThen(() => setReactionPickerFor(mid))}
+                                            >
+                                              <i className="ri-emotion-happy-line" aria-hidden />
+                                              React
+                                            </button>
+                                            <button
+                                              type="button"
+                                              role="menuitem"
+                                              className={chatStyles.menuItem}
+                                              onClick={closeMenuThen(() => setReplyingTo(m))}
+                                            >
+                                              <i className="ri-reply-line" aria-hidden />
+                                              Reply
+                                            </button>
+                                            {canCopy && (
+                                              <button
+                                                type="button"
+                                                role="menuitem"
+                                                className={chatStyles.menuItem}
+                                                onClick={() => void copyMessageText(m)}
+                                              >
+                                                <i className="ri-file-copy-line" aria-hidden />
+                                                Copy
+                                              </button>
+                                            )}
+                                            <button
+                                              type="button"
+                                              role="menuitem"
+                                              className={chatStyles.menuItem}
+                                              onClick={closeMenuThen(() => {
+                                                setForwardTargets(new Set());
+                                                setForwardSearch("");
+                                                setForwardingMessage(m);
+                                              })}
+                                            >
+                                              <i className="ri-share-forward-line" aria-hidden />
+                                              Forward
+                                            </button>
+                                            {canDownload && (
+                                              <button
+                                                type="button"
+                                                role="menuitem"
+                                                className={chatStyles.menuItem}
+                                                onClick={() => downloadAttachments(m)}
+                                              >
+                                                <i className="ri-download-2-line" aria-hidden />
+                                                Download
+                                              </button>
+                                            )}
+                                            {canPinInConversation(selectedConversation) && (
+                                              <button
+                                                type="button"
+                                                role="menuitem"
+                                                className={chatStyles.menuItem}
+                                                disabled={pinBusy}
+                                                onClick={closeMenuThen(() => handleTogglePin(mid, !(m as any).pinnedAt))}
+                                              >
+                                                <i className={(m as any).pinnedAt ? "ri-unpin-line" : "ri-pushpin-line"} aria-hidden />
+                                                {(m as any).pinnedAt ? "Unpin message" : "Pin message"}
+                                              </button>
+                                            )}
+                                          </>
+                                        )}
+                                        <button
+                                          type="button"
+                                          role="menuitem"
+                                          className={chatStyles.menuItem}
+                                          onClick={closeMenuThen(() => {
+                                            if (!getId(selectedConversation)) return;
+                                            setDeleteConfirm({ mode: "me", messageId: mid });
+                                          })}
                                         >
+                                          <i className="ri-delete-bin-line" aria-hidden />
+                                          Delete for me
+                                        </button>
+                                        {isMe && !isDeletedMsg && (
                                           <button
                                             type="button"
-                                            className="w-full text-start px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/10"
-                                            onClick={() => {
-                                              setMessageMenuFor(null);
-                                              setReplyingTo(m);
-                                            }}
-                                          >
-                                            Reply
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className="w-full text-start px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/10"
-                                            onClick={() => {
-                                              setMessageMenuFor(null);
-                                              setForwardTargets(new Set());
-                                              setForwardSearch("");
-                                              setForwardingMessage(m);
-                                            }}
-                                          >
-                                            Forward
-                                          </button>
-                                          {canPinInConversation(selectedConversation) && (
-                                            <button
-                                              type="button"
-                                              className="w-full text-start px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-50"
-                                              disabled={pinBusy}
-                                              onClick={() => {
-                                                const mid = String((m as any).id || (m as any)._id);
-                                                setMessageMenuFor(null);
-                                                handleTogglePin(mid, !(m as any).pinnedAt);
-                                              }}
-                                            >
-                                              {(m as any).pinnedAt ? "Unpin message" : "Pin message"}
-                                            </button>
-                                          )}
-                                          <button
-                                            type="button"
-                                            className="w-full text-start px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/10"
-                                            onClick={() => {
-                                              const mid = String((m as any).id || (m as any)._id);
-                                              setMessageMenuFor(null);
+                                            role="menuitem"
+                                            className={`${chatStyles.menuItem} ${chatStyles.menuItemDanger}`}
+                                            onClick={closeMenuThen(() => {
                                               if (!getId(selectedConversation)) return;
-                                              setDeleteConfirm({ mode: "me", messageId: mid });
-                                            }}
+                                              setDeleteConfirm({ mode: "everyone", messageId: mid });
+                                            })}
                                           >
-                                            Delete for me
+                                            <i className="ri-delete-bin-2-line" aria-hidden />
+                                            Delete for everyone
                                           </button>
-                                          {isMe && (
-                                            <button
-                                              type="button"
-                                              className="w-full text-start px-3 py-1.5 text-sm text-danger hover:bg-black/5 dark:hover:bg-white/10"
-                                              onClick={() => {
-                                                const mid = String((m as any).id || (m as any)._id);
-                                                setMessageMenuFor(null);
-                                                if (!getId(selectedConversation)) return;
-                                                setDeleteConfirm({ mode: "everyone", messageId: mid });
-                                              }}
-                                            >
-                                              Delete for everyone
-                                            </button>
-                                          )}
-                                        </div>
-                                      )}
-                                    </span>
-                                  )}
+                                        )}
+                                      </div>
+                                    )}
+                                  </span>
                                   {(m as any).pinnedAt && (
                                     <i
                                       className="ri-pushpin-fill text-xs opacity-70 me-1"
@@ -2860,82 +3339,78 @@ const Chat = () => {
                                   {isMe && renderReadStatus(m)}
                                 </span>
                                 <div className="relative">
-                                  <div
-                                    className={`${chatStyles.bubble} mt-1 ${isMe ? chatStyles.bubbleSent : chatStyles.bubbleRecv}`}
-                                  >
-                                    {renderMessageContent(m)}
+                                  {/* Bubble + React trigger share a line; the trigger sits on the inner side. */}
+                                  <div className={`${chatStyles.bubbleLine} ${isMe ? chatStyles.bubbleLineMe : ""}`}>
+                                    <div
+                                      className={`${chatStyles.bubble} mt-1 ${isMe ? chatStyles.bubbleSent : chatStyles.bubbleRecv}`}
+                                      {...messageGestureProps(m)}
+                                    >
+                                      {renderMessageContent(m)}
+                                    </div>
+                                    {!isDeletedMsg && (
+                                      <button
+                                        type="button"
+                                        className={chatStyles.reactTrigger}
+                                        title="React"
+                                        aria-label="React to message"
+                                        aria-haspopup="true"
+                                        aria-expanded={pickerOpen}
+                                        onClick={() => {
+                                          setMessageMenuFor(null);
+                                          setReactionPickerFor((prev) => (prev === mid ? null : mid));
+                                        }}
+                                      >
+                                        <i className="ri-emotion-happy-line" aria-hidden />
+                                      </button>
+                                    )}
                                   </div>
-                                  {(m as any).reactions?.length > 0 && (
-                                    <div className="flex flex-wrap gap-1 mt-1">
-                                      {Array.from(
-                                        new Map<string, number>(
-                                          ((m as any).reactions || []).map((r: any) => [
-                                            r.emoji,
-                                            ((m as any).reactions || []).filter((x: any) => x.emoji === r.emoji).length,
-                                          ]) as [string, number][]
-                                        ).entries()
-                                      ).map(([emoji, count]: [string, number]) => (
-                                        <span
-                                          key={emoji}
-                                          className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-white/10 text-sm"
-                                        >
-                                          {emoji} {count > 1 ? <span className="text-xs">{count}</span> : null}
-                                        </span>
-                                      ))}
+                                  {chips.length > 0 && (
+                                    <div
+                                      className={`${chatStyles.reactionRow} ${isMe ? "justify-end" : "justify-start"}`}
+                                    >
+                                      {chips.map((chip) => {
+                                        const people = `${chip.count} ${chip.count === 1 ? "person" : "people"}`;
+                                        return (
+                                          <button
+                                            key={chip.emoji}
+                                            type="button"
+                                            aria-pressed={chip.mine}
+                                            aria-label={`React with ${chip.emoji}, ${people}${chip.mine ? ", including you" : ""}`}
+                                            title={chip.names.length ? chip.names.join(", ") : people}
+                                            className={`${chatStyles.reactionChip} ${chip.mine ? chatStyles.reactionChipMine : ""}`}
+                                            onClick={() => void handleReact(m, reactionToggleEmoji(myEmoji, chip.emoji))}
+                                          >
+                                            <span aria-hidden>{chip.emoji}</span>
+                                            {chip.count > 1 && (
+                                              <span className="text-xs tabular-nums" aria-hidden>
+                                                {chip.count}
+                                              </span>
+                                            )}
+                                          </button>
+                                        );
+                                      })}
                                     </div>
                                   )}
-                                  {!(m as any).deletedAt && (
-                                    <>
-                                      {reactionPickerFor === (m.id || (m as any)._id) ? (
-                                        <div
-                                          ref={reactionPickerRef}
-                                          className="absolute bottom-full left-0 mb-1 flex gap-1 p-1 rounded-lg bg-white dark:bg-gray-800 shadow-lg z-10"
-                                        >
-                                          {REACTION_EMOJIS.map((emoji) => {
-                                            const mine = myReactionEmoji((m as any).reactions, myId);
-                                            const active = mine === emoji;
-                                            return (
-                                              <button
-                                                key={emoji}
-                                                type="button"
-                                                className={`text-lg hover:scale-125 transition-transform p-0.5 rounded ${active ? "bg-primary/20 ring-1 ring-primary" : ""}`}
-                                                onClick={() => {
-                                                  const cid = getId(selectedConversation);
-                                                  if (!cid) return;
-                                                  const toSend = reactionToggleEmoji(mine, emoji);
-                                                  reactToMessage(cid, String((m as any).id || (m as any)._id), toSend)
-                                                    .then((updated) => {
-                                                      setMessages((prev) =>
-                                                        prev.map((x) =>
-                                                          String((x as any).id || (x as any)._id) === String((m as any).id || (m as any)._id)
-                                                            ? { ...x, reactions: updated.reactions || [] }
-                                                            : x
-                                                        )
-                                                      );
-                                                    })
-                                                    .catch(() => {});
-                                                  setReactionPickerFor(null);
-                                                }}
-                                              >
-                                                {emoji}
-                                              </button>
-                                            );
-                                          })}
-                                        </div>
-                                      ) : (
+                                  {pickerOpen && (
+                                    <div
+                                      ref={reactionPickerRef}
+                                      role="group"
+                                      aria-label="Choose a reaction"
+                                      className={`${chatStyles.reactionPicker} ${isMe ? "right-0" : "left-0"}`}
+                                    >
+                                      {REACTION_EMOJIS.map((emoji) => (
                                         <button
+                                          key={emoji}
                                           type="button"
-                                          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 absolute -bottom-1 right-0 p-1 rounded hover:bg-white/10 transition-opacity"
-                                          title="React"
-                                          aria-label="React to message"
-                                          onClick={() =>
-                                            setReactionPickerFor(String((m as any).id || (m as any)._id))
-                                          }
+                                          aria-pressed={myEmoji === emoji}
+                                          aria-label={myEmoji === emoji ? `Remove ${emoji} reaction` : `React with ${emoji}`}
+                                          className={`${chatStyles.pickerEmoji} ${myEmoji === emoji ? chatStyles.pickerEmojiActive : ""}`}
+                                          onClick={() => void handleReact(m, reactionToggleEmoji(myEmoji, emoji))}
                                         >
-                                          <i className="ri-emotion-happy-line text-sm" />
+                                          {emoji}
                                         </button>
-                                      )}
-                                    </>
+                                      ))}
+                                    </div>
                                   )}
                                 </div>
                               </div>
@@ -2967,6 +3442,7 @@ const Chat = () => {
                     type="button"
                     className="ti-btn ti-btn-icon ti-btn-ghost-danger !rounded-full shrink-0"
                     title="Cancel reply"
+                    aria-label="Cancel reply"
                     onClick={() => setReplyingTo(null)}
                   >
                     <i className="ri-close-line" />
@@ -2986,6 +3462,7 @@ const Chat = () => {
                   type="button"
                   className={`${chatStyles.toolBtn} flex-shrink-0`}
                   title="Attach file"
+                  aria-label="Attach file"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploading}
                 >
@@ -3044,9 +3521,23 @@ const Chat = () => {
                       </button>
                     </div>
                   ) : isRecording ? (
-                    <div className={chatStyles.voiceRecordBar} role="status" aria-live="polite">
+                    <div className={chatStyles.voiceRecordBar} role="group" aria-label="Recording voice note">
                       <span className={chatStyles.voiceRecordDot} aria-hidden />
                       <span className={chatStyles.voiceRecordTimer}>{formatVoiceElapsed(voiceElapsedMs)}</span>
+                      {VOICE_NOTE_MAX_MS - voiceElapsedMs <= VOICE_NOTE_WARN_REMAINING_MS && (
+                        <span className={chatStyles.voiceRemaining} aria-live="polite">
+                          {formatVoiceElapsed(Math.max(0, VOICE_NOTE_MAX_MS - voiceElapsedMs))} left
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        className={`${chatStyles.toolBtn} flex-shrink-0`}
+                        title="Cancel recording"
+                        aria-label="Cancel recording"
+                        onClick={cancelVoiceRecording}
+                      >
+                        <i className="ri-delete-bin-line" aria-hidden />
+                      </button>
                       <button
                         type="button"
                         className={`${chatStyles.toolBtn} flex-shrink-0 ${chatStyles.voiceStopBtn}`}
@@ -3054,7 +3545,7 @@ const Chat = () => {
                         aria-label="Stop recording"
                         onClick={stopVoiceNote}
                       >
-                        <i className="ri-stop-circle-fill" />
+                        <i className="ri-stop-circle-fill" aria-hidden />
                       </button>
                     </div>
                   ) : (
@@ -3062,10 +3553,12 @@ const Chat = () => {
                       type="button"
                       className={`${chatStyles.toolBtn} flex-shrink-0`}
                       title="Record voice note"
+                      aria-label={voiceStarting ? "Starting microphone" : "Record voice note"}
+                      aria-busy={voiceStarting}
                       onClick={startVoiceNote}
-                      disabled={uploading || voiceSending}
+                      disabled={uploading || voiceSending || voiceStarting}
                     >
-                      <i className="ri-mic-line" />
+                      <i className={voiceStarting ? "ri-loader-4-line animate-spin" : "ri-mic-line"} aria-hidden />
                     </button>
                   )
                 ) : null}
@@ -3103,7 +3596,7 @@ const Chat = () => {
                         if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
                           e.preventDefault();
                           const active = mentionSuggestions[mentionActiveIndex] || mentionSuggestions[0];
-                          if (active) applyMention(active.name);
+                          if (active) applyMention(active);
                           return;
                         }
                         if (e.key === "Escape") {
@@ -3134,7 +3627,7 @@ const Chat = () => {
                           }`}
                           onMouseDown={(e) => {
                             e.preventDefault();
-                            applyMention(member.name);
+                            applyMention(member);
                           }}
                         >
                           <span className="block text-sm font-medium">@{member.name}</span>
@@ -3169,21 +3662,28 @@ const Chat = () => {
 
         <ChatToast toast={toast} />
 
-        {/* ── Right details panel ── */}
-        <div
-          className={`${chatStyles.sidePanelShell} ${
-            isOpen && selectedConversation ? chatStyles.sidePanelShellOpen : chatStyles.sidePanelShellClosed
-          }`}
-          aria-hidden={!isOpen || !selectedConversation}
-        >
+        {/* ── Right details panel ──
+            ≥1024px: inline column (only rendered while open, so no empty reserved column).
+            <1024px: overlay sheet over a scrim; scrim click / Escape / X close it. Closing never
+            touches the selected conversation. */}
+        {isOpen && selectedConversation && (
+          <>
+          <div className={chatStyles.sideScrim} onClick={() => setIsOpen(false)} aria-hidden="true" />
+          <div className={`${chatStyles.sidePanelShell} ${chatStyles.sidePanelShellOpen}`}>
         <div
           id="chat-side-details-panel"
-          className={`chat-user-details ${chatStyles.sidePanel} border-0 dark:border-0 ${
-            isOpen && selectedConversation ? "open" : ""
-          }`}
+          ref={sidePanelRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-label={selectedConversation.type === "group" ? "Group info" : "Contact info"}
+          className={`chat-user-details open ${chatStyles.sidePanel} border-0 dark:border-0`}
         >
-          {selectedConversation && selectedConversation.type === "group" && (
+          {selectedConversation.type === "group" && (
             <GroupInfoPanel
+              key={convId || ""}
+              muted={!!selectedConversation.muted}
+              muteBusy={muteBusy}
+              onToggleMute={() => void handleToggleMute()}
               conversation={groupInfoData || selectedConversation}
               loading={groupInfoLoading}
               myId={myId || ""}
@@ -3204,13 +3704,13 @@ const Chat = () => {
               onClose={() => setIsOpen(false)}
               onLeave={() => {
                 const cid = getId(selectedConversation);
-                if (cid && myId)
-                  removeParticipant(cid, myId).then(() => {
-                    selectConversation(null);
-                    setIsOpen(false);
-                    setGroupInfoData(null);
-                    fetchConversations();
-                  });
+                if (!cid || !myId) return;
+                removeParticipant(cid, myId).then(() => {
+                  setIsOpen(false);
+                  setGroupInfoData(null);
+                  deselectConversation();
+                  fetchConversations();
+                });
               }}
               onCall={handleCall}
               addMemberSearch={addMemberSearch}
@@ -3227,7 +3727,7 @@ const Chat = () => {
               }}
             />
           )}
-          {selectedConversation && selectedConversation.type !== "group" && (
+          {selectedConversation.type !== "group" && (
             <div className={chatStyles.sideCard}>
               <header className={chatStyles.groupInfoHeader}>
                 <div className={chatStyles.groupInfoHeaderTitles}>
@@ -3256,6 +3756,13 @@ const Chat = () => {
                   {isUserOnline(selectedConversation) ? "Online" : "Offline"}
                 </p>
               </div>
+              <div className="mb-4 text-start">
+                <MuteToggle
+                  muted={!!selectedConversation.muted}
+                  busy={muteBusy}
+                  onToggle={() => void handleToggleMute()}
+                />
+              </div>
               <div className={chatStyles.panelActions}>
                 <button
                   type="button"
@@ -3277,13 +3784,15 @@ const Chat = () => {
             </div>
           )}
         </div>
-        </div>
+          </div>
+          </>
+        )}
         </div>
       </div>
 
       {/* ── New chat / New group modal ── */}
       {showNewChat && (
-        <div className={chatStyles.modalBackdrop} onClick={() => setShowNewChat(false)} role="presentation">
+        <div className={chatStyles.modalBackdrop} onClick={closeNewChatModal} role="presentation">
           <div
             className={chatStyles.modalPanel}
             onClick={(e) => e.stopPropagation()}
@@ -3298,7 +3807,7 @@ const Chat = () => {
                 <button
                   type="button"
                   className={`${chatStyles.modeBtn} ${newChatMode === "direct" ? chatStyles.modeBtnActive : ""}`}
-                  onClick={() => setNewChatMode("direct")}
+                  onClick={() => switchNewChatMode("direct")}
                 >
                   <i className="ri-chat-3-line me-1.5 align-middle" />
                   Direct
@@ -3307,7 +3816,7 @@ const Chat = () => {
                   <button
                     type="button"
                     className={`${chatStyles.modeBtn} ${newChatMode === "group" ? chatStyles.modeBtnActive : ""}`}
-                    onClick={() => setNewChatMode("group")}
+                    onClick={() => switchNewChatMode("group")}
                   >
                     <i className="ri-group-2-line me-1.5 align-middle" />
                     Group
@@ -3323,11 +3832,13 @@ const Chat = () => {
               ) : scope === "none" ? (
                 <EmailLookupPanel
                   onStarted={(conversationId) => {
-                    setShowNewChat(false);
-                    getConversation(conversationId).then((conv) => {
-                      selectConversation(conv);
-                      fetchConversations();
-                    });
+                    closeNewChatModal();
+                    getConversation(conversationId)
+                      .then((conv) => {
+                        selectConversation(conv);
+                        fetchConversations();
+                      })
+                      .catch(() => showToast("Chat started, but it couldn't be opened. Find it in your list."));
                   }}
                 />
               ) : (
@@ -3446,7 +3957,7 @@ const Chat = () => {
               <button
                 type="button"
                 className="ti-btn ti-btn-outline-secondary rounded-lg"
-                onClick={() => setShowNewChat(false)}
+                onClick={closeNewChatModal}
               >
                 Cancel
               </button>

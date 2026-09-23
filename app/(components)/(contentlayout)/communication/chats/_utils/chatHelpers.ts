@@ -77,13 +77,53 @@ export function lastMessageFromMsg(msg: Message): NonNullable<Conversation["last
   };
 }
 
-export function callLogStatusLabel(status: string | undefined): string {
-  if (!status || status === "ongoing") return "";
-  if (status === "completed" || status === "ended") return "Ended";
-  if (status === "missed") return "Missed";
-  if (status === "declined") return "Declined";
-  if (status === "initiated") return "Started";
-  return status;
+export type CallStatusTone = "danger" | "neutral";
+
+/** m:ss clock for a finished call's length. */
+export function formatCallClock(seconds: number | null | undefined): string {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/**
+ * Viewer-facing call outcome. The raw status is never shown: the same record reads "Missed" to the
+ * callee and "Cancelled"/"No answer" to the caller, so the label depends on `direction`.
+ * Unknown direction is treated as incoming (the safer reading for a call you did not start).
+ * Unknown statuses return an empty label rather than leaking the enum.
+ */
+export function callStatusLabel(call: {
+  status?: string;
+  direction?: "incoming" | "outgoing";
+  durationSeconds?: number | null;
+  duration?: number | null;
+}): { label: string; tone: CallStatusTone } {
+  const outgoing = call.direction === "outgoing";
+  const neutral = (label: string) => ({ label, tone: "neutral" as const });
+  switch (call.status) {
+    case "cancelled":
+    case "no_answer":
+    case "missed":
+      if (!outgoing) return { label: "Missed", tone: "danger" };
+      return neutral(call.status === "cancelled" ? "Cancelled" : "No answer");
+    case "declined":
+      return neutral("Declined");
+    case "failed":
+      return neutral("Failed");
+    case "completed":
+    case "ended": {
+      const secs = call.durationSeconds ?? call.duration;
+      return neutral(secs && secs > 0 ? `Ended · ${formatCallClock(secs)}` : "Ended");
+    }
+    case "ringing":
+    case "initiated":
+      return neutral("Ringing");
+    case "ongoing":
+      return neutral("Ongoing");
+    default:
+      return neutral("");
+  }
 }
 
 /** Short line for merged thread timeline (enriched calls from getCallsForConversation). */
@@ -92,10 +132,12 @@ export function timelineCallPillText(call: {
   peer?: { name?: string; isGroup?: boolean };
   callType?: string;
   status?: string;
+  durationSeconds?: number | null;
+  duration?: number | null;
 }): string {
   const kind = call.callType === "video" ? "Video" : "Voice";
   const dir = call.direction === "outgoing" ? "Outgoing" : "Incoming";
-  const status = callLogStatusLabel(call.status);
+  const status = callStatusLabel(call).label;
   const peerName = (call.peer?.name || "Unknown").trim() || "Unknown";
   const chunks: string[] = [];
   if (call.peer?.isGroup) {
@@ -147,6 +189,24 @@ export function insertMentionText(
   return { value, caret };
 }
 
+export type PickedMention = { userId: string; displayName: string };
+
+/**
+ * Mentions to send with a message: only those whose `@Name` text survived editing, deduped by user.
+ * The backend re-filters to current participants, so this is about intent, not authorization.
+ */
+export function mentionsForSend(content: string, picked: PickedMention[]): PickedMention[] {
+  const seen = new Set<string>();
+  const out: PickedMention[] = [];
+  for (const p of picked) {
+    if (!p.userId || seen.has(p.userId)) continue;
+    if (!content.includes(`@${p.displayName}`)) continue;
+    seen.add(p.userId);
+    out.push(p);
+  }
+  return out.slice(0, 20);
+}
+
 export type TextSegment = { text: string; href?: string };
 
 // ponytail: http(s)/www only — no scheme-agnostic match, so javascript:/data: can never become an href.
@@ -191,6 +251,45 @@ export function myReactionEmoji(
     return uid && String(uid) === String(myId);
   });
   return mine?.emoji;
+}
+
+export type ReactionLike = { user?: { id?: string; _id?: string; name?: string } | string; emoji?: string };
+
+function reactionUserId(r: ReactionLike): string {
+  const u = r.user;
+  return String(typeof u === "string" ? u : u?.id || u?._id || "");
+}
+
+export type ReactionChip = { emoji: string; count: number; mine: boolean; names: string[] };
+
+/** Group reactions into chips (first-seen order), flagging the one that includes me. */
+export function groupReactions(reactions: ReactionLike[] | undefined, myId: string | undefined): ReactionChip[] {
+  const chips = new Map<string, ReactionChip>();
+  for (const r of reactions || []) {
+    if (!r?.emoji) continue;
+    const chip = chips.get(r.emoji) || { emoji: r.emoji, count: 0, mine: false, names: [] };
+    chip.count += 1;
+    const uid = reactionUserId(r);
+    if (myId && uid && uid === String(myId)) {
+      chip.mine = true;
+      chip.names.push("You");
+    } else {
+      const name = typeof r.user === "object" ? r.user?.name?.trim() : "";
+      if (name) chip.names.push(name);
+    }
+    chips.set(r.emoji, chip);
+  }
+  return Array.from(chips.values());
+}
+
+/** Optimistic local copy of the server's one-reaction-per-user rule ('' removes mine). */
+export function applyReactionLocally<T extends ReactionLike>(
+  reactions: T[] | undefined,
+  me: { id: string; name?: string },
+  emoji: string
+): ReactionLike[] {
+  const rest = (reactions || []).filter((r) => reactionUserId(r) !== String(me.id));
+  return emoji ? [...rest, { user: { id: String(me.id), name: me.name }, emoji }] : rest;
 }
 
 /** Emoji to send when a user clicks `clicked` on the reaction bar:

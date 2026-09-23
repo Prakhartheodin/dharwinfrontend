@@ -30,6 +30,7 @@ import { endCallByRoom, updateCall } from "@/shared/lib/api/chat";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { userCanRecordMeeting } from "@/shared/lib/permissions";
 import { useLiveKitBenignErrorSuppression } from "@/shared/lib/livekit-benign-logs";
+import { ChatAudioCallStage, ChatCallErrorScreen } from "@/shared/components/chat-call/ChatCallRoom";
 
 const MAX_RECONNECT_ATTEMPTS = 5;
 const INITIAL_RECONNECT_DELAY = 3000;
@@ -68,6 +69,7 @@ function RoomContent({
   isHost,
   canRecordMeeting,
   isChatCall,
+  isAudioChatCall,
   waitingParticipantIdentities,
 }: {
   onLeave: () => void;
@@ -80,6 +82,8 @@ function RoomContent({
   isHost: boolean;
   canRecordMeeting: boolean;
   isChatCall?: boolean;
+  /** Chat audio call (video=0): dedicated audio layout instead of the video grid. */
+  isAudioChatCall?: boolean;
   waitingParticipantIdentities?: string[];
 }) {
   const room = useRoomContext();
@@ -626,7 +630,8 @@ function RoomContent({
       `}} />
       <div className="room-meeting-container relative">
         <LiveKitAiRecordingBanner roomName={roomName} />
-        {/* Top bar: call info */}
+        {/* Top bar: call info (the audio chat layout shows its own timer and count) */}
+        {!isAudioChatCall && (
         <div className="meeting-room-top-bar absolute top-0 left-0 right-0 z-[100] flex items-center justify-between px-5 py-3 bg-gradient-to-b from-black/70 via-black/40 to-transparent pointer-events-none">
           <div className="flex items-center gap-3 pointer-events-auto">
             <span className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/10 backdrop-blur-md text-white text-sm font-medium tabular-nums border border-white/10">
@@ -640,8 +645,9 @@ function RoomContent({
             </span>
           </div>
         </div>
+        )}
 
-        <StableVideoConference />
+        {isAudioChatCall ? <ChatAudioCallStage elapsedSeconds={elapsedSeconds} /> : <StableVideoConference />}
         <RoomAudioRenderer />
         <MeetingRecordingHostControls
           enabled={isHost && canRecordMeeting && !isChatCall}
@@ -742,8 +748,28 @@ export default function MeetingRoomClient() {
   const fromChat = searchParams.get("from") === "chat";
   const roomName = useMemo(() => decodeURIComponent(roomId), [roomId]);
   const isChatCall = isCommunicationChatRoomEntry(fromChat, roomName);
+  /** Chat call room incl. group-call- rooms — scopes ONLY the chat-call UI added below. */
+  const isChatCallRoom = isChatCall || (fromChat && roomName.startsWith("group-call-"));
   const returnConvId = searchParams.get("conv") || null;
   const chatCallIdParam = searchParams.get("callId");
+  const chatCallId = isChatCallRoom ? chatCallIdParam?.trim() || null : null;
+  /** Set once the LiveKit room connects; a failure after that is a drop, not a failed call. */
+  const chatCallConnectedRef = useRef(false);
+  const chatCallFailedReportedRef = useRef(false);
+  /**
+   * Chat calls only: record the call as failed when this client could not get a token or connect.
+   * Once per page, and never after a successful connect (later drops go through reconnect).
+   * Ceiling: in a group call one member's failure marks the whole call failed — the backend
+   * should ignore `failed` while other participants are connected.
+   */
+  const reportChatCallFailed = useCallback(() => {
+    if (!chatCallId || chatCallConnectedRef.current || chatCallFailedReportedRef.current) return;
+    chatCallFailedReportedRef.current = true;
+    updateCall(chatCallId, { status: "failed" }).catch(() => {});
+  }, [chatCallId]);
+  const markChatCallConnected = useCallback(() => {
+    chatCallConnectedRef.current = true;
+  }, []);
   const recordChatCallJoinId = useMemo(() => {
     if (!isChatCall) return null;
     const name = roomName;
@@ -797,10 +823,11 @@ export default function MeetingRoomClient() {
         err?.message ||
         "Failed to connect to room";
       setError(errorMessage);
+      if (isChatCallRoom) reportChatCallFailed();
     } finally {
       setIsLoading(false);
     }
-  }, [roomName, participantName, participantEmail, livekitUrl, isChatCall]);
+  }, [roomName, participantName, participantEmail, livekitUrl, isChatCall, isChatCallRoom, reportChatCallFailed]);
 
   useEffect(() => {
     fetchToken();
@@ -891,7 +918,12 @@ export default function MeetingRoomClient() {
       );
       return;
     }
-  }, []);
+    // Chat calls: a failure before we ever connected means the call could not start.
+    if (isChatCallRoom && !chatCallConnectedRef.current) {
+      reportChatCallFailed();
+      setError("We couldn't reach the call server. Check your connection and try again.");
+    }
+  }, [isChatCallRoom, reportChatCallFailed]);
 
   const handleReconnect = useCallback(async () => {
     try {
@@ -958,6 +990,30 @@ export default function MeetingRoomClient() {
           <p className="text-gray-400 text-sm mt-1">Please wait</p>
         </div>
       </div>
+    );
+  }
+
+  if (error && isChatCallRoom && !hasPermissionError && !mediaFailureKind) {
+    const closeChatCall = () => {
+      try {
+        window.close();
+      } catch {
+        /* ignore */
+      }
+      // Still here (tab was not script-opened) — go back to the conversation.
+      router.push(
+        returnConvId ? `/communication/chats?conv=${encodeURIComponent(returnConvId)}` : "/communication/chats"
+      );
+    };
+    return (
+      <ChatCallErrorScreen
+        message={error}
+        onRetry={() => {
+          setError("");
+          void fetchToken();
+        }}
+        onClose={closeChatCall}
+      />
     );
   }
 
@@ -1076,6 +1132,7 @@ export default function MeetingRoomClient() {
       serverUrl={livekitUrl}
       onDisconnected={handleDisconnect}
       onError={handleError}
+      onConnected={isChatCallRoom ? markChatCallConnected : undefined}
       onMediaDeviceFailure={(failure, kind) => {
         console.error("Media device failure:", failure, kind);
         if (failure) {
@@ -1108,6 +1165,7 @@ export default function MeetingRoomClient() {
         isHost={isHost}
         canRecordMeeting={canRecordMeeting}
         isChatCall={isChatCall}
+        isAudioChatCall={isChatCallRoom && !videoEnabled}
       />
     </LiveKitRoom>
   );
