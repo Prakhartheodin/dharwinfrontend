@@ -106,6 +106,8 @@ interface ChatSocketContextValue {
   clearOutgoingCall: () => void;
   joinConversation: (conversationId: string) => void;
   leaveConversation: (conversationId: string) => void;
+  /** Conversation the local client has joined (open chat pane). Used for toast suppress when URL lags. */
+  activeConversationId: string | null;
   onNewMessage: (callback: (msg: unknown) => void) => () => void;
   onConversationUpdated: (callback: (data?: ConversationUpdatedData) => void) => () => void;
   onConversationDeleted: (callback: (data: { conversationId: string }) => void) => () => void;
@@ -155,6 +157,7 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [incomingCall, setIncomingCall] = useState<IncomingCallData | null>(null);
   const [outgoingCall, setOutgoingCall] = useState<OutgoingCallData | null>(null);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const notifiedMessageIdsRef = useRef<Set<string>>(new Set());
 
   const newMsgListeners = useRef<Set<(msg: unknown) => void>>(new Set());
@@ -326,14 +329,19 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
 
   const joinConversation = useCallback(
     (conversationId: string) => {
-      socket?.emit("join_conversation", { conversationId });
+      const id = String(conversationId || "").trim();
+      if (!id) return;
+      setActiveConversationId(id);
+      socket?.emit("join_conversation", { conversationId: id });
     },
     [socket]
   );
 
   const leaveConversation = useCallback(
     (conversationId: string) => {
-      socket?.emit("leave_conversation", { conversationId });
+      const id = String(conversationId || "").trim();
+      if (id) socket?.emit("leave_conversation", { conversationId: id });
+      setActiveConversationId((prev) => (prev && id && prev === id ? null : prev));
     },
     [socket]
   );
@@ -610,6 +618,7 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
     clearOutgoingCall,
     joinConversation,
     leaveConversation,
+    activeConversationId,
     onNewMessage,
     onConversationUpdated,
     onConversationDeleted,

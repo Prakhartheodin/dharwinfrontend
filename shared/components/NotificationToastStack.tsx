@@ -8,6 +8,11 @@ import { useNotificationContext } from "@/shared/contexts/NotificationContext";
 import { isAiNudge, notifTypeToColor, notifTypeToIcon } from "@/shared/lib/notification-utils";
 import { resolveNotificationRoute } from "@/shared/lib/notificationRoutes";
 import { AiNudgeBadge } from "@/shared/components/AiNudgeBadge";
+import {
+  claimChatToastKeys,
+  shouldSuppressChatMessageToast,
+  shouldSuppressSystemChatToast,
+} from "@/shared/lib/chatToastSuppress";
 
 type ToastKind = "chat" | "system";
 
@@ -97,7 +102,7 @@ function ToastCard({ toast, onDismiss }: { toast: AppToast; onDismiss: (id: stri
       className={`relative w-[22rem] bg-white dark:bg-bodybg2 rounded-xl shadow-xl border border-defaultborder dark:border-defaultborder/30 overflow-hidden cursor-pointer select-none transition-all duration-200 ${exiting ? "opacity-0 translate-x-4" : "animate-slide-in-right"}`}
       role="alert"
       aria-live="polite"
-      aria-label={toast.fromAi ? `${toast.title} — AI generated` : toast.title}
+      aria-label={toast.fromAi ? `${toast.title} - AI generated` : toast.title}
     >
       <div className="flex items-start gap-3 p-4">
         <span className={`shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-full text-sm ${iconBg}`}>
@@ -134,11 +139,17 @@ function ToastCard({ toast, onDismiss }: { toast: AppToast; onDismiss: (id: stri
 export function NotificationToastStack() {
   const { user } = useAuth();
   const userId = authUserId(user as { id?: string; _id?: string } | null);
-  const { onNewMessage } = useChatSocket();
+  const { onNewMessage, activeConversationId } = useChatSocket();
   const { latestNotification, error: sseError } = useNotificationContext();
   const [toasts, setToasts] = useState<AppToast[]>([]);
   const seenMsgIds = useRef<Set<string>>(new Set());
+  const claimedChatKeys = useRef<Set<string>>(new Set());
   const prevLatestIdRef = useRef<string | null>(null);
+  const activeConvRef = useRef<string | null>(activeConversationId);
+
+  useEffect(() => {
+    activeConvRef.current = activeConversationId;
+  }, [activeConversationId]);
 
   const addToast = useCallback((toast: Omit<AppToast, "id" | "createdAt">) => {
     setToasts((prev) => {
@@ -171,13 +182,30 @@ export function NotificationToastStack() {
       const senderId = authUserId(m?.sender);
       if (!senderId || senderId === userId) return;
 
-      // Suppress toast when user is already viewing that conversation
-      if (typeof window !== "undefined" && m?.conversation) {
+      const conversationId = m?.conversation ? String(m.conversation) : "";
+      // Claim before suppress so a later SSE chat_message for the same id is dropped
+      // (and vice versa if SSE arrived first).
+      const isFirstClaim = claimChatToastKeys(claimedChatKeys.current, {
+        messageId: msgId || null,
+        conversationId: conversationId || null,
+      });
+      if (!isFirstClaim) return;
+
+      // Viewing = activeConversationId from joinConversation (same selection that writes ?conv=).
+      // Do not OR URL ?conv= — stale URL while switching chats would wrongly suppress.
+      if (typeof window !== "undefined" && conversationId) {
         const url = new URL(window.location.href);
         if (
-          url.pathname === "/communication/chats" &&
-          url.searchParams.get("conv") === m.conversation
-        ) return;
+          shouldSuppressChatMessageToast(
+            {
+              pathname: url.pathname,
+              activeConversationId: activeConvRef.current,
+            },
+            conversationId
+          )
+        ) {
+          return;
+        }
       }
 
       const senderName = m?.sender?.name?.trim() || "New message";
@@ -191,7 +219,7 @@ export function NotificationToastStack() {
         kind: "chat",
         title: senderName,
         body,
-        link: m?.conversation ? `/communication/chats?conv=${m.conversation}` : "/communication/chats",
+        link: conversationId ? `/communication/chats?conv=${conversationId}` : "/communication/chats",
         icon: "message-circle",
         color: "primary",
       });
@@ -204,15 +232,50 @@ export function NotificationToastStack() {
     if (prevLatestIdRef.current === latestNotification._id) return;
     prevLatestIdRef.current = latestNotification._id;
     const n = latestNotification;
-      addToast({
-        kind: "system",
-        title: n.title,
-        body: n.message,
-        link: resolveNotificationRoute(n),
-        icon: notifTypeToIcon[n.type] ?? "bell",
-        color: notifTypeToColor[n.type] ?? "secondary",
-        fromAi: isAiNudge(n.type),
-      });
+
+    const relatedConv =
+      n.type === "chat_message" ? String(n.relatedEntity?.id ?? "").trim() : "";
+    const messageId =
+      n.type === "chat_message"
+        ? String((n.metadata as { messageId?: string } | null | undefined)?.messageId ?? "").trim()
+        : "";
+
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      const loc = {
+        pathname: url.pathname,
+        activeConversationId: activeConvRef.current,
+      };
+      if (
+        shouldSuppressSystemChatToast({
+          notificationType: n.type,
+          conversationId: relatedConv || null,
+          messageId: messageId || null,
+          loc,
+          claimedKeys: claimedChatKeys.current,
+        })
+      ) {
+        return;
+      }
+      // First arrival via SSE: claim so a later socket toast for the same message is dropped.
+      if (n.type === "chat_message") {
+        const isFirst = claimChatToastKeys(claimedChatKeys.current, {
+          messageId: messageId || null,
+          conversationId: relatedConv || null,
+        });
+        if (!isFirst) return;
+      }
+    }
+
+    addToast({
+      kind: "system",
+      title: n.title,
+      body: n.message,
+      link: resolveNotificationRoute(n),
+      icon: notifTypeToIcon[n.type] ?? "bell",
+      color: notifTypeToColor[n.type] ?? "secondary",
+      fromAi: isAiNudge(n.type),
+    });
   }, [latestNotification, addToast]);
 
   return (

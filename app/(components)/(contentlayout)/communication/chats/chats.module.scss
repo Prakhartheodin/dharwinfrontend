@@ -2146,3 +2146,89 @@
   background: #0d9488;
 }
 
+
+/* —— Voice note record / preview (P0) —— */
+.voiceRecordBar,
+.voicePreviewBar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+  max-width: 100%;
+  padding: 0.2rem 0.35rem;
+  border-radius: var(--chat-radius-md);
+  border: 1px solid var(--chat-border);
+  background: var(--chat-elevated);
+}
+
+.voiceRecordDot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: #dc2626;
+  flex-shrink: 0;
+}
+
+.voiceRecordTimer,
+.voicePreviewDuration {
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--chat-ink);
+  min-width: 2.25rem;
+}
+
+.voiceStopBtn {
+  color: #dc2626 !important;
+}
+
+.voicePreviewPlay {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 50%;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-accent-soft);
+  color: var(--chat-accent);
+  flex-shrink: 0;
+}
+
+.voicePreviewDiscard,
+.voicePreviewSend {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.85rem;
+  padding: 0 0.55rem;
+  border-radius: var(--chat-radius-md);
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-elevated);
+  color: var(--chat-ink);
+}
+
+.voicePreviewSend {
+  background: var(--chat-accent);
+  border-color: var(--chat-accent);
+  color: #fff;
+}
+
+.voicePreviewSend:disabled,
+.voicePreviewDiscard:disabled,
+.voicePreviewPlay:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voiceRecordDot {
+    animation: none !important;
+  }
+  .voicePreviewPlay i,
+  .voiceStopBtn i {
+    animation: none !important;
+  }
+}
