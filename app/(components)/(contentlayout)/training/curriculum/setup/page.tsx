@@ -15,16 +15,8 @@ function TrainingCurriculumSetupPageInner() {
   return (
     <Fragment>
       <Seo title="Training Curriculum Setup" />
-      <div className="mt-5 grid grid-cols-12 gap-6 sm:mt-6">
+      <div className="grid grid-cols-12 gap-6">
         <div className="xl:col-span-12 col-span-12">
-          <div className="mb-4">
-            <h1 className="text-xl font-semibold text-defaulttextcolor dark:text-white">
-              Training Curriculum Setup
-            </h1>
-            <p className="mt-1 text-sm text-defaulttextcolor/65">
-              Course assignment and position roster in one place.
-            </p>
-          </div>
           <CurriculumSetupTable initialDrawerOpen={initialDrawerOpen} />
         </div>
       </div>

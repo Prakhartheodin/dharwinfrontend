@@ -30,8 +30,9 @@ function isStudentAssignedToModule(mod: TrainingModule | undefined, studentId: s
 
 /** Beat global `select { dark:bg-bodybg !important }` — need !important + light color-scheme. */
 const SELECT_CLASS =
-  "form-control form-select !py-1 !text-[0.8125rem] !bg-white !text-defaulttextcolor dark:!bg-white dark:!text-defaulttextcolor"
-const SELECT_STYLE: React.CSSProperties = { colorScheme: "light" }
+  "form-control form-select !py-1 !text-[0.8125rem] !bg-white !text-defaulttextcolor [color-scheme:light] dark:!bg-bodybg dark:!text-white dark:!border-white/10 dark:[color-scheme:dark] disabled:opacity-60"
+// Theme is carried by the class list; an inline colorScheme would pin the dropdown to light in dark mode.
+const SELECT_STYLE: React.CSSProperties = {}
 
 export default function PositionAssignPanel({
   position,

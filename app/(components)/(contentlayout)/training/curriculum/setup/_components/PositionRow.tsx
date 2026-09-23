@@ -263,7 +263,7 @@ export default function PositionRow({
       </tr>
 
       {expanded && canAssign && !unlinked ? (
-        <tr className="border-b border-gray-300 dark:border-gray-600 bg-defaultbackground/40">
+        <tr className="border-b border-gray-300 dark:border-gray-600 bg-defaultbackground/40 dark:bg-black/20">
           <td colSpan={7} className="p-3" id={panelId}>
             <PositionAssignPanel
               position={position}
