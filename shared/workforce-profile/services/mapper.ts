@@ -127,6 +127,10 @@ export function mapToFormState(source: WorkforceSource): WorkforceFormState {
 
   const empty = emptyWorkforceFormState();
   const storedPhone = parseStoredPhone(migrated.phoneNumber, migrated.countryCode);
+  const storedSupervisor = parseStoredPhone(
+    migrated.supervisorContact,
+    migrated.supervisorCountryCode,
+  );
 
   const personalInfo: PersonalInfoSlice = {
     ...empty.personalInfo,
@@ -155,11 +159,14 @@ export function mapToFormState(source: WorkforceSource): WorkforceFormState {
     visaIssueDate: asString(migrated.visaIssueDate, "").slice(0, 10),
     visaExpiryDate: asString(migrated.visaExpiryDate, "").slice(0, 10),
     supervisorName: asString(migrated.supervisorName, empty.personalInfo.supervisorName),
-    supervisorContact: asString(migrated.supervisorContact, empty.personalInfo.supervisorContact),
-    supervisorCountryCode: asString(
-      migrated.supervisorCountryCode,
-      empty.personalInfo.supervisorCountryCode,
-    ),
+    // Same national-digits split as phoneNumber — stored value may be E.164.
+    supervisorContact: storedSupervisor.digits || empty.personalInfo.supervisorContact,
+    supervisorCountryCode: storedSupervisor.digits
+      ? storedSupervisor.countryCode
+      : asString(
+          migrated.supervisorCountryCode,
+          empty.personalInfo.supervisorCountryCode,
+        ),
     salaryRange: asString(migrated.salaryRange, empty.personalInfo.salaryRange),
     companyAssignedEmail: asString(migrated.companyAssignedEmail, empty.personalInfo.companyAssignedEmail),
     companyEmailProvider:

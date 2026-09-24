@@ -1,12 +1,20 @@
+import {
+  getExampleNumber,
+  isValidPhoneNumber,
+  parsePhoneNumberFromString,
+  type CountryCode,
+} from "libphonenumber-js/max";
+import examples from "libphonenumber-js/mobile/examples";
+
 /**
- * Country phone config: dial code, validation regex, placeholder, max length.
- * Digits are validated after stripping non-digits with .replace(/\D/g, "").
+ * Country phone config: dial code + label for the selector.
+ * Placeholder / validity come from libphonenumber-js (not the legacy regex).
  */
 export interface PhoneCountryConfig {
   code: string;
   dialCode: string;
   label: string;
-  /** Regex to test digits only (no + or spaces) */
+  /** @deprecated Prefer validatePhoneByCountry — kept for legacy callers. */
   regex: RegExp;
   placeholder: string;
   maxLength: number;
@@ -91,21 +99,41 @@ const byCode = new Map(PHONE_COUNTRIES.map((c) => [c.code, c]));
 /** When country is unknown, prefer a neutral default (avoids wrong India +91 for US/international users). */
 export const DEFAULT_PHONE_COUNTRY = "US" as const;
 
+function asCountryCode(code: string): CountryCode | undefined {
+  const iso = (code || "").trim().toUpperCase();
+  if (!iso || !byCode.has(iso)) return undefined;
+  return iso as CountryCode;
+}
+
 export function getPhoneCountry(code: string): PhoneCountryConfig {
-  return byCode.get(code) || byCode.get(DEFAULT_PHONE_COUNTRY)!;
+  const base = byCode.get(code) || byCode.get(DEFAULT_PHONE_COUNTRY)!;
+  const iso = asCountryCode(base.code);
+  const example = iso ? getExampleNumber(iso, examples) : undefined;
+  return {
+    ...base,
+    // National example for the selected country — never a hardcoded "10-digit …" string.
+    placeholder: example?.formatNational() || "Phone number",
+    // E.164 national significant number max is 15; avoid per-country digit caps.
+    maxLength: 15,
+  };
 }
 
 export function validatePhoneByCountry(phone: string, countryCode: string): boolean {
-  const digits = (phone || "").replace(/\D/g, "");
-  const config = getPhoneCountry(countryCode);
-  return config.regex.test(digits);
+  const v = (phone || "").trim();
+  if (!v) return false;
+  const iso = asCountryCode(countryCode);
+  return iso ? isValidPhoneNumber(v, iso) : isValidPhoneNumber(v);
 }
 
-export function getPhoneValidationError(phone: string, countryCode: string): string | null {
-  const digits = (phone || "").replace(/\D/g, "");
-  if (!digits) return "Phone number is required.";
-  const config = getPhoneCountry(countryCode);
-  return config.regex.test(digits) ? null : config.errorMessage;
+export function getPhoneValidationError(
+  phone: string,
+  countryCode: string,
+  opts?: { required?: boolean },
+): string | null {
+  const v = (phone || "").trim();
+  if (!v) return opts?.required === false ? null : "Phone number is required.";
+  if (validatePhoneByCountry(v, countryCode)) return null;
+  return getPhoneCountry(countryCode).errorMessage;
 }
 
 /** Returns dial code without + for building full phone (e.g. "91" for India). */
@@ -114,10 +142,15 @@ export function getDialCodeForApi(countryCode: string): string {
   return dial ? dial.replace(/^\+/, "") : "";
 }
 
-/** Build full phone for API: +919876543210 */
+/** Build canonical E.164 for API (e.g. +919876543210). Empty/invalid → "". */
 export function formatPhoneForApi(digits: string, countryCode: string): string {
-  const dial = getDialCodeForApi(countryCode);
-  return dial ? `+${dial}${digits}` : digits;
+  const v = (digits || "").trim();
+  if (!v) return "";
+  const iso = asCountryCode(countryCode);
+  const parsed = iso
+    ? parsePhoneNumberFromString(v, iso)
+    : parsePhoneNumberFromString(v);
+  return parsed?.isValid() ? parsed.format("E.164") : "";
 }
 
 const COUNTRY_NAME_TO_ISO: Record<string, string> = {

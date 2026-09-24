@@ -101,7 +101,7 @@ describe("payload.toSelfServicePayload (PATCH)", () => {
     expect(payload).not.toHaveProperty("salaryRange");
   });
 
-  it("sends own immigration fields but omits HR-owned compensation from self-service payload", () => {
+  it("sends own immigration, supervisor, and salary fields on self-service payload", () => {
     const state = makeFormState({
       personalInfo: {
         ...makeFormState().personalInfo,
@@ -110,7 +110,7 @@ describe("payload.toSelfServicePayload (PATCH)", () => {
         visaType: "H-1B",
         customVisaType: "",
         supervisorName: "Jane Doe",
-        supervisorContact: "5551234567",
+        supervisorContact: "2015550123",
         supervisorCountryCode: "US",
         salaryRange: "$50,000 - $70,000",
       },
@@ -123,10 +123,55 @@ describe("payload.toSelfServicePayload (PATCH)", () => {
     // Legacy free-text EAD and an empty custom type stay out: "" would null-clear.
     expect(payload).not.toHaveProperty("ead");
     expect(payload).not.toHaveProperty("customVisaType");
-    expect(payload).not.toHaveProperty("supervisorName");
-    expect(payload).not.toHaveProperty("supervisorContact");
-    expect(payload).not.toHaveProperty("supervisorCountryCode");
-    expect(payload).not.toHaveProperty("salaryRange");
+    expect(payload.supervisorName).toBe("Jane Doe");
+    expect(payload.supervisorContact).toBe("+12015550123");
+    expect(payload.supervisorCountryCode).toBe("US");
+    expect(payload.salaryRange).toBe("$50,000 - $70,000");
+  });
+
+  it("normalizes supervisor phone to E.164 by country; empty stays omitted", () => {
+    const india = toSelfServicePayload(
+      normalize(
+        makeFormState({
+          personalInfo: {
+            ...makeFormState().personalInfo,
+            supervisorContact: "8123456789",
+            supervisorCountryCode: "IN",
+          },
+        }),
+      ),
+      { "personal-info": true },
+    ) as Record<string, unknown>;
+    expect(india.supervisorContact).toBe("+918123456789");
+
+    const us = toSelfServicePayload(
+      normalize(
+        makeFormState({
+          personalInfo: {
+            ...makeFormState().personalInfo,
+            // US example is not "must be 10 digits" as a special case — validity is country-aware.
+            supervisorContact: "2015550123",
+            supervisorCountryCode: "US",
+          },
+        }),
+      ),
+      { "personal-info": true },
+    ) as Record<string, unknown>;
+    expect(us.supervisorContact).toBe("+12015550123");
+
+    const empty = toSelfServicePayload(
+      normalize(
+        makeFormState({
+          personalInfo: {
+            ...makeFormState().personalInfo,
+            supervisorContact: "",
+            supervisorCountryCode: "IN",
+          },
+        }),
+      ),
+      { "personal-info": true },
+    ) as Record<string, unknown>;
+    expect(empty).not.toHaveProperty("supervisorContact");
   });
 });
 

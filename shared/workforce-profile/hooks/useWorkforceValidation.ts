@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { getPhoneValidationError } from "@/shared/lib/phoneCountries";
+import { getPhoneCountry, getPhoneValidationError } from "@/shared/lib/phoneCountries";
 import { validateSocialLinkRows } from "@/shared/lib/socialLinks";
 import type { Mode, StepId } from "../types/wizard.types";
 import type {
@@ -84,8 +84,22 @@ export const DEFAULT_RULES: ValidationRule[] = [
     test: (s) => {
       const v = s.personalInfo.phoneNumber.trim();
       if (!v) return "Phone number is required";
+      // Own phone stays national digits for Joi; supervisor contact is E.164 separately.
+      if (!/^\d+$/.test(v)) {
+        return getPhoneCountry(s.personalInfo.countryCode).errorMessage;
+      }
       return getPhoneValidationError(v, s.personalInfo.countryCode);
     },
+  },
+  {
+    field: "personalInfo.supervisorContact",
+    section: "personal-info",
+    test: (s) =>
+      getPhoneValidationError(
+        s.personalInfo.supervisorContact,
+        s.personalInfo.supervisorCountryCode || s.personalInfo.countryCode,
+        { required: false },
+      ),
   },
   {
     field: "personalInfo.password",

@@ -279,4 +279,28 @@ describe("self-service read-only fields", () => {
     const el = document.getElementById("companyEmailProvider") as HTMLSelectElement;
     expect(el.disabled).toBe(true);
   });
+
+  it("lets self-service users edit supervisor name", () => {
+    renderStep();
+    const el = document.getElementById("supervisorName") as HTMLInputElement;
+    expect(el).toBeTruthy();
+    expect(el.readOnly).toBe(false);
+  });
+
+  it("lets self-service users edit supervisor phone", () => {
+    renderStep();
+    // Phone row: Field id is not on the tel input (country select sits beside it).
+    const el = document.querySelector(
+      'input[autoComplete="tel-national"]',
+    ) as HTMLInputElement | null;
+    expect(el).toBeTruthy();
+    expect(el!.readOnly).toBe(false);
+  });
+
+  it("lets self-service users edit salary range", () => {
+    renderStep();
+    const el = document.getElementById("salaryRange") as HTMLSelectElement;
+    expect(el).toBeTruthy();
+    expect(el.disabled).toBe(false);
+  });
 });

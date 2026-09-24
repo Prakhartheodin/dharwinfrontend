@@ -1,7 +1,15 @@
 import type { CandidateListItem } from "@/shared/lib/api/employees";
 import type { UpdateMeWithCandidatePayload } from "@/shared/lib/api/auth";
+import { formatPhoneForApi } from "@/shared/lib/phoneCountries";
 import type { NormalizedWorkforce } from "../types/workforce.types";
 import type { StepId } from "../types/wizard.types";
+
+/** Supervisor contact is stored as E.164; national digits stay in form state for display. */
+const supervisorContactE164 = (n: NormalizedWorkforce): string =>
+  formatPhoneForApi(
+    n.supervisorContact,
+    n.supervisorCountryCode || n.countryCode || "",
+  );
 
 export type DirtyMap = Partial<Record<StepId, boolean>>;
 
@@ -89,7 +97,10 @@ export function toCandidatePayload(
     ...(n.visaType ? { visaType: n.visaType } : {}),
     ...(n.customVisaType ? { customVisaType: n.customVisaType } : {}),
     ...(n.supervisorName ? { supervisorName: n.supervisorName } : {}),
-    ...(n.supervisorContact ? { supervisorContact: n.supervisorContact } : {}),
+    ...(() => {
+      const e164 = supervisorContactE164(n);
+      return e164 ? { supervisorContact: e164 } : {};
+    })(),
     ...(n.supervisorCountryCode
       ? { supervisorCountryCode: n.supervisorCountryCode }
       : {}),
@@ -124,13 +135,14 @@ export function toSelfServicePayload(
     if (n.countryCode) out.countryCode = n.countryCode;
     out.shortBio = n.shortBio || null;
     out.degree = n.degree || null;
-    // Compensation and job-title fields stay omitted: they are admin-owned, read-only
-    // in this wizard, and sending the "" the state holds for them would null-clear a
-    // real value on save.
+    // Job-title and company-mailbox fields stay omitted: they are admin-owned,
+    // read-only in this wizard, and sending the "" the state holds for them would
+    // null-clear a real value on save.
     //
-    // The immigration fields are different — CANDIDATE_ME_FIELDS has always let a
-    // person set their own `ead`, `sevisId` and `visaType`, so the scanned equivalents
-    // belong to them too. Each is sent only when non-empty, which keeps the clearing
+    // Immigration, supervisor, and salary-range fields are different —
+    // CANDIDATE_ME_FIELDS lets a person set their own `ead`/`sevisId`/`visaType`,
+    // `supervisorName`/`supervisorContact`/`supervisorCountryCode`, and
+    // `salaryRange`. Each is sent only when non-empty, which keeps the clearing
     // risk that motivated the original omission off the table.
     if (n.sevisId) out.sevisId = n.sevisId;
     if (n.visaType) out.visaType = n.visaType;
@@ -141,6 +153,13 @@ export function toSelfServicePayload(
     if (n.visaNumber) out.visaNumber = n.visaNumber;
     if (n.visaIssueDate) out.visaIssueDate = n.visaIssueDate;
     if (n.visaExpiryDate) out.visaExpiryDate = n.visaExpiryDate;
+    if (n.supervisorName) out.supervisorName = n.supervisorName;
+    {
+      const e164 = supervisorContactE164(n);
+      if (e164) out.supervisorContact = e164;
+    }
+    if (n.supervisorCountryCode) out.supervisorCountryCode = n.supervisorCountryCode;
+    if (n.salaryRange) out.salaryRange = n.salaryRange;
     if (n.address) out.address = compact(n.address);
     if (n.socialLinks) out.socialLinks = n.socialLinks;
     // A cleared photo must reach the server as an explicit null; omitting it
