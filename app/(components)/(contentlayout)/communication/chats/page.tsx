@@ -486,7 +486,7 @@ function GroupInfoPanel({
                     {isMe ? (
                       <button
                         type="button"
-                        className="ti-btn ti-btn-sm ti-btn-outline-danger shrink-0 !px-4 !min-w-[4.5rem]"
+                        className={`${chatStyles.pillBtn} ${chatStyles.pillBtnDanger}`}
                         onClick={onLeave}
                       >
                         Leave
@@ -499,6 +499,7 @@ function GroupInfoPanel({
                             className="ti-btn ti-btn-sm ti-btn-icon ti-btn-ghost shrink-0"
                             onClick={() => handleSetRole(uid, p.role === "admin" ? "member" : "admin")}
                             title={p.role === "admin" ? "Demote" : "Make admin"}
+                            aria-label={p.role === "admin" ? "Demote to member" : "Make admin"}
                           >
                             <i className={p.role === "admin" ? "ri-arrow-down-s-line" : "ri-shield-star-line"} />
                           </button>
@@ -509,6 +510,7 @@ function GroupInfoPanel({
                             className="ti-btn ti-btn-sm ti-btn-icon ti-btn-ghost text-danger shrink-0"
                             onClick={() => handleRemove(uid)}
                             title="Remove"
+                            aria-label="Remove from group"
                           >
                             <i className="ri-user-unfollow-line" />
                           </button>
@@ -3182,17 +3184,21 @@ const Chat = () => {
                     <div className={chatStyles.loadOlder}>
                       <button
                         type="button"
-                        className="ti-btn ti-btn-sm ti-btn-outline-secondary !rounded-full"
+                        className={chatStyles.pillBtn}
                         onClick={fetchOlderMessages}
                         disabled={loadingOlder}
+                        aria-busy={loadingOlder}
                       >
                         {loadingOlder ? (
                           <>
-                            <i className="ri-loader-4-line animate-spin me-1" />
-                            Loading...
+                            <i className="ri-loader-4-line animate-spin" aria-hidden />
+                            Loading…
                           </>
                         ) : (
-                          "Load older messages"
+                          <>
+                            <i className="ri-arrow-up-line" aria-hidden />
+                            Load older messages
+                          </>
                         )}
                       </button>
                     </div>

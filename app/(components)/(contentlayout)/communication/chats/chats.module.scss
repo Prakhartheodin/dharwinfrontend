@@ -1625,6 +1625,75 @@
   margin-bottom: 1rem;
 }
 
+/* Text buttons in chat: never use global .ti-btn-sm — it forces a 1.75rem square
+   (icon-only), which wrapped "Load older messages" inside a tiny circle. */
+.pillBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  white-space: nowrap;
+  min-height: 2.25rem;
+  padding: 0.4rem 1rem;
+  border: 1px solid var(--chat-border);
+  border-radius: 9999px;
+  background: var(--chat-surface);
+  color: var(--chat-ink-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+
+  &:hover:not(:disabled) {
+    border-color: var(--chat-accent);
+    color: var(--chat-accent);
+    background: var(--chat-accent-soft);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--chat-accent);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  i {
+    font-size: 1rem;
+    line-height: 1;
+  }
+}
+
+.pillBtnDanger {
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.35);
+
+  &:hover:not(:disabled) {
+    border-color: #dc2626;
+    color: #fff;
+    background: #dc2626;
+  }
+
+  &:focus-visible {
+    outline-color: #dc2626;
+  }
+}
+
+:global(.dark) .pillBtnDanger {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+:global(.dark) .pillBtnDanger:hover:not(:disabled) {
+  color: #fff;
+  background: #dc2626;
+  border-color: #dc2626;
+}
+
 .emptyThread {
   display: flex;
   flex-direction: column;
