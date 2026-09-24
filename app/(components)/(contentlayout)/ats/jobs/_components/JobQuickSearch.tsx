@@ -380,6 +380,14 @@ export default function JobQuickSearch({
   const showScopeTag = Boolean(committedScope)
   const activeOptionId = activeIndex >= 0 ? flatOptions[activeIndex]?.id : undefined
   const showDropdown = open && value.trim().length > 0
+
+  // Keep the highlighted option visible: the menu scrolls, and arrowing past the fold used to
+  // move the highlight out of sight (and hide the groups below it).
+  useEffect(() => {
+    if (!showDropdown || !activeOptionId) return
+    // Optional call: jsdom (tests) has no scrollIntoView.
+    document.getElementById(activeOptionId)?.scrollIntoView?.({ block: 'nearest' })
+  }, [showDropdown, activeOptionId])
   const query = value.trim()
 
   // Announce the highlighted option while browsing, falling back to the committed scope once
@@ -525,7 +533,7 @@ export default function JobQuickSearch({
         )}
       </div>
       </div>
-      <PortalDropdown open={showDropdown} inputRef={boxRef}>
+      <PortalDropdown open={showDropdown} inputRef={boxRef} maxHeightClass="max-h-80">
         <div
           id={listboxId}
           role="listbox"

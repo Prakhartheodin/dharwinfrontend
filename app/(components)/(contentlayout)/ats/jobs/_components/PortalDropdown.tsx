@@ -3,7 +3,7 @@ import React, { useEffect, useLayoutEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 export const DROPDOWN_MENU =
-  'max-h-44 overflow-y-auto rounded-xl border border-defaultborder/70 bg-white py-1 shadow-2xl dark:border-white/15 dark:bg-bodybg ring-1 ring-black/5'
+  'overflow-y-auto rounded-xl border border-defaultborder/70 bg-white py-1 shadow-2xl dark:border-white/15 dark:bg-bodybg ring-1 ring-black/5'
 export const DROPDOWN_ITEM =
   'flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs font-medium transition-colors'
 
@@ -12,11 +12,14 @@ export function PortalDropdown({
   open,
   inputRef,
   children,
+  maxHeightClass = 'max-h-44',
 }: {
   open: boolean
   /** Element the dropdown is positioned under (an input, or the box wrapping one). */
   inputRef: React.RefObject<HTMLElement | null>
   children: React.ReactNode
+  /** Tailwind max-height for the scrolling menu; defaults to the filter-panel size. */
+  maxHeightClass?: string
 }) {
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
   const [ready, setReady] = useState(false)
@@ -54,7 +57,7 @@ export function PortalDropdown({
   return createPortal(
     <div
       style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 }}
-      className={DROPDOWN_MENU}
+      className={`${DROPDOWN_MENU} ${maxHeightClass}`}
     >
       {children}
     </div>,
