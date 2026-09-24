@@ -53,6 +53,7 @@ import {
   type PickedMention,
 } from "./_utils/chatHelpers";
 import { ReceiptTick } from "./_components/ReceiptTick";
+import { VoiceNotePlayer } from "./_components/VoiceNotePlayer";
 import {
   applyReceiptEvent,
   messageTickStatus,
@@ -125,27 +126,6 @@ const MessageText = ({ text, className }: { text: string; className?: string }) 
       )
     )}
   </p>
-);
-
-/** Sidebar preview with clickable URLs (truncated by parent). */
-const PreviewText = ({ text, className }: { text: string; className?: string }) => (
-  <span className={className}>
-    {splitTextLinks(text).map((s, i) =>
-      s.href ? (
-        <a
-          key={i}
-          href={s.href}
-          target="_blank"
-          rel="noopener noreferrer nofollow"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {s.text}
-        </a>
-      ) : (
-        <span key={i}>{s.text}</span>
-      )
-    )}
-  </span>
 );
 
 type DeleteConfirmMode = "me" | "everyone" | "chat";
@@ -1316,6 +1296,88 @@ const Chat = () => {
     if (messages.length > 0) scrollToBottom();
   }, [messages, scrollToBottom]);
 
+  // Reply quote / pinned bar → scroll to the original and flash it. Declared after the auto-scroll
+  // effect so a jump that prepended history wins over scroll-to-bottom.
+  const [jumpTargetId, setJumpTargetId] = useState<string | null>(null);
+  const [flashMessageId, setFlashMessageId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!jumpTargetId) return;
+    const container = chatContainerRef.current;
+    const el = container?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(jumpTargetId)}"]`);
+    setJumpTargetId(null);
+    if (!container || !el) return;
+    // Drive the PerfectScrollbar container directly (like scrollToBottom). scrollIntoView also scrolls
+    // outer ancestors, and PS's re-render update interrupts a native smooth scroll.
+    const from = container.scrollTop;
+    const offset = el.getBoundingClientRect().top - container.getBoundingClientRect().top;
+    const to = Math.max(
+      0,
+      Math.min(
+        from + offset - (container.clientHeight - el.offsetHeight) / 2,
+        container.scrollHeight - container.clientHeight
+      )
+    );
+    setFlashMessageId(jumpTargetId);
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion || Math.abs(to - from) < 2) {
+      container.scrollTop = to;
+      return;
+    }
+    const start = performance.now();
+    const DURATION = 350;
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / DURATION);
+      container.scrollTop = from + (to - from) * (1 - Math.pow(1 - t, 4)); // ease-out-quart
+      if (t < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }, [jumpTargetId, messages]);
+
+  useEffect(() => {
+    if (!flashMessageId) return;
+    const t = setTimeout(() => setFlashMessageId(null), 1600);
+    return () => clearTimeout(t);
+  }, [flashMessageId]);
+
+  const jumpToMessage = useCallback(
+    async (targetId?: string) => {
+      const cid = getId(selectedConversation);
+      const id = String(targetId || "");
+      if (!cid || !id) return;
+      const idOf = (m: Message) => String((m as any).id || (m as any)._id || "");
+      if (messages.some((m) => idOf(m) === id)) {
+        setJumpTargetId(id);
+        return;
+      }
+      // ponytail: pages back 50 at a time, capped at 10 pages (500 msgs); a server "around id"
+      // query is the upgrade if older jumps become common.
+      const older: Message[] = [];
+      let oldestId = messages.length ? idOf(messages[0]) : "";
+      let more = hasMoreMessages;
+      let found = false;
+      try {
+        for (let page = 0; page < 10 && more && oldestId && !found; page++) {
+          const batch = (await getMessages(cid, { before: oldestId, limit: 50 })) || [];
+          if (openConvIdRef.current !== cid) return;
+          if (batch.length < 50) more = false;
+          older.unshift(...batch);
+          oldestId = batch.length ? idOf(batch[0]) : "";
+          found = batch.some((m) => idOf(m) === id);
+        }
+      } catch {
+        /* fall through with whatever loaded */
+      }
+      if (older.length) {
+        skipAutoScrollRef.current = true;
+        setMessages((prev) => [...older, ...prev]);
+      }
+      if (!more) setHasMoreMessages(false);
+      if (found) setJumpTargetId(id);
+      else showToast("That message isn't available anymore.");
+    },
+    [selectedConversation, messages, hasMoreMessages, showToast]
+  );
+
   useEffect(() => {
     const onFocus = () => {
       fetchConversations();
@@ -2370,7 +2432,22 @@ const Chat = () => {
     }
     const replyTo = (m as any).replyTo;
     const replyBlock = replyTo ? (
-      <div className={chatStyles.replyPreview}>
+      <div
+        className={`${chatStyles.replyPreview} ${chatStyles.jumpable}`}
+        role="button"
+        tabIndex={0}
+        aria-label="Go to replied message"
+        onClick={(e) => {
+          e.stopPropagation();
+          void jumpToMessage(replyTo.id || replyTo._id);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            void jumpToMessage(replyTo.id || replyTo._id);
+          }
+        }}
+      >
         <p className={chatStyles.replyPreviewName}>
           {(replyTo.sender as any)?.name || "Unknown"}
         </p>
@@ -2401,10 +2478,7 @@ const Chat = () => {
         <div>
           {replyBlock}
           {m.attachments.map((a, i) => (
-            <div key={i} className="flex items-center gap-2 p-2 rounded bg-white/10">
-              <audio controls className="max-w-[200px] h-9" src={a.url} />
-              <span className={chatStyles.bubbleMutedText}>Voice note</span>
-            </div>
+            <VoiceNotePlayer key={i} src={a.url} />
           ))}
         </div>
       );
@@ -2730,7 +2804,7 @@ const Chat = () => {
                                       String(c.lastMessage.senderId || "") === String(myId) && (
                                         <ReceiptTick status={c.lastMessage.status} className="me-1 align-[-1px]" />
                                       )}
-                                    <PreviewText text={conversationPreviewText(c.lastMessage)} />
+                                    {conversationPreviewText(c.lastMessage)}
                                   </p>
                                 </div>
                                 {(c.unreadCount || 0) > 0 && (
@@ -3057,7 +3131,19 @@ const Chat = () => {
                         const pid = String((pm as any).id || (pm as any)._id);
                         return (
                           <li key={pid} className={chatStyles.pinnedBarItem}>
-                            <div className="min-w-0">
+                            <div
+                              className={`min-w-0 flex-1 ${chatStyles.jumpable}`}
+                              role="button"
+                              tabIndex={0}
+                              aria-label="Go to pinned message"
+                              onClick={() => void jumpToMessage(pid)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  void jumpToMessage(pid);
+                                }
+                              }}
+                            >
                               <p className={chatStyles.pinnedBarSender}>
                                 {(pm.sender as any)?.name || "Unknown"}
                               </p>
@@ -3177,6 +3263,7 @@ const Chat = () => {
                         const m = item.data;
                         const senderId = (m.sender as any)?.id || (m.sender as any)?._id?.toString?.();
                         const isMe = !!senderId && !!myId && String(senderId) === String(myId);
+                        const isGroupChat = selectedConversation?.type === "group";
                         const mid = messageIdOf(m);
                         const isDeletedMsg = !!(m as any).deletedAt;
                         const menuOpen = messageMenuFor === mid;
@@ -3194,150 +3281,24 @@ const Chat = () => {
                           <li
                             key={m.id || (m as any)._id}
                             data-message-row
-                            className={`${chatStyles.msgRow} group ${isMe ? chatStyles.msgRowMe : chatStyles.msgRowThem}`}
+                            data-message-id={mid}
+                            className={`${chatStyles.msgRow} group ${isMe ? chatStyles.msgRowMe : chatStyles.msgRowThem} ${flashMessageId === mid ? chatStyles.msgRowFlash : ""}`}
                           >
                             <div className={`${chatStyles.msgCluster} ${isMe ? chatStyles.msgClusterMe : ""}`}>
-                              <span className="avatar avatar-md avatar-rounded flex-shrink-0">
-                                <img
-                                  src={`https://ui-avatars.com/api/?name=${encodeURIComponent((m.sender as any)?.name || "U")}&size=40`}
-                                  alt=""
-                                />
-                              </span>
-                              <div className={`min-w-0 flex-1 ${isMe ? "text-end" : ""}`}>
-                                <span className={`${chatStyles.msgMeta} ${isMe ? chatStyles.msgMetaMe : ""}`}>
-                                  <span ref={menuOpen ? messageMenuRef : undefined} className="relative inline-flex">
-                                    <button
-                                      type="button"
-                                      className={chatStyles.msgActionBtn}
-                                      title="Message actions"
-                                      aria-label="Message actions"
-                                      aria-haspopup="menu"
-                                      aria-expanded={menuOpen}
-                                      onClick={() => {
-                                        setReactionPickerFor(null);
-                                        setMessageMenuFor((prev) => (prev === mid ? null : mid));
-                                      }}
-                                    >
-                                      <i className="ri-more-2-fill text-sm" aria-hidden />
-                                    </button>
-                                    {menuOpen && (
-                                      <div
-                                        role="menu"
-                                        aria-label="Message actions"
-                                        className={`absolute top-full mt-1 min-w-[11rem] rounded-lg bg-white dark:bg-bodybg shadow-lg border border-black/5 dark:border-white/10 py-1 text-start ${chatStyles.messageActionMenu} ${
-                                          isMe ? "right-0 origin-top-right" : "left-0 origin-top-left"
-                                        }`}
-                                      >
-                                        {/* A deleted message offers nothing but removing it from my view. */}
-                                        {!isDeletedMsg && (
-                                          <>
-                                            <button
-                                              type="button"
-                                              role="menuitem"
-                                              className={chatStyles.menuItem}
-                                              onClick={closeMenuThen(() => setReactionPickerFor(mid))}
-                                            >
-                                              <i className="ri-emotion-happy-line" aria-hidden />
-                                              React
-                                            </button>
-                                            <button
-                                              type="button"
-                                              role="menuitem"
-                                              className={chatStyles.menuItem}
-                                              onClick={closeMenuThen(() => setReplyingTo(m))}
-                                            >
-                                              <i className="ri-reply-line" aria-hidden />
-                                              Reply
-                                            </button>
-                                            {canCopy && (
-                                              <button
-                                                type="button"
-                                                role="menuitem"
-                                                className={chatStyles.menuItem}
-                                                onClick={() => void copyMessageText(m)}
-                                              >
-                                                <i className="ri-file-copy-line" aria-hidden />
-                                                Copy
-                                              </button>
-                                            )}
-                                            <button
-                                              type="button"
-                                              role="menuitem"
-                                              className={chatStyles.menuItem}
-                                              onClick={closeMenuThen(() => {
-                                                setForwardTargets(new Set());
-                                                setForwardSearch("");
-                                                setForwardingMessage(m);
-                                              })}
-                                            >
-                                              <i className="ri-share-forward-line" aria-hidden />
-                                              Forward
-                                            </button>
-                                            {canDownload && (
-                                              <button
-                                                type="button"
-                                                role="menuitem"
-                                                className={chatStyles.menuItem}
-                                                onClick={() => downloadAttachments(m)}
-                                              >
-                                                <i className="ri-download-2-line" aria-hidden />
-                                                Download
-                                              </button>
-                                            )}
-                                            {canPinInConversation(selectedConversation) && (
-                                              <button
-                                                type="button"
-                                                role="menuitem"
-                                                className={chatStyles.menuItem}
-                                                disabled={pinBusy}
-                                                onClick={closeMenuThen(() => handleTogglePin(mid, !(m as any).pinnedAt))}
-                                              >
-                                                <i className={(m as any).pinnedAt ? "ri-unpin-line" : "ri-pushpin-line"} aria-hidden />
-                                                {(m as any).pinnedAt ? "Unpin message" : "Pin message"}
-                                              </button>
-                                            )}
-                                          </>
-                                        )}
-                                        <button
-                                          type="button"
-                                          role="menuitem"
-                                          className={chatStyles.menuItem}
-                                          onClick={closeMenuThen(() => {
-                                            if (!getId(selectedConversation)) return;
-                                            setDeleteConfirm({ mode: "me", messageId: mid });
-                                          })}
-                                        >
-                                          <i className="ri-delete-bin-line" aria-hidden />
-                                          Delete for me
-                                        </button>
-                                        {isMe && !isDeletedMsg && (
-                                          <button
-                                            type="button"
-                                            role="menuitem"
-                                            className={`${chatStyles.menuItem} ${chatStyles.menuItemDanger}`}
-                                            onClick={closeMenuThen(() => {
-                                              if (!getId(selectedConversation)) return;
-                                              setDeleteConfirm({ mode: "everyone", messageId: mid });
-                                            })}
-                                          >
-                                            <i className="ri-delete-bin-2-line" aria-hidden />
-                                            Delete for everyone
-                                          </button>
-                                        )}
-                                      </div>
-                                    )}
-                                  </span>
-                                  {(m as any).pinnedAt && (
-                                    <i
-                                      className="ri-pushpin-fill text-xs opacity-70 me-1"
-                                      title="Pinned"
-                                      aria-label="Pinned"
-                                    />
-                                  )}
-                                  {(m.sender as any)?.name} &middot;{" "}
-                                  {m.createdAt ? format(new Date(m.createdAt), "h:mm a") : ""}
-                                  {isMe && renderReadStatus(m)}
+                              {/* Sender identity only disambiguates in groups; a 1:1 thread's header already names the peer. */}
+                              {isGroupChat && (
+                                <span className="avatar avatar-md avatar-rounded flex-shrink-0">
+                                  <img
+                                    src={`https://ui-avatars.com/api/?name=${encodeURIComponent((m.sender as any)?.name || "U")}&size=40`}
+                                    alt=""
+                                  />
                                 </span>
+                              )}
+                              <div className={`min-w-0 flex-1 ${isMe ? "text-end" : ""}`}>
+                                {/* WhatsApp-style: only a group names the sender, and only for other people's messages. */}
+                                {isGroupChat && !isMe && (
+                                  <span className={chatStyles.msgMeta}>{(m.sender as any)?.name}</span>
+                                )}
                                 <div className="relative">
                                   {/* Bubble + React trigger share a line; the trigger sits on the inner side. */}
                                   <div className={`${chatStyles.bubbleLine} ${isMe ? chatStyles.bubbleLineMe : ""}`}>
@@ -3345,7 +3306,136 @@ const Chat = () => {
                                       className={`${chatStyles.bubble} mt-1 ${isMe ? chatStyles.bubbleSent : chatStyles.bubbleRecv}`}
                                       {...messageGestureProps(m)}
                                     >
-                                      {renderMessageContent(m)}
+                                        <span ref={menuOpen ? messageMenuRef : undefined} className={`${chatStyles.bubbleMenu} ${menuOpen ? chatStyles.bubbleMenuOpen : ""}`}>
+                                          <button
+                                            type="button"
+                                            className={chatStyles.msgActionBtn}
+                                            title="Message actions"
+                                            aria-label="Message actions"
+                                            aria-haspopup="menu"
+                                            aria-expanded={menuOpen}
+                                            onClick={() => {
+                                              setReactionPickerFor(null);
+                                              setMessageMenuFor((prev) => (prev === mid ? null : mid));
+                                            }}
+                                          >
+                                            <i className="ri-arrow-down-s-line text-base" aria-hidden />
+                                          </button>
+                                          {menuOpen && (
+                                            <div
+                                              role="menu"
+                                              aria-label="Message actions"
+                                              className={`absolute top-full mt-1 min-w-[11rem] rounded-lg bg-white dark:bg-bodybg shadow-lg border border-black/5 dark:border-white/10 py-1 text-start ${chatStyles.messageActionMenu} ${
+                                                isMe ? "right-0 origin-top-right" : "left-0 origin-top-left"
+                                              }`}
+                                            >
+                                              {/* A deleted message offers nothing but removing it from my view. */}
+                                              {!isDeletedMsg && (
+                                                <>
+                                                  <button
+                                                    type="button"
+                                                    role="menuitem"
+                                                    className={chatStyles.menuItem}
+                                                    onClick={closeMenuThen(() => setReactionPickerFor(mid))}
+                                                  >
+                                                    <i className="ri-emotion-happy-line" aria-hidden />
+                                                    React
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    role="menuitem"
+                                                    className={chatStyles.menuItem}
+                                                    onClick={closeMenuThen(() => setReplyingTo(m))}
+                                                  >
+                                                    <i className="ri-reply-line" aria-hidden />
+                                                    Reply
+                                                  </button>
+                                                  {canCopy && (
+                                                    <button
+                                                      type="button"
+                                                      role="menuitem"
+                                                      className={chatStyles.menuItem}
+                                                      onClick={() => void copyMessageText(m)}
+                                                    >
+                                                      <i className="ri-file-copy-line" aria-hidden />
+                                                      Copy
+                                                    </button>
+                                                  )}
+                                                  <button
+                                                    type="button"
+                                                    role="menuitem"
+                                                    className={chatStyles.menuItem}
+                                                    onClick={closeMenuThen(() => {
+                                                      setForwardTargets(new Set());
+                                                      setForwardSearch("");
+                                                      setForwardingMessage(m);
+                                                    })}
+                                                  >
+                                                    <i className="ri-share-forward-line" aria-hidden />
+                                                    Forward
+                                                  </button>
+                                                  {canDownload && (
+                                                    <button
+                                                      type="button"
+                                                      role="menuitem"
+                                                      className={chatStyles.menuItem}
+                                                      onClick={() => downloadAttachments(m)}
+                                                    >
+                                                      <i className="ri-download-2-line" aria-hidden />
+                                                      Download
+                                                    </button>
+                                                  )}
+                                                  {canPinInConversation(selectedConversation) && (
+                                                    <button
+                                                      type="button"
+                                                      role="menuitem"
+                                                      className={chatStyles.menuItem}
+                                                      disabled={pinBusy}
+                                                      onClick={closeMenuThen(() => handleTogglePin(mid, !(m as any).pinnedAt))}
+                                                    >
+                                                      <i className={(m as any).pinnedAt ? "ri-unpin-line" : "ri-pushpin-line"} aria-hidden />
+                                                      {(m as any).pinnedAt ? "Unpin message" : "Pin message"}
+                                                    </button>
+                                                  )}
+                                                </>
+                                              )}
+                                              <button
+                                                type="button"
+                                                role="menuitem"
+                                                className={chatStyles.menuItem}
+                                                onClick={closeMenuThen(() => {
+                                                  if (!getId(selectedConversation)) return;
+                                                  setDeleteConfirm({ mode: "me", messageId: mid });
+                                                })}
+                                              >
+                                                <i className="ri-delete-bin-line" aria-hidden />
+                                                Delete for me
+                                              </button>
+                                              {isMe && !isDeletedMsg && (
+                                                <button
+                                                  type="button"
+                                                  role="menuitem"
+                                                  className={`${chatStyles.menuItem} ${chatStyles.menuItemDanger}`}
+                                                  onClick={closeMenuThen(() => {
+                                                    if (!getId(selectedConversation)) return;
+                                                    setDeleteConfirm({ mode: "everyone", messageId: mid });
+                                                  })}
+                                                >
+                                                  <i className="ri-delete-bin-2-line" aria-hidden />
+                                                  Delete for everyone
+                                                </button>
+                                              )}
+                                            </div>
+                                          )}
+                                        </span>
+                                      <div className={chatStyles.bubbleBody}>{renderMessageContent(m)}</div>
+                                      <span className={chatStyles.bubbleMeta}>
+                                        {(m as any).pinnedAt && (
+                                          <i className="ri-pushpin-fill" title="Pinned" aria-label="Pinned" />
+                                        )}
+                                        {m.createdAt ? format(new Date(m.createdAt), "h:mm a") : ""}
+                                        {isMe && renderReadStatus(m)}
+                                      </span>
                                     </div>
                                     {!isDeletedMsg && (
                                       <button

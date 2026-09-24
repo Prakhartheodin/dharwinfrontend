@@ -1048,10 +1048,6 @@
   margin-bottom: 0.2rem;
 }
 
-.msgMetaMe {
-  justify-content: flex-end;
-}
-
 .bubble {
   position: relative;
   padding: 0.55rem 0.85rem;
@@ -2740,5 +2736,244 @@
   .voicePreviewPlay i,
   .voiceStopBtn i {
     animation: none !important;
+  }
+}
+
+/* ── In-bubble meta (time + ticks) and hover menu chevron, WhatsApp-style ── */
+/* Flex-wrap keeps the time beside a short message and drops it under the last line once the text fills the bubble. */
+.bubble {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  column-gap: 0.5rem;
+}
+
+.bubbleBody {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.bubbleMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: auto;
+  margin-bottom: -0.15rem;
+  font-size: 0.6875rem;
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.bubbleRecv .bubbleMeta {
+  color: var(--chat-ink-muted);
+}
+
+.bubbleSent .bubbleMeta,
+.bubbleSent .bubbleMeta [data-status] i {
+  color: rgba(236, 253, 245, 0.78);
+}
+
+/* Read stays distinguishable on the teal bubble (shape already separates sent from delivered). */
+.bubbleSent .bubbleMeta [data-status="read"] i {
+  color: #7dd3fc;
+}
+
+.bubbleMenu {
+  position: absolute;
+  top: 0.2rem;
+  right: 0.3rem;
+  display: inline-flex;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.bubble:hover .bubbleMenu,
+.bubbleMenu:focus-within,
+.bubbleMenuOpen {
+  opacity: 1;
+}
+
+/* Solid backing so the chevron stays legible where it overlaps text. */
+.bubbleSent .bubbleMenu .msgActionBtn {
+  background: #0f766e;
+  box-shadow: -0.4rem 0 0.5rem 0.1rem #0f766e;
+}
+
+.bubbleRecv .bubbleMenu .msgActionBtn {
+  background: var(--chat-elevated);
+  box-shadow: -0.4rem 0 0.5rem 0.1rem var(--chat-elevated);
+}
+
+:global(.dark) .bubbleSent .bubbleMenu .msgActionBtn {
+  background: #115e59;
+  box-shadow: -0.4rem 0 0.5rem 0.1rem #115e59;
+}
+
+@media (hover: none) {
+  .bubbleMenu {
+    display: none;
+  }
+
+  .bubbleMenuOpen {
+    display: inline-flex;
+  }
+}
+
+/* ── Jump to replied / pinned message ── */
+.jumpable {
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.jumpable:hover {
+  filter: brightness(0.96);
+}
+
+.jumpable:focus-visible {
+  outline: 2px solid var(--chat-accent);
+  outline-offset: 2px;
+}
+
+.msgRowFlash .bubble {
+  animation: msgFlash 1.6s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+@keyframes msgFlash {
+  0%,
+  35% {
+    box-shadow: 0 0 0 3px var(--chat-accent), 0 0 0 7px var(--chat-accent-soft);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+/* ── Voice note player ── */
+.voiceNote {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 15rem;
+  max-width: 100%;
+  padding: 0.15rem 0;
+}
+
+.voiceNotePlay {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 50%;
+  font-size: 1.15rem;
+  background: var(--chat-accent);
+  color: #fff;
+  transition: transform 0.15s ease;
+}
+
+.voiceNotePlay:active {
+  transform: scale(0.94);
+}
+
+.voiceNotePlay:focus-visible {
+  outline: 2px solid var(--chat-accent);
+  outline-offset: 2px;
+}
+
+.bubbleSent .voiceNotePlay {
+  background: rgba(236, 253, 245, 0.95);
+  color: #0f766e;
+}
+
+.voiceNoteTrack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.voiceNoteTime {
+  font-size: 0.6875rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  text-align: start;
+  opacity: 0.8;
+}
+
+.voiceNoteSeek {
+  --voice-fill: var(--chat-accent);
+  --voice-rest: var(--chat-border);
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 1rem;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.bubbleSent .voiceNoteSeek {
+  --voice-fill: #ecfdf5;
+  --voice-rest: rgba(236, 253, 245, 0.35);
+}
+
+.voiceNoteSeek:disabled {
+  cursor: default;
+}
+
+.voiceNoteSeek::-webkit-slider-runnable-track {
+  height: 0.25rem;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    var(--voice-fill) var(--voice-progress, 0%),
+    var(--voice-rest) var(--voice-progress, 0%)
+  );
+}
+
+.voiceNoteSeek::-moz-range-track {
+  height: 0.25rem;
+  border-radius: 9999px;
+  background: var(--voice-rest);
+}
+
+.voiceNoteSeek::-moz-range-progress {
+  height: 0.25rem;
+  border-radius: 9999px;
+  background: var(--voice-fill);
+}
+
+.voiceNoteSeek::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 0.8rem;
+  height: 0.8rem;
+  margin-top: -0.275rem;
+  border: 0;
+  border-radius: 50%;
+  background: var(--voice-fill);
+}
+
+.voiceNoteSeek::-moz-range-thumb {
+  width: 0.8rem;
+  height: 0.8rem;
+  border: 0;
+  border-radius: 50%;
+  background: var(--voice-fill);
+}
+
+.voiceNoteSeek:focus-visible {
+  outline: 2px solid var(--chat-accent);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .msgRowFlash .bubble {
+    animation: none;
+    box-shadow: 0 0 0 3px var(--chat-accent);
   }
 }

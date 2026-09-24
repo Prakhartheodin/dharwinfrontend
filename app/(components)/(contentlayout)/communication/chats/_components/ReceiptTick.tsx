@@ -15,7 +15,7 @@ export function ReceiptTick({ status, className = "" }: { status: TickStatus; cl
   const icon = status === "sent" ? "ri-check-line" : "ri-check-double-line";
   const tone = status === "read" ? "text-primary" : "text-[#8c9097] dark:text-[#9ca3af]";
   return (
-    <span className={`inline-flex items-center leading-none ${className}`} title={LABEL[status]}>
+    <span className={`inline-flex items-center leading-none ${className}`} title={LABEL[status]} data-status={status}>
       <i className={`${icon} ${tone}`} aria-hidden="true" />
       <span className="sr-only">{LABEL[status]}</span>
     </span>
