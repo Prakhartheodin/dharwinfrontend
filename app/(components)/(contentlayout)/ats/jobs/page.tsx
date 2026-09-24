@@ -301,7 +301,7 @@ const Jobs = () => {
     setJobsListFetching(true)
     try {
       const params = buildJobListParams(listQueryInput)
-      const res = await listJobs(params, signal ? { signal } : undefined)
+      const res = await listJobs({ ...params, view: 'list' }, signal ? { signal } : undefined)
       if (generation !== fetchGenerationRef.current) return
       setJobsData((res.results ?? []).map(mapJobToDisplay))
       setTotalResults(res.totalResults ?? 0)
@@ -449,6 +449,25 @@ const Jobs = () => {
       cancelled = true
     }
   }, [viewJobIdParam, jobsData, jobsListFetching])
+
+  // The list is fetched with view=list (no descriptions), so the preview loads its job's
+  // description on open. `undefined` = not loaded yet; '' = loaded and empty.
+  const previewJobId: string | undefined = previewJob?.id
+  const previewNeedsDescription = Boolean(previewJobId) && previewJob?.description === undefined
+  useEffect(() => {
+    if (!previewJobId || !previewNeedsDescription) return undefined
+    let cancelled = false
+    const settle = (description: string) => {
+      if (cancelled) return
+      setPreviewJob((cur: any) => (cur && cur.id === previewJobId ? { ...cur, description } : cur))
+    }
+    getJobById(previewJobId)
+      .then((full) => settle(full?.jobDescription ?? ''))
+      .catch(() => settle(''))
+    return () => {
+      cancelled = true
+    }
+  }, [previewJobId, previewNeedsDescription])
 
   const [searchJobTitle, setSearchJobTitle] = useState('')
   const [searchCompany, setSearchCompany] = useState('')

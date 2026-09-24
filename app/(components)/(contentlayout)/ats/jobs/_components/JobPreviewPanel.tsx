@@ -579,7 +579,17 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                     )
                   })()}
 
-                  {/* Job Description */}
+                  {/* Job Description — undefined while the page loads it (the list omits it). */}
+                  {previewJob.description === undefined && (
+                    <div aria-busy="true" aria-label="Loading job description">
+                      <h6 className="font-semibold text-gray-800 dark:text-white mb-3">Job Description</h6>
+                      <div className="space-y-2 animate-pulse">
+                        <div className="h-3 w-full rounded bg-gray-200 dark:bg-white/10" />
+                        <div className="h-3 w-11/12 rounded bg-gray-200 dark:bg-white/10" />
+                        <div className="h-3 w-4/5 rounded bg-gray-200 dark:bg-white/10" />
+                      </div>
+                    </div>
+                  )}
                   {previewJob.description && (
                     <div>
                       <h6 className="font-semibold text-gray-800 dark:text-white mb-3">Job Description</h6>

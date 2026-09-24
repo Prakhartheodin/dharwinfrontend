@@ -123,6 +123,8 @@ export interface JobsListParams {
   salaryMin?: number;
   salaryMax?: number;
   salaryNotSpecified?: boolean;
+  /** "list" omits jobDescription (most of the payload); fetch the job by id when it is needed. */
+  view?: "list";
 }
 
 export interface JobFilterOptionItem {
@@ -164,6 +166,7 @@ function serializeJobsListParams(params?: JobsListParams): Record<string, string
   if (params.salaryMin != null) query.salaryMin = params.salaryMin;
   if (params.salaryMax != null) query.salaryMax = params.salaryMax;
   if (params.salaryNotSpecified != null) query.salaryNotSpecified = params.salaryNotSpecified;
+  if (params.view) query.view = params.view;
   return query;
 }
 
