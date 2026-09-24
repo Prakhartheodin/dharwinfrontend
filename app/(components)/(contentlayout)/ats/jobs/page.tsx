@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useTable, useSortBy } from 'react-table'
 import Link from 'next/link'
 import JobsFilterPanel from './_components/JobsFilterPanel'
-import { DROPDOWN_ITEM, PortalDropdown } from './_components/PortalDropdown'
+import JobQuickSearch from './_components/JobQuickSearch'
 import JobPreviewPanel from './_components/JobPreviewPanel'
 import JobShareModal from './_components/JobShareModal'
 import { HireForecastCell, HireForecastChip } from './_components/HireForecastCell'
@@ -216,8 +216,6 @@ const Jobs = () => {
   )
   /** Quick search — job name only (toolbar input). */
   const [jobNameSearch, setJobNameSearch] = useState(() => searchParams.get('q')?.trim() || '')
-  const [jobNameFocused, setJobNameFocused] = useState(false)
-  const jobNameInputRef = useRef<HTMLInputElement>(null)
   const [filterOptions, setFilterOptions] = useState<JobFilterOptions>({
     titles: [],
     companies: [],
@@ -335,7 +333,7 @@ const Jobs = () => {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setDebouncedJobNameSearch(jobNameSearch)
-    }, 300)
+    }, 250)
     return () => window.clearTimeout(timer)
   }, [jobNameSearch])
 
@@ -1204,15 +1202,6 @@ const Jobs = () => {
   const uniqueJobTitles = filterOptions.titles
   const uniqueStatuses = filterOptions.statuses
 
-  // Toolbar quick-search typeahead. Same server-side facet lookup the filter panel uses.
-  const { options: jobNameSuggestions, searching: jobNameSearching } = useJobFacetSearch(
-    'title',
-    jobNameSearch,
-    filters.status,
-    listJobOrigin
-  )
-  const showJobNameSuggestions = jobNameFocused && jobNameSearch.trim().length > 0
-
   const { options: filteredJobTitles, searching: jobTitleSearching } = useJobFacetSearch(
     'title',
     searchJobTitle,
@@ -1413,56 +1402,14 @@ const Jobs = () => {
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5 sm:gap-2 items-center w-full sm:w-auto">
-                {/* Job name search + advanced filters drawer */}
-                <div className="relative flex-1 min-w-[10rem] sm:min-w-[12rem] sm:max-w-xs me-2">
-                  <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-defaulttextcolor/50 text-[0.875rem]" aria-hidden />
-                  <input
-                    ref={jobNameInputRef}
-                    type="search"
-                    className="form-control !h-8 !py-1 !ps-8 !pe-3 !text-[0.75rem] !rounded-lg w-full"
-                    placeholder="Search by job name…"
-                    value={jobNameSearch}
-                    autoComplete="off"
-                    aria-autocomplete="list"
-                    aria-label="Search by job name"
-                    onChange={(e) => setJobNameSearch(e.target.value)}
-                    onFocus={() => setJobNameFocused(true)}
-                    onBlur={() => setJobNameFocused(false)}
-                  />
-                  <PortalDropdown open={showJobNameSuggestions} inputRef={jobNameInputRef}>
-                    {jobNameSuggestions.length > 0 ? (
-                      jobNameSuggestions.map((title) => (
-                        <button
-                          key={title}
-                          type="button"
-                          role="option"
-                          aria-selected={jobNameSearch === title}
-                          className={`${DROPDOWN_ITEM} hover:bg-primary/10 dark:hover:bg-primary/15 ${
-                            jobNameSearch === title
-                              ? 'bg-primary/10 text-primary'
-                              : 'text-gray-800 dark:text-gray-200'
-                          }`}
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => {
-                            setJobNameSearch(title)
-                            setJobNameFocused(false)
-                          }}
-                        >
-                          <i className="ri-search-line text-[0.7rem] opacity-50" aria-hidden />
-                          <span className="min-w-0 flex-1 truncate">{title}</span>
-                        </button>
-                      ))
-                    ) : jobNameSearching ? (
-                      <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
-                        Searching&hellip;
-                      </div>
-                    ) : (
-                      <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
-                        No matches for &ldquo;{jobNameSearch.trim()}&rdquo;
-                      </div>
-                    )}
-                  </PortalDropdown>
-                </div>
+                {/* Job quick search (live type-ahead) + advanced filters drawer */}
+                <JobQuickSearch
+                  value={jobNameSearch}
+                  onChange={setJobNameSearch}
+                  status={filters.status}
+                  jobOrigin={listJobOrigin}
+                  loading={jobsListFetching}
+                />
                 <button
                   type="button"
                   className={`ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] me-2 whitespace-nowrap ${jobsFilterPanelOpen ? 'ring-2 ring-primary/30 bg-primary/[0.06]' : ''}`}
