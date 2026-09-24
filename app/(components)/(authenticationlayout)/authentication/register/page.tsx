@@ -9,8 +9,35 @@ import * as usersApi from "@/shared/lib/api/users";
 import { AxiosError } from "axios";
 import { AuthPageLayout } from "@/shared/components/auth-page-layout";
 import { AuthFormCard } from "@/shared/components/auth-form-card";
+import { AuthFieldError, AUTH_ERROR_COLOR } from "@/shared/components/auth-field-error";
+import { PublicApplyCaptcha } from "@/shared/components/ats/PublicApplyCaptcha";
+import { usePublicApplyCaptcha } from "@/shared/hooks/usePublicApplyCaptcha";
+import {
+  PASSWORD_HINT,
+  PASSWORD_MIN_LENGTH,
+  validateConfirmPassword,
+  validateEmail,
+  validateNewPassword,
+} from "@/shared/lib/auth-validation";
 
-const PASSWORD_MIN_LENGTH = 8;
+const FIELD_IDS = {
+  name: "register-name",
+  email: "register-email",
+  password: "register-password",
+  confirm: "register-confirm",
+} as const;
+type Field = keyof typeof FIELD_IDS;
+type Values = Record<Field, string>;
+const FIELDS = Object.keys(FIELD_IDS) as Field[];
+
+function validateField(field: Field, v: Values): string | null {
+  switch (field) {
+    case "name": return v.name.trim() ? null : "Full name is required.";
+    case "email": return validateEmail(v.email);
+    case "password": return validateNewPassword(v.password);
+    case "confirm": return validateConfirmPassword(v.password, v.confirm);
+  }
+}
 
 function getErrorMessage(err: unknown): string {
   if (err instanceof AxiosError) {
@@ -30,24 +57,70 @@ export default function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<Field, string | null>>>({});
+  const values: Values = { name, email, password, confirm: confirmPassword };
+  const {
+    config: captchaConfig,
+    ensureCaptchaReady,
+    setCaptchaToken,
+    registerCaptchaReset,
+    finalizeProtectedAttempt,
+    handleCaptchaApiError,
+    captchaRetryMessage,
+  } = usePublicApplyCaptcha();
+
+  /** Once a field shows an error, re-check it as the user types so it clears the moment it's fixed. */
+  const onFieldChange = (field: Field, value: string, set: (v: string) => void) => {
+    set(value);
+    setError("");
+    const next = { ...values, [field]: value };
+    setFieldErrors((p) => {
+      const out = { ...p };
+      if (p[field]) out[field] = validateField(field, next);
+      if (field === "password" && p.confirm) out.confirm = validateField("confirm", next);
+      return out;
+    });
+  };
+
+  /** Validate on blur, but don't flag an empty field the user merely tabbed past. */
+  const onFieldBlur = (field: Field, e: React.FocusEvent<HTMLInputElement>, baseColor: string) => {
+    const msg = values[field] ? validateField(field, values) : null;
+    e.target.style.borderColor = msg ? AUTH_ERROR_COLOR : baseColor;
+    setFieldErrors((p) => ({ ...p, [field]: msg }));
+  };
+
+  const fieldA11y = (field: Field) => ({
+    "aria-invalid": Boolean(fieldErrors[field]),
+    "aria-describedby": fieldErrors[field] ? `${FIELD_IDS[field]}-error` : undefined,
+  });
+  const borderColor = (field: Field, base: string) => (fieldErrors[field] ? AUTH_ERROR_COLOR : base);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    const next = Object.fromEntries(FIELDS.map((f) => [f, validateField(f, values)])) as Record<Field, string | null>;
+    setFieldErrors(next);
+    const firstInvalid = FIELDS.find((f) => next[f]);
+    if (firstInvalid) {
+      document.getElementById(FIELD_IDS[firstInvalid])?.focus();
+      return;
+    }
+    const captchaError = ensureCaptchaReady();
+    if (captchaError) {
+      // The hook's default copy is written for the apply form (resume/application).
+      setError(captchaConfig.misconfigured ? captchaError : "Complete the security check before registering.");
+      return;
+    }
     const trimmedName = name.trim();
     const trimmedEmail = email.trim().toLowerCase();
-    if (!trimmedName) { setError("Full name is required."); return; }
-    if (!trimmedEmail) { setError("Email is required."); return; }
-    if (password.length < PASSWORD_MIN_LENGTH) { setError("Password must be at least 8 characters."); return; }
-    if (!/[a-zA-Z]/.test(password) || !/\d/.test(password)) { setError("Password must contain at least 1 letter and 1 number."); return; }
-    if (password !== confirmPassword) { setError("Passwords do not match."); return; }
     setLoading(true);
     try {
       const res = await usersApi.publicRegisterUser({ name: trimmedName, email: trimmedEmail, password });
       router.push(`${ROUTES.signIn}?registered=1&message=${encodeURIComponent(res.message ?? "Registration successful.")}`);
     } catch (err) {
-      setError(getErrorMessage(err));
+      setError(handleCaptchaApiError(err) ? captchaRetryMessage : getErrorMessage(err));
     } finally {
+      finalizeProtectedAttempt();
       setLoading(false);
     }
   };
@@ -114,6 +187,7 @@ export default function RegisterPage() {
 
               <form
                 onSubmit={handleSubmit}
+                noValidate
                 style={{
                   display: "flex",
                   flexDirection: "column",
@@ -144,14 +218,15 @@ export default function RegisterPage() {
                       id="register-name"
                       placeholder="Jane Doe"
                       value={name}
-                      onChange={(e) => { setName(e.target.value); setError(""); }}
+                      onChange={(e) => onFieldChange("name", e.target.value, setName)}
                       autoComplete="name"
                       required
+                      {...fieldA11y("name")}
                       className="w-full max-w-full"
                       style={{
                         height: 48,
                         padding: "12px 16px",
-                        border: "1px solid #D0D5DD",
+                        border: `1px solid ${borderColor("name", "#D0D5DD")}`,
                         borderRadius: 8,
                         fontSize: 14,
                         fontWeight: 400,
@@ -161,8 +236,9 @@ export default function RegisterPage() {
                         boxSizing: "border-box",
                       }}
                       onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
-                      onBlur={(e) => { e.target.style.borderColor = "#D0D5DD"; }}
+                      onBlur={(e) => onFieldBlur("name", e, "#D0D5DD")}
                     />
+                    <AuthFieldError id="register-name-error" message={fieldErrors.name} />
                   </div>
 
                   {/* Frame 26: Email */}
@@ -175,14 +251,16 @@ export default function RegisterPage() {
                       id="register-email"
                       placeholder="you@example.com"
                       value={email}
-                      onChange={(e) => { setEmail(e.target.value); setError(""); }}
+                      onChange={(e) => onFieldChange("email", e.target.value, setEmail)}
                       autoComplete="email"
+                      inputMode="email"
                       required
+                      {...fieldA11y("email")}
                       className="w-full max-w-full"
                       style={{
                         height: 48,
                         padding: "12px 16px",
-                        border: "3px solid #D1E9FF",
+                        border: `3px solid ${borderColor("email", "#D1E9FF")}`,
                         borderRadius: 8,
                         fontSize: 14,
                         fontWeight: 400,
@@ -192,8 +270,9 @@ export default function RegisterPage() {
                         boxSizing: "border-box",
                       }}
                       onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
-                      onBlur={(e) => { e.target.style.borderColor = "#D1E9FF"; }}
+                      onBlur={(e) => onFieldBlur("email", e, "#D1E9FF")}
                     />
+                    <AuthFieldError id="register-email-error" message={fieldErrors.email} />
                   </div>
 
                   {/* Frame 26: Password */}
@@ -207,15 +286,16 @@ export default function RegisterPage() {
                         id="register-password"
                         placeholder="Min 8 characters"
                         value={password}
-                        onChange={(e) => { setPassword(e.target.value); setError(""); }}
+                        onChange={(e) => onFieldChange("password", e.target.value, setPassword)}
                         autoComplete="new-password"
                         minLength={PASSWORD_MIN_LENGTH}
                         required
+                        {...fieldA11y("password")}
                         className="w-full max-w-full"
                         style={{
                           height: 48,
                           padding: "12px 48px 12px 16px",
-                          border: "1px solid #D0D5DD",
+                          border: `1px solid ${borderColor("password", "#D0D5DD")}`,
                           borderRadius: 8,
                           fontSize: 14,
                           fontWeight: 400,
@@ -225,7 +305,7 @@ export default function RegisterPage() {
                           boxSizing: "border-box",
                         }}
                         onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
-                        onBlur={(e) => { e.target.style.borderColor = "#D0D5DD"; }}
+                        onBlur={(e) => onFieldBlur("password", e, "#D0D5DD")}
                       />
                       <button
                         type="button"
@@ -248,7 +328,8 @@ export default function RegisterPage() {
                         <EyeIcon visible={showPassword} />
                       </button>
                     </div>
-                    <p style={{ fontSize: 12, color: "#98A2B3", margin: 0 }}>At least 8 characters, 1 letter and 1 number.</p>
+                    <p style={{ fontSize: 12, color: "#667085", margin: 0 }}>{PASSWORD_HINT}</p>
+                    <AuthFieldError id="register-password-error" message={fieldErrors.password} />
                   </div>
 
                   {/* Frame 26: Confirm Password */}
@@ -262,14 +343,15 @@ export default function RegisterPage() {
                         id="register-confirm"
                         placeholder="Re-enter password"
                         value={confirmPassword}
-                        onChange={(e) => { setConfirmPassword(e.target.value); setError(""); }}
+                        onChange={(e) => onFieldChange("confirm", e.target.value, setConfirmPassword)}
                         autoComplete="new-password"
                         required
+                        {...fieldA11y("confirm")}
                         className="w-full max-w-full"
                         style={{
                           height: 48,
                           padding: "12px 48px 12px 16px",
-                          border: "1px solid #D0D5DD",
+                          border: `1px solid ${borderColor("confirm", "#D0D5DD")}`,
                           borderRadius: 8,
                           fontSize: 14,
                           fontWeight: 400,
@@ -279,7 +361,7 @@ export default function RegisterPage() {
                           boxSizing: "border-box",
                         }}
                         onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
-                        onBlur={(e) => { e.target.style.borderColor = "#D0D5DD"; }}
+                        onBlur={(e) => onFieldBlur("confirm", e, "#D0D5DD")}
                       />
                       <button
                         type="button"
@@ -302,8 +384,11 @@ export default function RegisterPage() {
                         <EyeIcon visible={showConfirmPassword} />
                       </button>
                     </div>
+                    <AuthFieldError id="register-confirm-error" message={fieldErrors.confirm} />
                   </div>
                 </div>
+
+                <PublicApplyCaptcha onTokenChange={setCaptchaToken} onRegisterReset={registerCaptchaReset} />
 
                 {/* Frame 30: Button + Sign in link - gap 24px */}
                 <div

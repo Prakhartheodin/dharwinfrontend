@@ -10,6 +10,8 @@ import { AxiosError } from "axios";
 import Swal from "sweetalert2";
 import { AuthPageLayout } from "@/shared/components/auth-page-layout";
 import { AuthFormCard } from "@/shared/components/auth-form-card";
+import { AuthFieldError, AUTH_ERROR_COLOR } from "@/shared/components/auth-field-error";
+import { PASSWORD_HINT, validateConfirmPassword, validateEmail, validateNewPassword } from "@/shared/lib/auth-validation";
 
 export default function ResetPasswordPage() {
   const searchParams = useSearchParams();
@@ -27,6 +29,7 @@ export default function ResetPasswordPage() {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string | null; password?: string | null; confirm?: string | null }>({});
 
   useEffect(() => {
     if (cooldownSeconds <= 0) return;
@@ -40,7 +43,9 @@ export default function ResetPasswordPage() {
     e.preventDefault();
     setError(""); setSuccess("");
     const trimmedEmail = email.trim();
-    if (!trimmedEmail) { setError("Email is required."); return; }
+    const emailError = validateEmail(email);
+    setFieldErrors({ email: emailError });
+    if (emailError) { document.getElementById("forgot-email")?.focus(); return; }
     setLoading(true);
     try {
       await authApi.forgotPassword({ email: trimmedEmail });
@@ -62,10 +67,10 @@ export default function ResetPasswordPage() {
   const handleResetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(""); setSuccess("");
-    if (!password || !confirmPassword) { setError("Please enter and confirm your new password."); return; }
-    if (password !== confirmPassword) { setError("Passwords do not match."); return; }
-    if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
-      setError("Password must be at least 8 characters long and include at least one letter and one number.");
+    const next = { password: validateNewPassword(password), confirm: validateConfirmPassword(password, confirmPassword) };
+    setFieldErrors(next);
+    if (next.password || next.confirm) {
+      document.getElementById(next.password ? "reset-password" : "reset-confirm")?.focus();
       return;
     }
     setLoading(true);
@@ -182,6 +187,7 @@ export default function ResetPasswordPage() {
 
               <form
                 onSubmit={onSubmit}
+                noValidate
                 style={{
                   display: "flex",
                   flexDirection: "column",
@@ -213,14 +219,20 @@ export default function ResetPasswordPage() {
                         id="forgot-email"
                         placeholder="email@example.com"
                         value={email}
-                        onChange={(e) => { setEmail(e.target.value); setError(""); setSuccess(""); }}
+                        onChange={(e) => {
+                          setEmail(e.target.value); setError(""); setSuccess("");
+                          if (fieldErrors.email) setFieldErrors((p) => ({ ...p, email: validateEmail(e.target.value) }));
+                        }}
                         autoComplete="email"
+                        inputMode="email"
                         required
+                        aria-invalid={Boolean(fieldErrors.email)}
+                        aria-describedby={fieldErrors.email ? "forgot-email-error" : undefined}
                         className="w-full max-w-full"
                         style={{
                           height: 48,
                           padding: "12px 16px",
-                          border: "3px solid #D1E9FF",
+                          border: `3px solid ${fieldErrors.email ? AUTH_ERROR_COLOR : "#D1E9FF"}`,
                           borderRadius: 8,
                           fontSize: 14,
                           fontWeight: 400,
@@ -230,8 +242,13 @@ export default function ResetPasswordPage() {
                           boxSizing: "border-box",
                         }}
                         onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
-                        onBlur={(e) => { e.target.style.borderColor = "#D1E9FF"; }}
+                        onBlur={(e) => {
+                          const msg = e.target.value.trim() ? validateEmail(e.target.value) : null;
+                          e.target.style.borderColor = msg ? AUTH_ERROR_COLOR : "#D1E9FF";
+                          setFieldErrors((p) => ({ ...p, email: msg }));
+                        }}
                       />
+                      <AuthFieldError id="forgot-email-error" message={fieldErrors.email} />
                     </div>
                   )}
 
@@ -248,14 +265,24 @@ export default function ResetPasswordPage() {
                             id="reset-password"
                             placeholder="New password"
                             value={password}
-                            onChange={(e) => { setPassword(e.target.value); setError(""); setSuccess(""); }}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setPassword(v); setError(""); setSuccess("");
+                              setFieldErrors((p) => ({
+                                ...p,
+                                password: p.password ? validateNewPassword(v) : p.password,
+                                confirm: p.confirm ? validateConfirmPassword(v, confirmPassword) : p.confirm,
+                              }));
+                            }}
                             autoComplete="new-password"
                             required
+                            aria-invalid={Boolean(fieldErrors.password)}
+                            aria-describedby={fieldErrors.password ? "reset-password-error" : undefined}
                             className="w-full max-w-full"
                             style={{
                               height: 48,
                               padding: "12px 48px 12px 16px",
-                              border: "1px solid #D0D5DD",
+                              border: `1px solid ${fieldErrors.password ? AUTH_ERROR_COLOR : "#D0D5DD"}`,
                               borderRadius: 8,
                               fontSize: 14,
                               fontWeight: 400,
@@ -265,7 +292,11 @@ export default function ResetPasswordPage() {
                               boxSizing: "border-box",
                             }}
                             onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
-                            onBlur={(e) => { e.target.style.borderColor = "#D0D5DD"; }}
+                            onBlur={(e) => {
+                              const msg = e.target.value ? validateNewPassword(e.target.value) : null;
+                              e.target.style.borderColor = msg ? AUTH_ERROR_COLOR : "#D0D5DD";
+                              setFieldErrors((p) => ({ ...p, password: msg }));
+                            }}
                           />
                           <button
                             type="button"
@@ -288,7 +319,8 @@ export default function ResetPasswordPage() {
                             <EyeIcon visible={showPassword} />
                           </button>
                         </div>
-                        <p style={{ fontSize: 12, color: "#98A2B3", margin: 0 }}>At least 8 characters, 1 letter and 1 number.</p>
+                        <p style={{ fontSize: 12, color: "#667085", margin: 0 }}>{PASSWORD_HINT}</p>
+                        <AuthFieldError id="reset-password-error" message={fieldErrors.password} />
                       </div>
 
                       <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
@@ -301,14 +333,20 @@ export default function ResetPasswordPage() {
                             id="reset-confirm"
                             placeholder="Confirm password"
                             value={confirmPassword}
-                            onChange={(e) => { setConfirmPassword(e.target.value); setError(""); setSuccess(""); }}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setConfirmPassword(v); setError(""); setSuccess("");
+                              if (fieldErrors.confirm) setFieldErrors((p) => ({ ...p, confirm: validateConfirmPassword(password, v) }));
+                            }}
                             autoComplete="new-password"
                             required
+                            aria-invalid={Boolean(fieldErrors.confirm)}
+                            aria-describedby={fieldErrors.confirm ? "reset-confirm-error" : undefined}
                             className="w-full max-w-full"
                             style={{
                               height: 48,
                               padding: "12px 48px 12px 16px",
-                              border: "1px solid #D0D5DD",
+                              border: `1px solid ${fieldErrors.confirm ? AUTH_ERROR_COLOR : "#D0D5DD"}`,
                               borderRadius: 8,
                               fontSize: 14,
                               fontWeight: 400,
@@ -318,7 +356,11 @@ export default function ResetPasswordPage() {
                               boxSizing: "border-box",
                             }}
                             onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
-                            onBlur={(e) => { e.target.style.borderColor = "#D0D5DD"; }}
+                            onBlur={(e) => {
+                              const msg = e.target.value ? validateConfirmPassword(password, e.target.value) : null;
+                              e.target.style.borderColor = msg ? AUTH_ERROR_COLOR : "#D0D5DD";
+                              setFieldErrors((p) => ({ ...p, confirm: msg }));
+                            }}
                           />
                           <button
                             type="button"
@@ -341,6 +383,7 @@ export default function ResetPasswordPage() {
                             <EyeIcon visible={showConfirmPassword} />
                           </button>
                         </div>
+                        <AuthFieldError id="reset-confirm-error" message={fieldErrors.confirm} />
                       </div>
                     </>
                   )}

@@ -12,6 +12,8 @@ import { consumeCandidateResignedRedirect } from "@/shared/lib/api/client";
 import { AuthPageLayout } from "@/shared/components/auth-page-layout";
 import { AuthFormCard } from "@/shared/components/auth-form-card";
 import { getSafePostLoginPath } from "@/shared/lib/jobReferralRef";
+import { validateEmail, validateLoginPassword } from "@/shared/lib/auth-validation";
+import { AuthFieldError, AUTH_ERROR_COLOR } from "@/shared/components/auth-field-error";
 
 const RESIGNED_POPUP = {
   title: "Cannot sign in",
@@ -38,6 +40,7 @@ export default function SignInPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string | null; password?: string | null }>({});
   const { login, isLoading } = useAuth();
 
   useEffect(() => {
@@ -54,8 +57,10 @@ export default function SignInPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (!email.trim() || !password) {
-      setError("Email and password are required.");
+    const next = { email: validateEmail(email), password: validateLoginPassword(password) };
+    setFieldErrors(next);
+    if (next.email || next.password) {
+      document.getElementById(next.email ? "signin-email" : "signin-password")?.focus();
       return;
     }
     try {
@@ -148,6 +153,7 @@ export default function SignInPage() {
 
               <form
                 onSubmit={handleSubmit}
+                noValidate
                 style={{
                   display: "flex",
                   flexDirection: "column",
@@ -178,14 +184,20 @@ export default function SignInPage() {
                     id="signin-email"
                     placeholder="baiamia@gmail.com"
                     value={email}
-                    onChange={(e) => { setEmail(e.target.value); setError(""); }}
+                    onChange={(e) => {
+                      setEmail(e.target.value); setError("");
+                      if (fieldErrors.email) setFieldErrors((p) => ({ ...p, email: validateEmail(e.target.value) }));
+                    }}
                     autoComplete="email"
+                    inputMode="email"
                     required
+                    aria-invalid={Boolean(fieldErrors.email)}
+                    aria-describedby={fieldErrors.email ? "signin-email-error" : undefined}
                     className="w-full max-w-full"
                     style={{
                       height: 48,
                       padding: "12px 16px",
-                      border: "3px solid #D1E9FF",
+                      border: `3px solid ${fieldErrors.email ? AUTH_ERROR_COLOR : "#D1E9FF"}`,
                       borderRadius: 8,
                       fontSize: 14,
                       fontWeight: 400,
@@ -195,8 +207,13 @@ export default function SignInPage() {
                       boxSizing: "border-box",
                     }}
                     onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
-                    onBlur={(e) => { e.target.style.borderColor = "#D1E9FF"; }}
+                    onBlur={(e) => {
+                      const msg = e.target.value.trim() ? validateEmail(e.target.value) : null;
+                      e.target.style.borderColor = msg ? AUTH_ERROR_COLOR : "#D1E9FF";
+                      setFieldErrors((p) => ({ ...p, email: msg }));
+                    }}
                   />
+                  <AuthFieldError id="signin-email-error" message={fieldErrors.email} />
                   </div>
 
                   {/* Frame 28: Password - gap 12px */}
@@ -215,14 +232,19 @@ export default function SignInPage() {
                       id="signin-password"
                       placeholder="Enter your password"
                       value={password}
-                      onChange={(e) => { setPassword(e.target.value); setError(""); }}
+                      onChange={(e) => {
+                        setPassword(e.target.value); setError("");
+                        if (fieldErrors.password) setFieldErrors((p) => ({ ...p, password: validateLoginPassword(e.target.value) }));
+                      }}
                       autoComplete="current-password"
                       required
+                      aria-invalid={Boolean(fieldErrors.password)}
+                      aria-describedby={fieldErrors.password ? "signin-password-error" : undefined}
                       className="w-full max-w-full"
                       style={{
                         height: 48,
                         padding: "12px 48px 12px 16px",
-                        border: "1px solid #D0D5DD",
+                        border: `1px solid ${fieldErrors.password ? AUTH_ERROR_COLOR : "#D0D5DD"}`,
                         borderRadius: 8,
                         fontSize: 14,
                         fontWeight: 400,
@@ -232,7 +254,7 @@ export default function SignInPage() {
                         boxSizing: "border-box",
                       }}
                       onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
-                      onBlur={(e) => { e.target.style.borderColor = "#D0D5DD"; }}
+                      onBlur={(e) => { e.target.style.borderColor = fieldErrors.password ? AUTH_ERROR_COLOR : "#D0D5DD"; }}
                     />
                     <button
                       type="button"
@@ -268,6 +290,7 @@ export default function SignInPage() {
                       </svg>
                     </button>
                     </div>
+                    <AuthFieldError id="signin-password-error" message={fieldErrors.password} />
                   </div>
                 </div>
 

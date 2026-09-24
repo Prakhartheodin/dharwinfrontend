@@ -224,10 +224,26 @@ export async function registerUser(payload: RegisterUserPayload): Promise<AuthRe
   }
 }
 
+function publicCandidateRegistrationHeaders(): Record<string, string> {
+  const captcha = getOptionalCaptchaToken();
+  return captcha ? { "x-captcha-token": captcha } : {};
+}
+
+function releaseCaptchaTokenIfSent(headers: Record<string, string>): void {
+  if (headers["x-captcha-token"]) {
+    consumeCaptchaToken();
+  }
+}
+
 /** Public registration – POST /v1/public/register. No auth required; user created with status pending. */
 export async function publicRegisterUser(payload: PublicRegisterPayload): Promise<PublicRegisterResponse> {
-  const { data } = await apiClient.post<PublicRegisterResponse>(AUTH_ENDPOINTS.publicRegister, payload);
-  return data;
+  const headers = publicCandidateRegistrationHeaders();
+  try {
+    const { data } = await apiClient.post<PublicRegisterResponse>(AUTH_ENDPOINTS.publicRegister, payload, { headers });
+    return data;
+  } finally {
+    releaseCaptchaTokenIfSent(headers);
+  }
 }
 
 export type PublicCandidateRegistrationExtras = {
@@ -277,17 +293,6 @@ export interface PublicRegisterCandidateResponse {
   user: User;
   candidate: { _id: string; fullName: string; email: string; [key: string]: unknown };
   message: string;
-}
-
-function publicCandidateRegistrationHeaders(): Record<string, string> {
-  const captcha = getOptionalCaptchaToken();
-  return captcha ? { "x-captcha-token": captcha } : {};
-}
-
-function releaseCaptchaTokenIfSent(headers: Record<string, string>): void {
-  if (headers["x-captcha-token"]) {
-    consumeCaptchaToken();
-  }
 }
 
 /** Public candidate onboarding – POST /v1/public/register-candidate. Creates User (pending) + Candidate so they appear in ATS list. */
