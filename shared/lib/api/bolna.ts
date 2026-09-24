@@ -57,6 +57,14 @@ export type CallVerification = {
     | "voicemail"
     | "no_data"
     | null;
+  /** LLM reading of the scheduling step. `CallRecord.interviewSlot` is the authoritative booking. */
+  interviewSlotOutcome?:
+    | "held"
+    | "declined"
+    | "wants_link"
+    | "no_slots"
+    | "not_offered"
+    | null;
   minConfidence?: number | null;
   fieldsPresent?: number;
   extractedAt?: string | null;
@@ -66,6 +74,21 @@ export type CallQuality = {
   status?: "ok" | "needs_review";
   reasons?: string[];
   evaluatedAt?: string | null;
+};
+
+/** Latest interview hold created from this call (backend-attached; null when none). */
+export type CallInterviewSlot = {
+  holdId: string;
+  status: "held" | "approving" | "approved" | "rejected" | "expired" | "cancelled";
+  start: string;
+  durationMinutes: number;
+  candidateTimezone?: string | null;
+  interviewerName?: string | null;
+  /** Meeting _id once approved. */
+  meetingId?: string | null;
+  expiresAt?: string | null;
+  rejectReason?: string | null;
+  source?: "ai_call" | "link";
 };
 
 /** The three call categories the backend classifies into. */
@@ -109,6 +132,9 @@ export type CallRecord = {
   displayName?: string | null;
   verification?: CallVerification;
   callQuality?: CallQuality;
+  interviewSlot?: CallInterviewSlot | null;
+  /** Set when the fallback interview booking-link email went out for this call. */
+  bookingLinkSentAt?: string | null;
   /**
    * Twilio Conversational Intelligence (dialer calls). Stripped by the backend
    * when the viewer lacks the Call AI permission — absence hides the UI.

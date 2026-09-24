@@ -9,6 +9,7 @@ import Swal from 'sweetalert2'
 import TiptapEditor from '@/shared/data/forms/form-editors/tiptapeditor'
 import { createJob, createJobTemplate, getJobTemplate, listJobTemplates, COMPANY_SIZE_BUCKETS, type CreateJobPayload, type InterviewRoundPlanRow } from '@/shared/lib/api/jobs'
 import JobRoundPlanSection from '@/shared/components/interview/JobRoundPlanSection'
+import InterviewerPoolSelect from '@/shared/components/interview/InterviewerPoolSelect'
 import { ROUTES } from '@/shared/lib/constants'
 import { normalizeTipTapHtmlFromApi } from '@/shared/lib/tiptapHtml'
 import { resolveTemplateVars, type TemplateVarContext } from '@/shared/lib/ats/templateVars'
@@ -31,6 +32,7 @@ const CreateJob = () => {
   const [requirements, setRequirements] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [interviewRounds, setInterviewRounds] = useState<InterviewRoundPlanRow[]>([])
+  const [interviewerPool, setInterviewerPool] = useState<string[]>([])
   const [roundPlanErrorMsg, setRoundPlanErrorMsg] = useState<string | null>(null)
   
   // Form state
@@ -344,6 +346,7 @@ const CreateJob = () => {
         // a write the backend gates on interview access, and a job-only user creating an
         // ordinary job must not hit a 403 for a section they never touched (audit J11).
         ...(interviewRounds.length ? { interviewRounds } : {}),
+        ...(interviewerPool.length ? { interviewerPool } : {}),
       }
       await createJob(payload)
       await Swal.fire({ icon: 'success', title: 'Job Created', text: 'The job has been created successfully.' })
@@ -894,6 +897,8 @@ const CreateJob = () => {
                   onChange={setInterviewRounds}
                   onValidityChange={setRoundPlanErrorMsg}
                 />
+
+                <InterviewerPoolSelect value={interviewerPool} onChange={setInterviewerPool} />
 
                 {/* Form Actions */}
                 <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-gray-200 dark:border-defaultborder/10">

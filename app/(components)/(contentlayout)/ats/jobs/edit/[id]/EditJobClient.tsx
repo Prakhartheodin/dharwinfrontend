@@ -18,6 +18,7 @@ import {
   type InterviewRoundPlanRow,
 } from '@/shared/lib/api/jobs'
 import JobRoundPlanSection from '@/shared/components/interview/JobRoundPlanSection'
+import InterviewerPoolSelect from '@/shared/components/interview/InterviewerPoolSelect'
 import { ROUTES } from '@/shared/lib/constants'
 import { normalizeTipTapHtmlFromApi } from '@/shared/lib/tiptapHtml'
 import { YmdFilterDateInput } from '@/shared/components/filters/YmdFilterDateInput'
@@ -113,6 +114,8 @@ export default function EditJobClient() {
   const [requirements, setRequirements] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [interviewRounds, setInterviewRounds] = useState<InterviewRoundPlanRow[]>([])
+  const [interviewerPool, setInterviewerPool] = useState<string[]>([])
+  const [loadedInterviewerPool, setLoadedInterviewerPool] = useState<string[]>([])
   const [loadedInterviewRounds, setLoadedInterviewRounds] = useState<InterviewRoundPlanRow[]>([])
   const [roundPlanErrorMsg, setRoundPlanErrorMsg] = useState<string | null>(null)
   const [hasLegacyRubrics, setHasLegacyRubrics] = useState(false)
@@ -320,6 +323,13 @@ export default function EditJobClient() {
           education: '',
         })
         setInterviewRounds(job.interviewRounds ?? [])
+        {
+          const pool = (job.interviewerPool ?? [])
+            .map((p) => (typeof p === 'string' ? p : String(p?._id ?? p?.id ?? '')))
+            .filter(Boolean)
+          setInterviewerPool(pool)
+          setLoadedInterviewerPool(pool)
+        }
         setLoadedInterviewRounds(job.interviewRounds ?? [])
         setHasLegacyRubrics((job.rubricAssignments?.length ?? 0) > 0)
         // Decode entity-encoded payloads (xss-clean middleware may return `&lt;p&gt;…`)
@@ -496,6 +506,7 @@ export default function EditJobClient() {
         // is sent — unlike on create. Skipped when unchanged, so a plain title edit does not
         // need interview access (audit J11).
         ...(roundsChanged ? { interviewRounds } : {}),
+        ...(JSON.stringify(interviewerPool) !== JSON.stringify(loadedInterviewerPool) ? { interviewerPool } : {}),
       }
       await updateJob(jobId, payload)
       await Swal.fire({ icon: 'success', title: 'Job Updated', text: 'The job has been updated successfully.' })
@@ -983,6 +994,7 @@ export default function EditJobClient() {
                     jobId={jobId}
                     onValidityChange={setRoundPlanErrorMsg}
                   />
+                  <InterviewerPoolSelect value={interviewerPool} onChange={setInterviewerPool} />
                   <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-gray-200 dark:border-defaultborder/10">
                     <Link href="/ats/jobs" className="ti-btn ti-btn-secondary">
                       Cancel

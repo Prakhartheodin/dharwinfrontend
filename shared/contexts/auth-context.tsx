@@ -161,6 +161,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (normalized.startsWith("/join/room")) {
         return;
       }
+      // Public interview booking: an expired link 401s, which must show the page's own state, not sign-in.
+      if (normalized.startsWith("/book-interview")) {
+        return;
+      }
       // Public job portal: /public-job and /public-job/[jobId] — no login required
       if (normalized.startsWith("/public-job")) {
         return;

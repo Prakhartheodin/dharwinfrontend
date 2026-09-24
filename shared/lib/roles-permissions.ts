@@ -21,6 +21,7 @@ export const PERMISSION_SECTIONS: {
       { id: "roles", label: "User Roles" },
       { id: "users", label: "Users" },
       { id: "personal-information", label: "Personal Information" },
+      { id: "interview-availability", label: "Interview Availability" },
       { id: "attendance", label: "Attendance" },
       { id: "agents", label: "Agents" },
       { id: "company-email", label: "Company work email" },

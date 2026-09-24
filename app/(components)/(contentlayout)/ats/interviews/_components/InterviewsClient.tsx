@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/shared/contexts/auth-context'
+import PendingApprovalsPanel from './PendingApprovalsPanel'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 import { buildInterviewJoinUrl } from '@/shared/lib/join-room-url'
 import { useTable, useSortBy } from 'react-table'
@@ -2327,6 +2328,7 @@ export default function InterviewsClient() {
   return (
     <Fragment>
       <Seo title="Interviews" />
+      <PendingApprovalsPanel onDecided={() => void refreshMeetingsList()} />
 
 <div className="interviews-page-shell mt-2 sm:mt-4 grid grid-cols-12 gap-3 sm:gap-4 w-full min-w-0 max-w-full overflow-x-hidden lg:gap-6">
         <div className="xl:col-span-12 col-span-12 h-full min-w-0 flex flex-col">

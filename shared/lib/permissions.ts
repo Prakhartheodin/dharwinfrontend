@@ -62,6 +62,20 @@ export const ACTION_PERMISSIONS: Record<string, ActionRule> = Object.freeze({
     anyOf: ["create", "edit", "delete"],
   },
 
+  /**
+   * Settings → Interview Availability (own weekly hours the AI agent books into).
+   * View = open the page; create/edit = save. Editing other people's hours stays on
+   * interview write access (manage_interview_rubrics) or Administrator.
+   */
+  view_interview_availability: {
+    prefixes: ["settings.interview-availability"],
+    anyOf: ["view", "create", "edit", "delete"],
+  },
+  manage_interview_availability: {
+    prefixes: ["settings.interview-availability"],
+    anyOf: ["create", "edit"],
+  },
+
   // ATS Candidates (legacy pipeline / referral)
   view_candidates: { prefixes: ["ats.candidates"], anyOf: ["view", "create", "edit", "delete"] },
   manage_candidates: { prefixes: ["ats.candidates"], anyOf: ["create", "edit", "delete"] },

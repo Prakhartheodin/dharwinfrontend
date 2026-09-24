@@ -91,6 +91,8 @@ export interface Job {
   rubricAssignments?: RubricAssignment[];
   /** Ordered interview round plan. Empty/absent = no fixed sequence. */
   interviewRounds?: InterviewRoundPlanRow[];
+  /** Users the AI scheduler may book interviews with (ids on write; ids or populated users on read). */
+  interviewerPool?: Array<string | { _id?: string; id?: string }>;
 }
 
 export function isExternalJob(job: { jobOrigin?: string }): boolean {
@@ -236,6 +238,7 @@ export interface CreateJobPayload {
   /** This job's interview rubrics. Empty/absent = inherit the global rubric. */
   rubricAssignments?: RubricAssignment[];
   interviewRounds?: InterviewRoundPlanRow[];
+  interviewerPool?: string[];
 }
 
 export async function createJob(payload: CreateJobPayload): Promise<Job> {
@@ -260,6 +263,7 @@ export interface UpdateJobPayload {
   /** This job's interview rubrics. Empty/absent = inherit the global rubric. */
   rubricAssignments?: RubricAssignment[];
   interviewRounds?: InterviewRoundPlanRow[];
+  interviewerPool?: string[];
 }
 
 export async function updateJob(id: string, payload: UpdateJobPayload): Promise<Job> {

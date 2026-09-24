@@ -20,7 +20,12 @@ import {
   setupCandidateVerificationExtractions,
   type CallRecord,
 } from "@/shared/lib/api/bolna";
-import CallVerificationPanel, { CallQualityBadge, hasReviewableSummary } from "./_components/CallVerificationPanel";
+import CallVerificationPanel, {
+  CallQualityBadge,
+  hasInterviewBooking,
+  hasReviewableSummary,
+  InterviewSlotSection,
+} from "./_components/CallVerificationPanel";
 import CallRecordings from "./_components/CallRecordings";
 import InlineRecordingPlayer from "./_components/InlineRecordingPlayer";
 import CallAnnotations from "./_components/CallAnnotations";
@@ -114,6 +119,7 @@ function getTelephonyCategoryLabel(record: CallRecord): CallCategoryLabel {
 
 function shouldShowVerificationPanel(record: CallRecord): boolean {
   if (record.verification) return true;
+  if (hasInterviewBooking(record)) return true;
   if (readBolnaCallSummary(record.extractedData)) return true;
   // Only treat needs_review as panel-worthy when there's actual summary data to review;
   // pre-feature calls carry needs_review but have no verification/summary fields.
@@ -1236,8 +1242,9 @@ const Calling = () => {
                     </div>
                   ) : null}
                   {(() => {
-                    if (!canViewAi) return null;
                     const rec = selectedCall.data as CallRecord;
+                    // The booking is not AI data — show it even without the Call AI toggle.
+                    if (!canViewAi) return <InterviewSlotSection record={rec} />;
                     const known = shouldShowVerificationPanel(rec);
                     // Mount for any telephony call with an executionId: the panel refreshes
                     // from Bolna on open, then reveals itself if data shows up (fixes the

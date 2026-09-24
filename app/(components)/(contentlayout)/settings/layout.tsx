@@ -25,6 +25,7 @@ function getActiveTab(
   | "candidate-sop"
   | "offboarding-sop"
   | "personal-information"
+  | "interview-availability"
   | "email-templates"
   | "job-templates"
   | "email-templates-admin"
@@ -41,6 +42,7 @@ function getActiveTab(
   if (pathname.startsWith("/settings/email-templates")) return "email-templates";
   if (pathname.startsWith("/settings/job-templates")) return "job-templates";
   if (pathname.startsWith("/settings/personal-information")) return "personal-information";
+  if (pathname.startsWith("/settings/interview-availability")) return "interview-availability";
   return null;
 }
 
@@ -182,6 +184,10 @@ export default function SettingsLayout({
         ? hasSettingsFeatureAccess(raw, "email-templates-admin")
         : isAdministrator || hasSettingsFeatureAccess(raw, "email-templates-admin");
       if (!can) router.replace(ROUTES.settingsPersonalInfo);
+    } else if (activeTab === "interview-availability") {
+      // New feature: gated strictly on the matrix row, no legacy fallback.
+      const can = isPlatformSuperUser || isAdministrator || hasSettingsFeatureAccess(raw, "interview-availability");
+      if (!can) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "company-email") {
       const can = matrixMode
         ? hasSettingsFeatureAccess(raw, "company-email") || hasSettingsFeatureAccess(raw, "company-number")
@@ -221,6 +227,7 @@ export default function SettingsLayout({
       | "candidate-sop"
       | "offboarding-sop"
       | "personal-information"
+      | "interview-availability"
       | "email-templates"
       | "job-templates"
       | "email-templates-admin"
@@ -274,6 +281,8 @@ export default function SettingsLayout({
   const showJobTemplatesTab = settingsMatrixMode
     ? hasSettingsFeatureAccess(rawPerms, "job-templates")
     : hasJobsReadAccess(rawPerms) || hasSettingsFeatureAccess(rawPerms, "job-templates");
+  const showInterviewAvailabilityTab =
+    isPlatformSuperUser || isAdministrator || hasSettingsFeatureAccess(rawPerms, "interview-availability");
   const showEmailTemplatesAdminTab = settingsMatrixMode
     ? hasSettingsFeatureAccess(rawPerms, "email-templates-admin")
     : isAdministrator || hasSettingsFeatureAccess(rawPerms, "email-templates-admin");
@@ -391,6 +400,16 @@ export default function SettingsLayout({
                 >
                   Personal Information
                 </Link>
+                {showInterviewAvailabilityTab && (
+                  <Link
+                    href="/settings/interview-availability"
+                    className={tabClass("interview-availability")}
+                    aria-current={activeTab === "interview-availability" ? "page" : undefined}
+                    title="Hours when the AI agent can book candidates into interviews with you"
+                  >
+                    Interview Availability
+                  </Link>
+                )}
               </nav>
             </div>
             <div className="min-w-0 max-w-full overflow-x-clip">{children}</div>
