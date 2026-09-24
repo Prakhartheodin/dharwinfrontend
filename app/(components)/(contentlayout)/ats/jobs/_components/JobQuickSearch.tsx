@@ -3,7 +3,13 @@ import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 
 import { searchJobFacet } from '@/shared/lib/api/jobs'
 import { PortalDropdown } from './PortalDropdown'
 
-type FacetGroup = 'title' | 'company' | 'location'
+export type FacetGroup = 'title' | 'company' | 'location'
+
+/** A single suggestion's facet + value — what preview/commit report to the parent. */
+export interface JobQuickSearchScope {
+  facet: FacetGroup
+  value: string
+}
 
 interface FacetSuggestions {
   titles: string[]
@@ -26,6 +32,13 @@ const GROUP_META: Record<FacetGroup, { header: string; icon: string }> = {
   title: { header: 'Job titles', icon: 'ri-briefcase-line' },
   company: { header: 'Companies', icon: 'ri-building-line' },
   location: { header: 'Locations', icon: 'ri-map-pin-line' },
+}
+
+/** Short label for the committed-scope tag — distinct from GROUP_META's dropdown-header wording. */
+const FACET_LABEL: Record<FacetGroup, string> = {
+  title: 'Title',
+  company: 'Company',
+  location: 'Location',
 }
 
 function isAbortError(err: unknown): boolean {
@@ -55,15 +68,32 @@ export interface JobQuickSearchProps {
   jobOrigin: '' | 'internal' | 'external'
   /** Optional — shows a subtle spinner in the input while the jobs list request is in flight. */
   loading?: boolean
+  /** Fires on every highlight change (keyboard nav or mouse hover) — null when nothing is highlighted. */
+  onPreview?: (scope: JobQuickSearchScope | null) => void
+  /** Fires when an option is committed (Tab/Enter/click on a highlighted option); null clears an
+   *  existing commit (text edit, clear, or unmount). */
+  onCommit?: (scope: JobQuickSearchScope | null) => void
+  /** The parent's currently committed scope, if any — drives the visible facet tag. */
+  committedScope?: JobQuickSearchScope | null
 }
 
 /**
  * Toolbar quick-search: a WAI-ARIA 1.2 combobox over three server facets (title/company/location)
  * with inline "ghost text" completion. Selecting a suggestion only sets the search text — it never
  * adds a filter-panel chip. The live jobs list is driven by `value` in the parent (debounced there);
- * this component owns only the suggestion dropdown and the inline-completion affordance.
+ * this component owns only the suggestion dropdown and the inline-completion affordance, and reports
+ * highlight/selection scope up via `onPreview`/`onCommit` so the parent can scope the jobs table.
  */
-export default function JobQuickSearch({ value, onChange, status, jobOrigin, loading }: JobQuickSearchProps) {
+export default function JobQuickSearch({
+  value,
+  onChange,
+  status,
+  jobOrigin,
+  loading,
+  onPreview,
+  onCommit,
+  committedScope,
+}: JobQuickSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const reactId = useId()
   const listboxId = `job-quick-search-listbox-${reactId}`
@@ -74,6 +104,8 @@ export default function JobQuickSearch({ value, onChange, status, jobOrigin, loa
   const [suggestions, setSuggestions] = useState<FacetSuggestions>(EMPTY_SUGGESTIONS)
   const [suggestionsLoading, setSuggestionsLoading] = useState(false)
   const [suggestionsError, setSuggestionsError] = useState(false)
+  /** 'mouse' highlights clear when the pointer leaves the list; 'keyboard' highlights persist. */
+  const highlightSourceRef = useRef<'keyboard' | 'mouse' | null>(null)
 
   /** Set on every keystroke that shrinks the value; cleared on any keystroke that grows/replaces it.
    *  Prevents a just-deleted character from being re-suggested as ghost text on the same keystroke.
@@ -157,6 +189,29 @@ export default function JobQuickSearch({ value, onChange, status, jobOrigin, loa
     return [...t, ...c, ...l]
   }, [suggestions, listboxId])
 
+  // Report the highlighted option up as a live preview scope — the single source of truth for
+  // both keyboard and mouse highlighting, so callers never need a second code path.
+  useEffect(() => {
+    const opt = activeIndex >= 0 ? flatOptions[activeIndex] : undefined
+    onPreview?.(opt ? { facet: opt.group, value: opt.label } : null)
+  }, [activeIndex, flatOptions, onPreview])
+
+  // Clear any preview/commit this instance reported, in case the component unmounts mid-scope.
+  // Reads the latest callbacks via a ref (kept current by a no-deps effect after every render)
+  // so the unmount cleanup below only fires on unmount, never on a re-render where the caller
+  // happens to pass a new (unstable) function identity.
+  const latestScopeCallbacksRef = useRef({ onPreview, onCommit })
+  useEffect(() => {
+    latestScopeCallbacksRef.current = { onPreview, onCommit }
+  })
+  useEffect(
+    () => () => {
+      latestScopeCallbacksRef.current.onPreview?.(null)
+      latestScopeCallbacksRef.current.onCommit?.(null)
+    },
+    []
+  )
+
   // Inline completion: first suggestion (titles, then companies, then locations) that starts with
   // what was typed. Suppressed while an option is keyboard-highlighted, unfocused, or right after Backspace.
   const ghost = useMemo(() => {
@@ -196,16 +251,18 @@ export default function JobQuickSearch({ value, onChange, status, jobOrigin, loa
     (opt: FlatOption) => {
       setLastEditWasDelete(false)
       onChange(opt.label)
+      onCommit?.({ facet: opt.group, value: opt.label })
       setOpen(false)
       setActiveIndex(-1)
     },
-    [onChange]
+    [onChange, onCommit]
   )
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const next = e.target.value
     setLastEditWasDelete(next.length < value.length)
     onChange(next)
+    onCommit?.(null) // editing the text abandons any committed scope
     setActiveIndex(-1)
     setOpen(true)
   }
@@ -225,6 +282,7 @@ export default function JobQuickSearch({ value, onChange, status, jobOrigin, loa
   const handleClear = () => {
     setLastEditWasDelete(false)
     onChange('')
+    onCommit?.(null)
     setOpen(false)
     setActiveIndex(-1)
     inputRef.current?.focus()
@@ -233,7 +291,15 @@ export default function JobQuickSearch({ value, onChange, status, jobOrigin, loa
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     const el = e.currentTarget
     const atEnd = el.selectionStart === el.selectionEnd && el.selectionStart === value.length
+    const highlighted = open && activeIndex >= 0 ? flatOptions[activeIndex] : undefined
 
+    // Tab commits a highlighted option first; only falls through to ghost-accept when nothing
+    // is highlighted (ghost is already suppressed whenever an option is highlighted).
+    if (e.key === 'Tab' && highlighted) {
+      e.preventDefault()
+      selectOption(highlighted)
+      return
+    }
     if ((e.key === 'Tab' || e.key === 'ArrowRight') && ghost && atEnd) {
       e.preventDefault()
       acceptGhost()
@@ -244,29 +310,33 @@ export default function JobQuickSearch({ value, onChange, status, jobOrigin, loa
       case 'ArrowDown':
         if (!flatOptions.length) break
         e.preventDefault()
+        highlightSourceRef.current = 'keyboard'
         setOpen(true)
         setActiveIndex((prev) => (prev === -1 ? 0 : (prev + 1) % flatOptions.length))
         break
       case 'ArrowUp':
         if (!flatOptions.length) break
         e.preventDefault()
+        highlightSourceRef.current = 'keyboard'
         setOpen(true)
         setActiveIndex((prev) => (prev === -1 ? flatOptions.length - 1 : (prev - 1 + flatOptions.length) % flatOptions.length))
         break
       case 'Home':
         if (!open || !flatOptions.length) break
         e.preventDefault()
+        highlightSourceRef.current = 'keyboard'
         setActiveIndex(0)
         break
       case 'End':
         if (!open || !flatOptions.length) break
         e.preventDefault()
+        highlightSourceRef.current = 'keyboard'
         setActiveIndex(flatOptions.length - 1)
         break
       case 'Enter':
-        if (open && activeIndex >= 0 && flatOptions[activeIndex]) {
+        if (highlighted) {
           e.preventDefault()
-          selectOption(flatOptions[activeIndex])
+          selectOption(highlighted)
         } else {
           setOpen(false)
           setActiveIndex(-1)
@@ -280,6 +350,7 @@ export default function JobQuickSearch({ value, onChange, status, jobOrigin, loa
         } else if (value) {
           setLastEditWasDelete(false)
           onChange('')
+          onCommit?.(null)
         }
         break
       default:
@@ -304,12 +375,23 @@ export default function JobQuickSearch({ value, onChange, status, jobOrigin, loa
 
   const showClear = value.length > 0
   const showKbdHint = !focused && !showClear
-  const adornmentCount = (loading ? 1 : 0) + (showClear || showKbdHint ? 1 : 0)
-  const rightPadClass = adornmentCount >= 2 ? '!pe-9' : adornmentCount === 1 ? '!pe-8' : '!pe-3'
-  const rightInsetClass = adornmentCount >= 2 ? 'right-9' : adornmentCount === 1 ? 'right-8' : 'right-3'
+  const showScopeTag = Boolean(committedScope)
+  const adornmentCount = (loading ? 1 : 0) + (showClear || showKbdHint ? 1 : 0) + (showScopeTag ? 1 : 0)
+  const rightPadClass = adornmentCount >= 2 ? '!pe-11' : adornmentCount === 1 ? '!pe-8' : '!pe-3'
+  const rightInsetClass = adornmentCount >= 2 ? 'right-11' : adornmentCount === 1 ? 'right-8' : 'right-3'
   const activeOptionId = activeIndex >= 0 ? flatOptions[activeIndex]?.id : undefined
   const showDropdown = open && value.trim().length > 0
   const query = value.trim()
+
+  // Announce the highlighted option while browsing, falling back to the committed scope once
+  // browsing stops — screen readers only hear a change when this string's value actually differs.
+  const highlightedOption = activeIndex >= 0 ? flatOptions[activeIndex] : undefined
+  const announcedScope: JobQuickSearchScope | null = highlightedOption
+    ? { facet: highlightedOption.group, value: highlightedOption.label }
+    : committedScope ?? null
+  const announceText = announcedScope
+    ? `Showing jobs for ${FACET_LABEL[announcedScope.facet].toLowerCase()} ${announcedScope.value}`
+    : ''
 
   const renderGroup = (group: FacetGroup, labels: string[], startIndex: number) => {
     if (!labels.length) return null
@@ -338,7 +420,10 @@ export default function JobQuickSearch({ value, onChange, status, jobOrigin, loa
                 isActive ? 'bg-primary/10 text-primary' : 'text-gray-800 dark:text-gray-200'
               }`}
               onMouseDown={(e) => e.preventDefault()}
-              onMouseEnter={() => setActiveIndex(index)}
+              onMouseEnter={() => {
+                highlightSourceRef.current = 'mouse'
+                setActiveIndex(index)
+              }}
               onClick={() => selectOption(opt)}
             >
               <span className="min-w-0 flex-1 truncate">{highlightMatch(label, query)}</span>
@@ -386,12 +471,26 @@ export default function JobQuickSearch({ value, onChange, status, jobOrigin, loa
           </span>
         </div>
       )}
+      {/* Announces the highlighted (or committed) scope — updates at most once per real change,
+          since React only touches this text node when the string itself differs. */}
+      <span className="sr-only" role="status" aria-live="polite">
+        {announceText}
+      </span>
       <div className={`absolute ${rightInsetClass} top-1/2 -translate-y-1/2 flex items-center gap-1`}>
         {loading && (
           <span
             className="h-3 w-3 shrink-0 rounded-full border-2 border-primary/30 border-t-primary animate-spin"
             aria-hidden
           />
+        )}
+        {showScopeTag && committedScope && (
+          <span
+            title={`Showing jobs for ${FACET_LABEL[committedScope.facet].toLowerCase()} ${committedScope.value}`}
+            className="flex shrink-0 items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[0.6rem] font-semibold text-primary"
+          >
+            <i className={`${GROUP_META[committedScope.facet].icon} text-[0.65rem]`} aria-hidden />
+            {FACET_LABEL[committedScope.facet]}
+          </span>
         )}
         {showClear && (
           <button
@@ -411,7 +510,19 @@ export default function JobQuickSearch({ value, onChange, status, jobOrigin, loa
         )}
       </div>
       <PortalDropdown open={showDropdown} inputRef={inputRef}>
-        <div id={listboxId} role="listbox" aria-label="Job search suggestions">
+        <div
+          id={listboxId}
+          role="listbox"
+          aria-label="Job search suggestions"
+          onMouseLeave={() => {
+            // A keyboard-driven highlight survives the pointer leaving the list; only a
+            // mouse-driven one is a "hover preview" that should clear when the mouse leaves.
+            if (highlightSourceRef.current === 'mouse') {
+              highlightSourceRef.current = null
+              setActiveIndex(-1)
+            }
+          }}
+        >
           {suggestionsLoading ? (
             <div className="flex items-center gap-2 px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
               <span className="h-3 w-3 rounded-full border-2 border-primary/30 border-t-primary animate-spin" aria-hidden />

@@ -11,6 +11,12 @@ export interface JobSidebarFilters {
   postingDate: string;
 }
 
+/** A toolbar quick-search suggestion being previewed/committed — see buildJobListParams. */
+export interface JobListQueryScope {
+  facet: "title" | "company" | "location";
+  value: string;
+}
+
 export interface JobListQueryInput {
   page: number;
   limit: number;
@@ -20,6 +26,14 @@ export interface JobListQueryInput {
   filters: JobSidebarFilters;
   salaryBounds: { min: number; max: number };
   experienceBounds: { min: number; max: number };
+  /**
+   * Toolbar quick-search preview/commit scope (a highlighted or selected suggestion). When set,
+   * `search` is dropped for this request and only the matching facet's list (titles/companies/
+   * locations) is replaced with `[scope.value]` — every other filter-panel facet, plus status,
+   * salary, experience and jobOrigin, still applies. Omit or pass null for the normal (no
+   * quick-search scope) behaviour.
+   */
+  scope?: JobListQueryScope | null;
 }
 
 /**
@@ -129,7 +143,12 @@ export function buildJobListParams(input: JobListQueryInput): JobsListParams {
     sortBy: input.sortBy,
   };
 
-  if (input.search?.trim()) {
+  const scope = input.scope ?? null;
+
+  // A quick-search preview/commit replaces the typed search with an exact facet scope for this
+  // request only — everything else (status, salary, experience, jobOrigin, the panel's own
+  // title/company/location picks) stays in effect below.
+  if (!scope && input.search?.trim()) {
     params.search = input.search.trim();
   }
 
@@ -143,15 +162,13 @@ export function buildJobListParams(input: JobListQueryInput): JobsListParams {
     params.status = "all";
   }
 
-  if (input.filters.jobTitle.length) {
-    params.titles = input.filters.jobTitle;
-  }
-  if (input.filters.company.length) {
-    params.companies = input.filters.company;
-  }
-  if (input.filters.location.length) {
-    params.locations = input.filters.location;
-  }
+  const titles = scope?.facet === "title" ? [scope.value] : input.filters.jobTitle;
+  const companies = scope?.facet === "company" ? [scope.value] : input.filters.company;
+  const locations = scope?.facet === "location" ? [scope.value] : input.filters.location;
+  if (titles.length) params.titles = titles;
+  if (companies.length) params.companies = companies;
+  if (locations.length) params.locations = locations;
+
   if (input.filters.postingDate) {
     params.postingDate = input.filters.postingDate;
   }
@@ -178,8 +195,11 @@ function filtersSalary(input: JobListQueryInput, params: JobsListParams): void {
 }
 
 export function buildJobExportParams(input: JobListQueryInput): Omit<JobsListParams, "page" | "limit"> {
+  // Exports always reflect the typed search + filter panel, never a transient toolbar
+  // preview/commit scope — that scope is for browsing the table, not for what gets exported.
   const { page: _page, limit: _limit, ...params } = buildJobListParams({
     ...input,
+    scope: null,
     page: 1,
     limit: input.limit ?? 10,
   });

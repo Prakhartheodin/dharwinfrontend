@@ -41,6 +41,7 @@ import {
   buildJobListParams,
   readJobFiltersFromQuery,
   writeJobFiltersToQuery,
+  type JobListQueryScope,
   type JobSidebarFilters,
 } from '@/shared/lib/ats/job-list-filters'
 import {
@@ -216,6 +217,21 @@ const Jobs = () => {
   )
   /** Quick search — job name only (toolbar input). */
   const [jobNameSearch, setJobNameSearch] = useState(() => searchParams.get('q')?.trim() || '')
+  /**
+   * Toolbar quick-search preview (live, while an option is highlighted) and commit (sticky, once
+   * Tab/Enter/click selects one). Preview always wins while active; falls back to the commit, then
+   * to the plain typed search. Neither is written to `filters`, filter chips, or the URL.
+   */
+  const [previewScope, setPreviewScope] = useState<JobListQueryScope | null>(null)
+  const [committedScope, setCommittedScope] = useState<JobListQueryScope | null>(null)
+  const rawQuickSearchScope = previewScope ?? committedScope
+  const [debouncedQuickSearchScope, setDebouncedQuickSearchScope] = useState<JobListQueryScope | null>(null)
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedQuickSearchScope(rawQuickSearchScope)
+    }, 200)
+    return () => window.clearTimeout(timer)
+  }, [rawQuickSearchScope])
   const [filterOptions, setFilterOptions] = useState<JobFilterOptions>({
     titles: [],
     companies: [],
@@ -275,8 +291,9 @@ const Jobs = () => {
       filters,
       salaryBounds: salaryRangesConst,
       experienceBounds: experienceRangesConst,
+      scope: debouncedQuickSearchScope,
     }),
-    [currentPage, pageSize, sortBy, debouncedJobNameSearch, listJobOrigin, filters]
+    [currentPage, pageSize, sortBy, debouncedJobNameSearch, listJobOrigin, filters, debouncedQuickSearchScope]
   )
 
   const fetchJobs = useCallback(async (signal?: AbortSignal) => {
@@ -342,8 +359,8 @@ const Jobs = () => {
   // twice in dev, so a "skip the first run" flag fires on the second pass and would throw
   // away the page seeded from ?page=.
   const listScopeKey = useMemo(
-    () => JSON.stringify([filters, listJobOrigin, debouncedJobNameSearch, sortBy, pageSize]),
-    [filters, listJobOrigin, debouncedJobNameSearch, sortBy, pageSize]
+    () => JSON.stringify([filters, listJobOrigin, debouncedJobNameSearch, sortBy, pageSize, debouncedQuickSearchScope]),
+    [filters, listJobOrigin, debouncedJobNameSearch, sortBy, pageSize, debouncedQuickSearchScope]
   )
   const lastListScopeRef = useRef(listScopeKey)
   useEffect(() => {
@@ -1409,6 +1426,9 @@ const Jobs = () => {
                   status={filters.status}
                   jobOrigin={listJobOrigin}
                   loading={jobsListFetching}
+                  onPreview={setPreviewScope}
+                  onCommit={setCommittedScope}
+                  committedScope={committedScope}
                 />
                 <button
                   type="button"
