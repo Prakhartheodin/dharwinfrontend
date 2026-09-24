@@ -116,6 +116,8 @@ export default function EditJobClient() {
   const [interviewRounds, setInterviewRounds] = useState<InterviewRoundPlanRow[]>([])
   const [interviewerPool, setInterviewerPool] = useState<string[]>([])
   const [loadedInterviewerPool, setLoadedInterviewerPool] = useState<string[]>([])
+  const [assignedRecruiter, setAssignedRecruiter] = useState<string | null>(null)
+  const [loadedAssignedRecruiter, setLoadedAssignedRecruiter] = useState<string | null>(null)
   const [loadedInterviewRounds, setLoadedInterviewRounds] = useState<InterviewRoundPlanRow[]>([])
   const [roundPlanErrorMsg, setRoundPlanErrorMsg] = useState<string | null>(null)
   const [hasLegacyRubrics, setHasLegacyRubrics] = useState(false)
@@ -330,6 +332,13 @@ export default function EditJobClient() {
           setInterviewerPool(pool)
           setLoadedInterviewerPool(pool)
         }
+        {
+          const rec = job.assignedRecruiter
+          const recId =
+            (rec ? (typeof rec === 'string' ? rec : String(rec?._id ?? rec?.id ?? '')) : '') || null
+          setAssignedRecruiter(recId)
+          setLoadedAssignedRecruiter(recId)
+        }
         setLoadedInterviewRounds(job.interviewRounds ?? [])
         setHasLegacyRubrics((job.rubricAssignments?.length ?? 0) > 0)
         // Decode entity-encoded payloads (xss-clean middleware may return `&lt;p&gt;…`)
@@ -507,6 +516,7 @@ export default function EditJobClient() {
         // need interview access (audit J11).
         ...(roundsChanged ? { interviewRounds } : {}),
         ...(JSON.stringify(interviewerPool) !== JSON.stringify(loadedInterviewerPool) ? { interviewerPool } : {}),
+        ...(assignedRecruiter !== loadedAssignedRecruiter ? { assignedRecruiter } : {}),
       }
       await updateJob(jobId, payload)
       await Swal.fire({ icon: 'success', title: 'Job Updated', text: 'The job has been updated successfully.' })
@@ -994,7 +1004,12 @@ export default function EditJobClient() {
                     jobId={jobId}
                     onValidityChange={setRoundPlanErrorMsg}
                   />
-                  <InterviewerPoolSelect value={interviewerPool} onChange={setInterviewerPool} />
+                  <InterviewerPoolSelect
+                    value={interviewerPool}
+                    onChange={setInterviewerPool}
+                    recruiter={assignedRecruiter}
+                    onRecruiterChange={setAssignedRecruiter}
+                  />
                   <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-gray-200 dark:border-defaultborder/10">
                     <Link href="/ats/jobs" className="ti-btn ti-btn-secondary">
                       Cancel

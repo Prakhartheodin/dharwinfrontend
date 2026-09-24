@@ -33,6 +33,7 @@ const CreateJob = () => {
   const [submitting, setSubmitting] = useState(false)
   const [interviewRounds, setInterviewRounds] = useState<InterviewRoundPlanRow[]>([])
   const [interviewerPool, setInterviewerPool] = useState<string[]>([])
+  const [assignedRecruiter, setAssignedRecruiter] = useState<string | null>(null)
   const [roundPlanErrorMsg, setRoundPlanErrorMsg] = useState<string | null>(null)
   
   // Form state
@@ -347,6 +348,7 @@ const CreateJob = () => {
         // ordinary job must not hit a 403 for a section they never touched (audit J11).
         ...(interviewRounds.length ? { interviewRounds } : {}),
         ...(interviewerPool.length ? { interviewerPool } : {}),
+        ...(assignedRecruiter ? { assignedRecruiter } : {}),
       }
       await createJob(payload)
       await Swal.fire({ icon: 'success', title: 'Job Created', text: 'The job has been created successfully.' })
@@ -898,7 +900,12 @@ const CreateJob = () => {
                   onValidityChange={setRoundPlanErrorMsg}
                 />
 
-                <InterviewerPoolSelect value={interviewerPool} onChange={setInterviewerPool} />
+                <InterviewerPoolSelect
+                  value={interviewerPool}
+                  onChange={setInterviewerPool}
+                  recruiter={assignedRecruiter}
+                  onRecruiterChange={setAssignedRecruiter}
+                />
 
                 {/* Form Actions */}
                 <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-gray-200 dark:border-defaultborder/10">

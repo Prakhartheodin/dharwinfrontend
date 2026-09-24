@@ -25,9 +25,15 @@ const AVAILABILITY_HREF = "/settings/interview-availability";
 export default function InterviewerPoolSelect({
   value,
   onChange,
+  recruiter,
+  onRecruiterChange,
 }: {
   value: string[];
   onChange: (ids: string[]) => void;
+  /** Approving recruiter's user id, or null/absent when unset (falls back to the job creator). */
+  recruiter?: string | null;
+  /** Omit to keep this component's existing pool-only behaviour. */
+  onRecruiterChange?: (id: string | null) => void;
 }) {
   const { menuPortalTarget, styles } = usePmReactSelectStyles(9999);
   const [options, setOptions] = useState<Option[]>([]);
@@ -81,6 +87,11 @@ export default function InterviewerPoolSelect({
   const selected = useMemo(
     () => value.map((id) => options.find((o) => o.value === id) ?? { value: id, label: id }),
     [value, options]
+  );
+
+  const selectedRecruiter = useMemo(
+    () => (recruiter ? options.find((o) => o.value === recruiter) ?? { value: recruiter, label: recruiter } : null),
+    [recruiter, options]
   );
 
   const nameOf = (id: string) => (options.find((o) => o.value === id)?.label ?? id).replace(/\s*\([^)]*\)$/, "");
@@ -140,6 +151,35 @@ export default function InterviewerPoolSelect({
           ) : null}
         </div>
       </div>
+
+      {onRecruiterChange && (
+        <div className="mt-4 max-w-2xl">
+          <label htmlFor="approving-recruiter" className="form-label">
+            Approving recruiter
+          </label>
+          <Select
+            inputId="approving-recruiter"
+            instanceId="approving-recruiter"
+            isClearable
+            isSearchable
+            isLoading={loading}
+            options={options}
+            value={selectedRecruiter}
+            onChange={(v: unknown) => onRecruiterChange((v as Option | null)?.value ?? null)}
+            className="ti-form-select !p-0"
+            classNamePrefix="Select2"
+            placeholder="Search by name or email"
+            noOptionsMessage={() => (loadFailed ? "Could not load users" : "No matching users")}
+            menuPlacement="auto"
+            menuPortalTarget={menuPortalTarget}
+            styles={styles}
+          />
+          <p className="mt-1 mb-0 text-xs text-textmuted dark:text-white/60">
+            Gets the request to approve interview times candidates pick. They need Interviews manage permission to
+            approve. Leave empty to send it to the job creator.
+          </p>
+        </div>
+      )}
     </section>
   );
 }

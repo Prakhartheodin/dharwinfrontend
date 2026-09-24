@@ -93,6 +93,8 @@ export interface Job {
   interviewRounds?: InterviewRoundPlanRow[];
   /** Users the AI scheduler may book interviews with (ids on write; ids or populated users on read). */
   interviewerPool?: Array<string | { _id?: string; id?: string }>;
+  /** Recruiter who approves interview times candidates pick. Null/absent = falls back to the job creator. */
+  assignedRecruiter?: string | { _id?: string; id?: string; name?: string; email?: string } | null;
 }
 
 export function isExternalJob(job: { jobOrigin?: string }): boolean {
@@ -239,6 +241,7 @@ export interface CreateJobPayload {
   rubricAssignments?: RubricAssignment[];
   interviewRounds?: InterviewRoundPlanRow[];
   interviewerPool?: string[];
+  assignedRecruiter?: string | null;
 }
 
 export async function createJob(payload: CreateJobPayload): Promise<Job> {
@@ -264,6 +267,7 @@ export interface UpdateJobPayload {
   rubricAssignments?: RubricAssignment[];
   interviewRounds?: InterviewRoundPlanRow[];
   interviewerPool?: string[];
+  assignedRecruiter?: string | null;
 }
 
 export async function updateJob(id: string, payload: UpdateJobPayload): Promise<Job> {
