@@ -95,6 +95,8 @@ export default function JobQuickSearch({
   committedScope,
 }: JobQuickSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null)
+  /** The visible field box; the dropdown anchors to it so it spans the full width. */
+  const boxRef = useRef<HTMLDivElement>(null)
   const reactId = useId()
   const listboxId = `job-quick-search-listbox-${reactId}`
 
@@ -376,9 +378,6 @@ export default function JobQuickSearch({
   const showClear = value.length > 0
   const showKbdHint = !focused && !showClear
   const showScopeTag = Boolean(committedScope)
-  const adornmentCount = (loading ? 1 : 0) + (showClear || showKbdHint ? 1 : 0) + (showScopeTag ? 1 : 0)
-  const rightPadClass = adornmentCount >= 2 ? '!pe-11' : adornmentCount === 1 ? '!pe-8' : '!pe-3'
-  const rightInsetClass = adornmentCount >= 2 ? 'right-11' : adornmentCount === 1 ? 'right-8' : 'right-3'
   const activeOptionId = activeIndex >= 0 ? flatOptions[activeIndex]?.id : undefined
   const showDropdown = open && value.trim().length > 0
   const query = value.trim()
@@ -436,7 +435,22 @@ export default function JobQuickSearch({
 
   return (
     <div className="relative flex-1 min-w-[10rem] sm:min-w-[12rem] sm:max-w-xs me-2">
-      <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-defaulttextcolor/50 text-[0.875rem] pointer-events-none" aria-hidden />
+      {/* Flex row, not absolutely positioned adornments: the text field shrinks to leave room
+          for the scope tag / spinner / clear button, so long values ellipsize instead of
+          running underneath them. */}
+      <div
+        ref={boxRef}
+        className="flex h-8 w-full items-center gap-1.5 rounded-lg border border-defaultborder bg-white ps-2.5 pe-2 transition-colors focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 dark:border-white/10 dark:bg-bodybg"
+        onMouseDown={(e) => {
+          // Clicking the padding/icon area focuses the input instead of doing nothing.
+          if (e.target === e.currentTarget) {
+            e.preventDefault()
+            inputRef.current?.focus()
+          }
+        }}
+      >
+      <i className="ri-search-line shrink-0 text-defaulttextcolor/50 text-[0.875rem] pointer-events-none dark:text-white/40" aria-hidden />
+      <div className="relative min-w-0 flex-1 self-stretch">
       <input
         ref={inputRef}
         type="text"
@@ -447,7 +461,8 @@ export default function JobQuickSearch({
         aria-autocomplete="both"
         aria-activedescendant={showDropdown ? activeOptionId : undefined}
         aria-label="Search jobs"
-        className={`form-control !h-8 !py-1 !ps-8 ${rightPadClass} !text-[0.75rem] !rounded-lg w-full`}
+        className="h-full w-full min-w-0 truncate border-0 bg-transparent p-0 text-[0.75rem] text-defaulttextcolor outline-none ring-0 placeholder:text-defaulttextcolor/50 focus:outline-none focus:ring-0 dark:text-white dark:placeholder:text-white/40"
+        title={value.length > 30 ? value : undefined}
         placeholder="Search jobs by title, company or location…"
         value={value}
         autoComplete="off"
@@ -461,8 +476,7 @@ export default function JobQuickSearch({
           input text underneath (rendered by the browser) is never obscured. */}
       {ghost && (
         <div
-          className="pointer-events-none absolute inset-y-0 left-8 flex items-center overflow-hidden whitespace-pre text-[0.75rem]"
-          style={{ right: 0 }}
+          className="pointer-events-none absolute inset-0 flex items-center overflow-hidden whitespace-pre text-[0.75rem]"
           aria-hidden
         >
           <span className="invisible">{value}</span>
@@ -471,12 +485,13 @@ export default function JobQuickSearch({
           </span>
         </div>
       )}
+      </div>
       {/* Announces the highlighted (or committed) scope — updates at most once per real change,
           since React only touches this text node when the string itself differs. */}
       <span className="sr-only" role="status" aria-live="polite">
         {announceText}
       </span>
-      <div className={`absolute ${rightInsetClass} top-1/2 -translate-y-1/2 flex items-center gap-1`}>
+      <div className="flex shrink-0 items-center gap-1">
         {loading && (
           <span
             className="h-3 w-3 shrink-0 rounded-full border-2 border-primary/30 border-t-primary animate-spin"
@@ -509,7 +524,8 @@ export default function JobQuickSearch({
           </kbd>
         )}
       </div>
-      <PortalDropdown open={showDropdown} inputRef={inputRef}>
+      </div>
+      <PortalDropdown open={showDropdown} inputRef={boxRef}>
         <div
           id={listboxId}
           role="listbox"

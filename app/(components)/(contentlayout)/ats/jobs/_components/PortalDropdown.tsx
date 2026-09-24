@@ -14,7 +14,8 @@ export function PortalDropdown({
   children,
 }: {
   open: boolean
-  inputRef: React.RefObject<HTMLInputElement>
+  /** Element the dropdown is positioned under (an input, or the box wrapping one). */
+  inputRef: React.RefObject<HTMLElement | null>
   children: React.ReactNode
 }) {
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
