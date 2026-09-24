@@ -183,18 +183,24 @@ export function PersonalInfoStep() {
   const isSelfService =
     mode === "self-service-employee" || mode === "self-service-candidate";
   const emailReadOnly = isSelfService;
-  // Job title, company mailbox, and HR immigration/compensation fields are
-  // admin-owned: the self-service PATCH omits them, so editable inputs would
-  // discard changes silently or risk clearing server values on save.
+  // Job title and company mailbox are admin-owned: the self-service PATCH omits
+  // them, so editable inputs would discard changes silently or risk clearing
+  // server values on save.
   const adminOwnedReadOnly = isSelfService;
   /**
    * Immigration details are NOT admin-owned. CANDIDATE_ME_FIELDS on the server accepts
    * `sevisId`, `visaType`, `customVisaType`, `ead` and the scanned EAD/visa equivalents
    * from a person's own PATCH, so every one of them is theirs to edit — and locking them
    * here also hid the scan buttons for every employee and candidate in their own wizard.
-   * Job title, company mailbox and compensation stay behind adminOwnedReadOnly.
+   * Job title and company mailbox stay behind adminOwnedReadOnly.
    */
   const immigrationReadOnly = false;
+  /**
+   * Supervisor + salary range are also on CANDIDATE_ME_FIELDS and belong on the
+   * self-service PATCH. Keeping them under adminOwnedReadOnly locked the UI and
+   * left toSelfServicePayload omitting the keys, so saves never persisted them.
+   */
+  const supervisorSalaryReadOnly = false;
   const hrOwnedHint = "Managed by your administrator.";
 
   const fieldErr = (key: string): string | null => {
@@ -437,14 +443,14 @@ export function PersonalInfoStep() {
             id="supervisorName"
             label="Supervisor name"
             optional
-            hint={adminOwnedReadOnly ? hrOwnedHint : undefined}
+            hint={supervisorSalaryReadOnly ? hrOwnedHint : undefined}
           >
             <input
               type="text"
               value={pi.supervisorName}
               onChange={onText("supervisorName")}
-              readOnly={adminOwnedReadOnly}
-              className={inputClass(false, adminOwnedReadOnly)}
+              readOnly={supervisorSalaryReadOnly}
+              className={inputClass(false, supervisorSalaryReadOnly)}
               placeholder="Manager or advisor"
             />
           </Field>
@@ -453,25 +459,34 @@ export function PersonalInfoStep() {
             id="supervisorContact"
             label="Supervisor phone"
             optional
-            hint={adminOwnedReadOnly ? hrOwnedHint : undefined}
+            hint={supervisorSalaryReadOnly ? hrOwnedHint : undefined}
+            error={fieldErr("supervisorContact")}
           >
             <div className={styles.phoneRow}>
               <PhoneCountrySelect
                 name="supervisorCountryCode"
                 value={pi.supervisorCountryCode || pi.countryCode}
                 onChange={(code) => setPersonalInfo({ supervisorCountryCode: code })}
-                disabled={adminOwnedReadOnly}
+                disabled={supervisorSalaryReadOnly}
               />
               <input
                 type="tel"
                 value={pi.supervisorContact}
                 onChange={onText("supervisorContact")}
-                readOnly={adminOwnedReadOnly}
-                className={inputClass(false, adminOwnedReadOnly)}
+                onBlur={markTouched("supervisorContact")}
+                readOnly={supervisorSalaryReadOnly}
+                className={inputClass(
+                  Boolean(fieldErr("supervisorContact")),
+                  supervisorSalaryReadOnly,
+                )}
                 placeholder={supervisorCountry.placeholder}
                 maxLength={supervisorCountry.maxLength}
                 inputMode="numeric"
                 autoComplete="tel-national"
+                aria-invalid={fieldErr("supervisorContact") ? true : undefined}
+                aria-describedby={
+                  fieldErr("supervisorContact") ? "supervisorContact-error" : undefined
+                }
               />
             </div>
           </Field>
@@ -747,13 +762,13 @@ export function PersonalInfoStep() {
             id="salaryRange"
             label="Salary range"
             optional
-            hint={adminOwnedReadOnly ? hrOwnedHint : undefined}
+            hint={supervisorSalaryReadOnly ? hrOwnedHint : undefined}
           >
             <select
               value={pi.salaryRange}
               onChange={onText("salaryRange")}
-              disabled={adminOwnedReadOnly}
-              className={`${styles.select} ${adminOwnedReadOnly ? styles.inputReadOnly : ""}`}
+              disabled={supervisorSalaryReadOnly}
+              className={`${styles.select} ${supervisorSalaryReadOnly ? styles.inputReadOnly : ""}`}
             >
               <option value="">Select salary range</option>
               {SALARY_RANGES.map((r) => (

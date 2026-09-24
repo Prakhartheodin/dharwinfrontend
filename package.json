@@ -67,6 +67,7 @@
     "isomorphic-dompurify": "^3.9.0",
     "jspdf": "^4.2.1",
     "leaflet": "^1.9.4",
+    "libphonenumber-js": "^1.13.13",
     "livekit-client": "^2.18.5",
     "moment": "^2.30.1",
     "next": "^16.1.6",
