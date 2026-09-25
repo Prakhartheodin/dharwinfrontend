@@ -221,7 +221,7 @@ export default function PendingApprovalsPanel({ onDecided }: { onDecided?: () =>
           const isAi = h.source === "ai_call"
           return (
             <li key={h._id} className="px-3 py-3 sm:px-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:gap-4">
                 {/* Who */}
                 <div className="flex min-w-0 items-center gap-2.5 lg:w-[26%]">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
@@ -261,7 +261,7 @@ export default function PendingApprovalsPanel({ onDecided }: { onDecided?: () =>
                 </div>
 
                 {/* Status + actions */}
-                <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                <div className="flex w-full min-w-0 flex-wrap items-center gap-2 lg:ms-auto lg:w-auto lg:shrink-0 lg:justify-end">
                   {h.source && (
                     <span
                       className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.7rem] font-medium ${
@@ -287,10 +287,10 @@ export default function PendingApprovalsPanel({ onDecided }: { onDecided?: () =>
                       {exp.label}
                     </span>
                   )}
-                  <div className="ms-auto inline-flex gap-2 lg:ms-2">
+                  <div className="ms-auto inline-flex shrink-0 gap-2 lg:ms-2">
                     <button
                       type="button"
-                      className="ti-btn ti-btn-primary ti-btn-sm !m-0 inline-flex items-center"
+                      className="ti-btn ti-btn-primary ti-btn-sm !m-0 inline-flex shrink-0 items-center whitespace-nowrap"
                       disabled={!!rowBusy}
                       aria-label={`Approve interview with ${d.candidateName}`}
                       onClick={() => void approve(h)}
@@ -303,7 +303,7 @@ export default function PendingApprovalsPanel({ onDecided }: { onDecided?: () =>
                     </button>
                     <button
                       type="button"
-                      className="ti-btn ti-btn-outline-danger ti-btn-sm !m-0 inline-flex items-center"
+                      className="ti-btn ti-btn-outline-danger ti-btn-sm !m-0 inline-flex shrink-0 items-center whitespace-nowrap"
                       disabled={!!rowBusy}
                       aria-label={`Reject time for ${d.candidateName}`}
                       onClick={() => void reject(h)}
