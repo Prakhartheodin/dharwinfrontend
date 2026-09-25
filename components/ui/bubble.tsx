@@ -89,8 +89,9 @@ function BubbleContent({
   const variant = React.useContext(BubbleVariantContext);
 
   // Roomier horizontal inset (32px) so glyphs clear rounded edges;
-  // !important + inline backup beat purge/specificity fights. Keep py-3.
-  // box-border + wrap utilities keep long lines inside the fill.
+  // !important + inline backup beat purge/specificity fights. Vertical
+  // padding (py-3, 12px) gets the same inline backup so top/bottom never
+  // collapse either. box-border + wrap utilities keep long lines inside the fill.
   // Ghost keeps p-0 via fillClass + twMerge; skip inline pad for ghost.
   const isGhost = variant === "ghost";
   const classes = cn(
@@ -106,7 +107,7 @@ function BubbleContent({
 
   const padStyle: React.CSSProperties | undefined = isGhost
     ? style
-    : { ...style, paddingLeft: 32, paddingRight: 32 };
+    : { ...style, paddingLeft: 32, paddingRight: 32, paddingTop: 12, paddingBottom: 12 };
 
   if (asChild && React.isValidElement<{ className?: string; style?: React.CSSProperties }>(children)) {
     return React.cloneElement(children, {

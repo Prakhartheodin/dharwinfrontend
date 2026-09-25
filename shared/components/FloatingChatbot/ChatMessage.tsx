@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Block } from "@/shared/types/chatResponse";
 import { Bubble, BubbleContent, BubbleGroup } from "@/components/ui/bubble";
-import { AgentOrb, CopyButton, TYPE } from "./ui";
+import { AgentOrb, CopyButton, SURFACE, TYPE } from "./ui";
 import StructuredResponse from "./renderers/StructuredResponse";
 import { mdComponents } from "./renderers/markdown";
 
@@ -68,7 +68,7 @@ export default function ChatMessage({ role, content, fullscreen = false, blocks,
           className={isUser ? "w-fit max-w-full self-end" : "w-full"}
         >
           <Bubble
-            variant={isUser ? "default" : "muted"}
+            variant={isUser ? "default" : "ghost"}
             align={isUser ? "end" : "start"}
             className={bubbleWidth}
           >
@@ -76,7 +76,8 @@ export default function ChatMessage({ role, content, fullscreen = false, blocks,
               className={[
                 "text-[13px] leading-[1.55]",
                 // User: hug copy (w-fit) so BubbleContent !px-8 expands the purple box.
-                isUser ? "w-fit max-w-full whitespace-pre-wrap" : "w-full max-w-full",
+                // Assistant: ghost bubble has no fill, so set text color explicitly.
+                isUser ? "w-fit max-w-full whitespace-pre-wrap" : `w-full max-w-full ${SURFACE.bubbleAgent}`,
               ].join(" ")}
             >
               {isUser ? (
@@ -105,7 +106,7 @@ export default function ChatMessage({ role, content, fullscreen = false, blocks,
         </BubbleGroup>
 
         {!isUser && content && (
-          <div className="mt-2.5 flex items-center justify-end opacity-0 transition-opacity duration-200 ease-out focus-within:opacity-100 group-hover/msg:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100">
+          <div className="mt-2 flex items-center justify-start">
             <CopyButton text={content} />
           </div>
         )}
