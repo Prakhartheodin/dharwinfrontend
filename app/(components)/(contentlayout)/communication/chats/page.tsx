@@ -50,6 +50,9 @@ import {
   groupReactions,
   applyReactionLocally,
   mentionsForSend,
+  shouldOpenMenuUp,
+  MESSAGE_ACTION_MENU_EST_HEIGHT,
+  MESSAGE_ACTION_MENU_GAP_PX,
   type PickedMention,
 } from "./_utils/chatHelpers";
 import { ReceiptTick } from "./_components/ReceiptTick";
@@ -806,6 +809,8 @@ const Chat = () => {
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
   const [messageMenuFor, setMessageMenuFor] = useState<string | null>(null);
+  /** When true, the open message action menu anchors above the chevron (near thread bottom). */
+  const [messageMenuOpenUp, setMessageMenuOpenUp] = useState(false);
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const [forwardTargets, setForwardTargets] = useState<Set<string>>(new Set());
   const [forwardSearch, setForwardSearch] = useState("");
@@ -1759,11 +1764,13 @@ const Chat = () => {
       if (reactionPickerRef.current?.contains(t) || messageMenuRef.current?.contains(t)) return;
       setReactionPickerFor(null);
       setMessageMenuFor(null);
+      setMessageMenuOpenUp(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setReactionPickerFor(null);
         setMessageMenuFor(null);
+        setMessageMenuOpenUp(false);
       }
     };
     document.addEventListener("mousedown", onDown);
@@ -2387,17 +2394,45 @@ const Chat = () => {
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = null;
   };
+
+  /** Measure trigger vs visible thread/viewport bottom; open above when the menu would not fit below. */
+  const openMessageActionMenu = useCallback((mid: string, triggerEl: Element | null) => {
+    setReactionPickerFor(null);
+    let openUp = false;
+    if (triggerEl) {
+      const trigger = triggerEl.getBoundingClientRect();
+      const threadBottom = chatContainerRef.current?.getBoundingClientRect().bottom ?? window.innerHeight;
+      const clipBottom = Math.min(window.innerHeight, threadBottom);
+      const spaceBelow = Math.max(0, clipBottom - trigger.bottom - MESSAGE_ACTION_MENU_GAP_PX);
+      openUp = shouldOpenMenuUp(spaceBelow, MESSAGE_ACTION_MENU_EST_HEIGHT);
+    }
+    setMessageMenuOpenUp(openUp);
+    setMessageMenuFor(mid);
+  }, []);
+
+  const toggleMessageActionMenu = useCallback(
+    (mid: string, triggerEl: Element | null) => {
+      if (messageMenuFor === mid) {
+        setMessageMenuFor(null);
+        setMessageMenuOpenUp(false);
+        return;
+      }
+      openMessageActionMenu(mid, triggerEl);
+    },
+    [messageMenuFor, openMessageActionMenu]
+  );
+
   /** Long-press (touch) and right-click (desktop) open the same menu as the ⋮ button. */
   const messageGestureProps = (m: Message) => {
     const mid = messageIdOf(m);
     return {
-      onTouchStart: () => {
+      onTouchStart: (e: React.TouchEvent) => {
+        const el = e.currentTarget;
         longPressFiredRef.current = false;
         cancelLongPress();
         longPressTimerRef.current = setTimeout(() => {
           longPressFiredRef.current = true;
-          setReactionPickerFor(null);
-          setMessageMenuFor(mid);
+          openMessageActionMenu(mid, el);
         }, LONG_PRESS_MS);
       },
       onTouchMove: cancelLongPress,
@@ -2407,8 +2442,7 @@ const Chat = () => {
         // Keep the native menu for links and selected text (open in new tab, copy selection).
         if ((e.target as HTMLElement).closest("a") || window.getSelection()?.toString()) return;
         e.preventDefault();
-        setReactionPickerFor(null);
-        setMessageMenuFor(mid);
+        openMessageActionMenu(mid, e.currentTarget);
       },
       // The click that ends a long-press must not also open an image or follow a link.
       onClickCapture: (e: React.MouseEvent) => {
@@ -3320,9 +3354,8 @@ const Chat = () => {
                                             aria-label="Message actions"
                                             aria-haspopup="menu"
                                             aria-expanded={menuOpen}
-                                            onClick={() => {
-                                              setReactionPickerFor(null);
-                                              setMessageMenuFor((prev) => (prev === mid ? null : mid));
+                                            onClick={(e) => {
+                                              toggleMessageActionMenu(mid, e.currentTarget);
                                             }}
                                           >
                                             <i className="ri-arrow-down-s-line text-base" aria-hidden />
@@ -3331,8 +3364,16 @@ const Chat = () => {
                                             <div
                                               role="menu"
                                               aria-label="Message actions"
-                                              className={`absolute top-full mt-1 min-w-[11rem] rounded-lg bg-white dark:bg-bodybg shadow-lg border border-black/5 dark:border-white/10 py-1 text-start ${chatStyles.messageActionMenu} ${
-                                                isMe ? "right-0 origin-top-right" : "left-0 origin-top-left"
+                                              className={`absolute min-w-[11rem] rounded-lg bg-white dark:bg-bodybg shadow-lg border border-black/5 dark:border-white/10 py-1 text-start ${chatStyles.messageActionMenu} ${
+                                                messageMenuOpenUp ? chatStyles.messageActionMenuUp : chatStyles.messageActionMenuDown
+                                              } ${
+                                                isMe
+                                                  ? messageMenuOpenUp
+                                                    ? "right-0 origin-bottom-right"
+                                                    : "right-0 origin-top-right"
+                                                  : messageMenuOpenUp
+                                                    ? "left-0 origin-bottom-left"
+                                                    : "left-0 origin-top-left"
                                               }`}
                                             >
                                               {/* A deleted message offers nothing but removing it from my view. */}

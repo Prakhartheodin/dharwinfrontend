@@ -299,6 +299,20 @@ export function reactionToggleEmoji(current: string | undefined, clicked: string
   return current === clicked ? "" : clicked;
 }
 
+/**
+ * Reserved height for the message action menu before it is measured in the DOM.
+ * Covers the densest case (React → Delete for everyone, optional Download/Pin).
+ */
+export const MESSAGE_ACTION_MENU_EST_HEIGHT = 300;
+
+/** Gap between the chevron trigger and the menu (`mt-1` / `mb-1`). */
+export const MESSAGE_ACTION_MENU_GAP_PX = 4;
+
+/** Open the message action menu upward when it would not fit in the space below the trigger. */
+export function shouldOpenMenuUp(spaceBelow: number, menuHeight: number): boolean {
+  return spaceBelow < menuHeight;
+}
+
 export function participantIdFromCallUser(p: { id?: string; _id?: string } | null | undefined): string {
   if (!p) return "";
   return String((p as { id?: string }).id ?? (p as { _id?: string })._id ?? "").trim();

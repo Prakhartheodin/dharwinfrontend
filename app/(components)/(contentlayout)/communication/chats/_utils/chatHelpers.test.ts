@@ -15,6 +15,7 @@ import {
   groupReactions,
   applyReactionLocally,
   mentionsForSend,
+  shouldOpenMenuUp,
 } from "./chatHelpers";
 
 describe("myReactionEmoji", () => {
@@ -278,5 +279,23 @@ describe("mentionsForSend", () => {
     ];
     expect(mentionsForSend("hi @Ada Lovelace", picked)).toEqual([{ userId: "u1", displayName: "Ada Lovelace" }]);
     expect(mentionsForSend("no mentions", picked)).toEqual([]);
+  });
+});
+
+describe("shouldOpenMenuUp", () => {
+  it("opens downward when there is enough space below", () => {
+    expect(shouldOpenMenuUp(400, 300)).toBe(false);
+  });
+
+  it("opens upward when space below is less than the menu height", () => {
+    expect(shouldOpenMenuUp(120, 300)).toBe(true);
+  });
+
+  it("stays downward when space below exactly equals the menu height", () => {
+    expect(shouldOpenMenuUp(300, 300)).toBe(false);
+  });
+
+  it("opens upward when space below is just under the menu height", () => {
+    expect(shouldOpenMenuUp(299, 300)).toBe(true);
   });
 });

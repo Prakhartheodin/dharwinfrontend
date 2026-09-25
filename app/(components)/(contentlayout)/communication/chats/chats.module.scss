@@ -1196,6 +1196,22 @@
   animation: chatPanelFade 0.15s ease-out;
 }
 
+/* Default: drop below the chevron (WhatsApp-style when there is room). */
+.messageActionMenuDown {
+  top: 100%;
+  bottom: auto;
+  margin-top: 0.25rem;
+  margin-bottom: 0;
+}
+
+/* Flip above the chevron when the menu would overflow the thread / viewport bottom. */
+.messageActionMenuUp {
+  bottom: 100%;
+  top: auto;
+  margin-bottom: 0.25rem;
+  margin-top: 0;
+}
+
 /* ── Message actions (⋮ button + menu) ── */
 .msgActionBtn {
   position: relative;
