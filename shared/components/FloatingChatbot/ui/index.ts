@@ -9,3 +9,4 @@ export * from "./Pagination";
 export * from "./KV";
 export * from "./Callout";
 export * from "./shell";
+export * from "./icons";

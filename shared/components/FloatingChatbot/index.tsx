@@ -22,12 +22,20 @@ import ChatMessage from "./ChatMessage";
 import { useDraggableFab } from "./useDraggableFab";
 import {
   AgentOrb,
+  ArrowDownIcon,
+  ArrowUpIcon,
+  CloseIcon,
   ConsoleStyles,
+  CONTROL,
   EmptyChatState,
   IconButton,
   Kbd,
-  ReasoningIndicator,
+  LAYOUT,
+  MaximizeIcon,
+  MinimizeIcon,
   TABLE_PAGE_SIZE,
+  TrashIcon,
+  TYPE,
 } from "./ui";
 
 /** Wide tables / long lists are cramped in the 420px dock — promote to full page. */
@@ -70,6 +78,10 @@ const SIDEBAR_WIDTH = 420;
 const SIDEBAR_PUSH_BREAKPOINT = 1280;
 const SIDEBAR_TRANSITION_MS = 320;
 const UNDO_WINDOW_MS = 8000;
+/** Within this many px of the bottom counts as "reading the latest". */
+const STICK_THRESHOLD_PX = 80;
+/** 6 lines x 22px leading + 18px vertical padding. */
+const COMPOSER_MAX_HEIGHT_PX = 150;
 
 const SUGGESTED_QUESTIONS = [
   { q: "How many employees do we have?", k: "PEOPLE" },
@@ -87,7 +99,14 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
   const [isLoading, setIsLoading] = useState(false);
   const [clearedMessages, setClearedMessages] = useState<Message[] | null>(null);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  // Follow new tokens only while the reader is already at the bottom; if
+  // they scrolled up to read, leave them there and offer "Jump to latest".
+  const stickRef = useRef(true);
+  const [showJump, setShowJump] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [announcement, setAnnouncement] = useState("");
+  const wasLoadingRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -119,11 +138,46 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
     }
   }, [messages, storageKey]);
 
+  // Instant, not smooth: a smooth scroll per token fired a new animation on
+  // every chunk, and its intermediate scroll events read as "user scrolled
+  // up", which would wrongly unstick the thread.
+  const scrollToBottom = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    stickRef.current = true;
+    setShowJump(false);
+  }, []);
+
+  const onListScroll = () => {
+    const el = listRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_THRESHOLD_PX;
+    stickRef.current = nearBottom;
+    if (nearBottom) setShowJump(false);
+    setScrolled(el.scrollTop > 0);
+  };
+
   useEffect(() => {
-    if (isOpen && messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+    if (isOpen) scrollToBottom();
+  }, [isOpen, scrollToBottom]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (stickRef.current) scrollToBottom();
+    else setShowJump(true);
+  }, [messages, isOpen, scrollToBottom]);
+
+  // Screen readers hear one line when a reply finishes, never per token.
+  useEffect(() => {
+    if (isLoading) {
+      setAnnouncement("");
+    } else if (wasLoadingRef.current) {
+      const last = messages[messages.length - 1];
+      if (last?.role === "assistant" && last.content) setAnnouncement("Dharwin replied.");
     }
-  }, [messages, isOpen]);
+    wasLoadingRef.current = isLoading;
+  }, [isLoading, messages]);
 
   useEffect(() => {
     if (!isOpen) abortRef.current?.abort();
@@ -143,7 +197,7 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
     const ta = textareaRef.current;
     if (!ta) return;
     ta.style.height = "auto";
-    ta.style.height = `${Math.min(ta.scrollHeight, 140)}px`;
+    ta.style.height = `${Math.min(ta.scrollHeight, COMPOSER_MAX_HEIGHT_PX)}px`;
   }, [input]);
 
   useEffect(() => {
@@ -200,6 +254,7 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
     if (!text || isLoading) return;
 
     const userMsg: Message = { id: `u-${Date.now()}`, role: "user", content: text };
+    stickRef.current = true; // sending always brings the thread to the bottom
     const nextMessages = [...messages, userMsg];
     setMessages(nextMessages);
     if (!overrideText) setInput("");
@@ -270,7 +325,8 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
   const isPreparing = isLoading && lastMsg?.role === "assistant" && lastMsg.content === "";
   const isStreaming = isLoading && lastMsg?.role === "assistant" && lastMsg.content !== "";
 
-  const statusLabel = isPreparing ? "Reasoning" : isStreaming ? "Streaming" : "Online";
+  const isWorking = isPreparing || isStreaming;
+  const statusLabel = isPreparing ? "Thinking…" : isStreaming ? "Writing…" : "Ready";
 
   const fab = useDraggableFab({
     storageKey: fabPosKey,
@@ -314,99 +370,110 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
         aria-label="Dharwin Assistant"
         aria-hidden={!isOpen}
       >
-        {/* Header */}
-        <div className="relative z-10 flex flex-shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3.5 py-3 dark:border-slate-800 dark:bg-slate-950">
-          <div className="flex min-w-0 items-center gap-3">
-            <AgentOrb size="md" pulse={isPreparing || isStreaming} />
-
+        {/* Header. The bottom edge only appears once the thread is scrolled
+            under it; at rest the header and thread read as one surface. */}
+        <div
+          className={`relative z-10 flex flex-shrink-0 items-center justify-between gap-2 border-b bg-white px-3 py-2.5 transition-colors duration-150 dark:bg-slate-950 ${
+            scrolled ? "border-slate-200 dark:border-slate-800" : "border-transparent"
+          }`}
+        >
+          <div className="flex min-w-0 items-center gap-2.5">
+            <AgentOrb size="md" pulse={isWorking} />
             <div className="min-w-0">
-              <span className="block truncate text-[15px] font-semibold text-slate-900 dark:text-slate-50">Dharwin</span>
-              <div className="mt-0.5 flex items-center gap-1.5">
-                <span className={`h-1.5 w-1.5 rounded-full ${isPreparing || isStreaming ? "bg-primary" : "bg-emerald-500"}`} />
-                <span className="text-[11px] text-slate-500 dark:text-slate-400">{statusLabel}</span>
-                {(isPreparing || isStreaming) && (
-                  <span className="ml-1 inline-flex h-[3px] w-12 origin-left overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-                    <span
-                      className="block h-full w-full bg-primary"
-                      style={{ animation: "agent-bar 1.4s ease-in-out infinite" }}
-                    />
-                  </span>
-                )}
-              </div>
+              <span className="block truncate text-[15px] font-semibold leading-5 text-slate-900 dark:text-slate-50">Dharwin</span>
+              <span className={`block ${TYPE.meta}`}>{statusLabel}</span>
             </div>
           </div>
 
-          <div className="relative flex items-center gap-0.5">
-            {/* Always rendered, disabled when there is nothing to clear —
-                conditional rendering made Expand and Close jump sideways
-                under the cursor whenever the thread state changed. */}
+          <div className="flex items-center">
+            {/* Always rendered, disabled when there is nothing to clear, so
+                the window controls never jump sideways. Clearing is
+                recoverable: the thread is held for UNDO_WINDOW_MS with an
+                inline Undo above the composer. */}
             <IconButton
               onClick={clearHistory}
               label="Clear conversation"
               disabled={messages.length === 0 || isLoading}
             >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
+              <TrashIcon />
             </IconButton>
+            <span aria-hidden className="mx-1.5 h-5 w-px bg-slate-200 dark:bg-slate-800" />
             <IconButton
               onClick={() => setViewMode(isFullscreen ? "widget" : "fullscreen")}
-              label={isFullscreen ? "Collapse" : "Expand to fullscreen"}
+              label={isFullscreen ? "Exit full screen" : "Full screen"}
             >
-              {isFullscreen ? (
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 9V5H5m14 0h-4v4M5 15h4v4m6 0v-4h4" />
-                </svg>
-              ) : (
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4h4M20 4h-4v4M4 16v4h4m12-4v4h-4" />
-                </svg>
-              )}
+              {isFullscreen ? <MinimizeIcon /> : <MaximizeIcon />}
             </IconButton>
             <IconButton onClick={() => setViewMode("closed")} label="Close">
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <CloseIcon />
             </IconButton>
           </div>
         </div>
 
-        {/* Messages */}
-        <div className={`agent-scrollbar relative z-10 min-h-0 flex-1 overflow-y-auto ${isFullscreen ? "px-3 sm:px-6 md:px-10 lg:px-16 py-6" : "px-3.5 py-4"}`}>
-          <div className={isFullscreen ? "mx-auto w-full max-w-7xl" : ""}>
-            {messages.length === 0 && (
-              <EmptyChatState
-                fullscreen={isFullscreen}
-                onPick={(q) => handleSend(q)}
-                disabled={isLoading}
-                suggestions={SUGGESTED_QUESTIONS}
-              />
-            )}
-
-            {messages.map((msg) =>
-              msg.role === "assistant" && msg.content === "" ? null : (
-                <ChatMessage
-                  key={msg.id}
-                  role={msg.role}
-                  content={msg.content}
+        {/* Messages. Fullscreen is one centered 48rem reading column; the
+            composer below uses the same column so both share a left edge. */}
+        <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+          <div
+            ref={listRef}
+            onScroll={onListScroll}
+            className="agent-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
+          >
+            <div className={`${isFullscreen ? `${LAYOUT.column} py-8` : "py-4"} ${LAYOUT.gutter}`}>
+              {messages.length === 0 && (
+                <EmptyChatState
                   fullscreen={isFullscreen}
-                  blocks={msg.blocks}
-                  entityType={msg.entityType}
-                  queryId={msg.queryId}
-                  onAction={(text) => handleSend(text)}
+                  onPick={(q) => handleSend(q)}
+                  disabled={isLoading}
+                  suggestions={SUGGESTED_QUESTIONS}
                 />
-              )
-            )}
+              )}
 
-            {isPreparing && <ReasoningIndicator />}
-
-            <div ref={messagesEndRef} />
+              <div className="flex flex-col gap-5">
+                {messages.map((msg, i) => {
+                  const isLast = i === messages.length - 1;
+                  const status =
+                    msg.role === "assistant" && isLast && isLoading
+                      ? msg.content === "" ? "pending" : "streaming"
+                      : "done";
+                  return (
+                    <ChatMessage
+                      key={msg.id}
+                      role={msg.role}
+                      content={msg.content}
+                      fullscreen={isFullscreen}
+                      blocks={msg.blocks}
+                      entityType={msg.entityType}
+                      queryId={msg.queryId}
+                      onAction={(text) => handleSend(text)}
+                      status={status}
+                      showAuthor={messages[i - 1]?.role !== "assistant"}
+                    />
+                  );
+                })}
+              </div>
+            </div>
           </div>
+
+          {showJump && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+              <button
+                type="button"
+                onClick={scrollToBottom}
+                className={`pointer-events-auto inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-[12.5px] font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 ${CONTROL.focus}`}
+                style={{ animation: "agent-rise 200ms cubic-bezier(0.16,1,0.3,1)" }}
+              >
+                <ArrowDownIcon className="h-3.5 w-3.5" />
+                Jump to latest
+              </button>
+            </div>
+          )}
+
+          <div role="status" aria-live="polite" className="sr-only">{announcement}</div>
         </div>
 
         {/* Composer */}
-        <div className={`relative z-10 flex-shrink-0 border-t border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950 ${isFullscreen ? "px-4 sm:px-8 md:px-16 py-4" : "px-3 py-3"}`}>
-          <div className={isFullscreen ? "mx-auto max-w-3xl" : ""}>
+        <div className="relative z-10 flex-shrink-0 bg-white pb-3 pt-2 dark:bg-slate-950">
+          <div className={`${isFullscreen ? LAYOUT.column : ""} ${LAYOUT.gutter}`}>
             {clearedMessages && (
               <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[13px] text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
                 <span>Conversation cleared.</span>
@@ -421,85 +488,71 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
             )}
             {/* Composer box. `items-end` pins the button to the last line as
                 the textarea grows. Both are 40px tall, so a single-line
-                composer reads as one row and the button no longer needs a
-                `mb-1` nudge to fake alignment. Send and Stop share a radius
-                and a footprint so the control keeps its shape mid-stream. */}
-            <div className="flex items-end gap-1.5 rounded-xl border border-slate-300 bg-white p-1.5 transition-colors focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/25 dark:border-slate-700 dark:bg-slate-900">
+                composer reads as one row. Send and Stop share a radius and a
+                footprint so the control keeps its shape mid-stream. */}
+            <div className="flex items-end gap-1.5 rounded-xl border border-slate-300 bg-white p-1.5 transition-colors focus-within:border-primary focus-within:ring-2 focus-within:ring-violet-500/25 dark:border-slate-700 dark:bg-slate-900">
               <textarea
                 ref={textareaRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                aria-label="Message the agent"
-                placeholder={isLoading ? "Generating reply…" : "Ask the agent anything…"}
+                aria-label="Message Dharwin"
+                placeholder="Ask Dharwin…"
                 rows={1}
-                disabled={isLoading}
                 enterKeyHint="send"
-                /* `border-0 focus:ring-0` is load-bearing: @tailwindcss/forms
+                /* Stays enabled while a reply streams so focus is not lost
+                   and the next question can be drafted; handleSend ignores
+                   Enter until the reply finishes.
+
+                   `border-0 focus:ring-0` is load-bearing: @tailwindcss/forms
                    puts a 1px border + focus ring on every bare <textarea> in
                    the base layer, which drew a second rectangle inside the
                    composer box. The box owns the frame; the field is bare.
 
-                   py + leading = 40px, matching the button. max-h mirrors the
-                   140px cap the auto-resize effect writes inline; `max-h-36`
-                   (144px) never applied. */
-                className="min-h-10 max-h-[140px] flex-1 resize-none overflow-y-auto border-0 bg-transparent px-2 py-[9px] text-[13px] leading-[22px] text-slate-900 outline-none placeholder:text-slate-400 focus:ring-0 disabled:opacity-60 dark:text-slate-100 dark:placeholder:text-slate-500"
+                   py + leading = 40px, matching the button. max-h mirrors
+                   COMPOSER_MAX_HEIGHT_PX, which the auto-resize effect writes
+                   inline. */
+                className="min-h-10 max-h-[150px] flex-1 resize-none overflow-y-auto border-0 bg-transparent px-2 py-[9px] text-[13px] leading-[22px] text-slate-900 outline-none placeholder:text-slate-500 focus:ring-0 dark:text-slate-100 dark:placeholder:text-slate-400"
               />
               {isLoading ? (
                 <button
+                  type="button"
                   onClick={stopStreaming}
-                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-rose-500 text-white transition-[background-color,transform] duration-150 hover:bg-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-1 active:scale-95"
+                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white transition-colors duration-150 hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:focus-visible:ring-offset-slate-900"
                   aria-label="Stop generating"
-                  title="Stop"
+                  title="Stop generating"
                 >
-                  <span className="block h-3 w-3 rounded-sm bg-current" />
+                  <span aria-hidden className="block h-3 w-3 rounded-sm bg-current" />
                 </button>
               ) : (
                 <button
+                  type="button"
                   onClick={() => handleSend()}
                   disabled={!input.trim()}
-                  /* Disabled was white-on-slate-300 (~1.6:1) — the icon
-                     vanished. Dim the ink with the fill so it still reads. */
-                  className="group/btn flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-primary text-white transition-[background-color,transform] duration-150 hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 active:scale-95 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
+                  /* Disabled keeps a visible glyph (slate-500 on slate-200)
+                     instead of white-on-grey, which vanished. */
+                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-primary text-white transition-colors duration-150 hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 dark:focus-visible:ring-offset-slate-900 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
                   aria-label="Send"
                   title="Send"
                 >
-                  <svg
-                    className="h-4 w-4 -translate-x-px translate-y-px transition-transform duration-150 group-hover/btn:translate-x-0 group-hover/btn:translate-y-0"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 12l14-7-7 14-2-5-5-2z" />
-                  </svg>
+                  <ArrowUpIcon />
                 </button>
               )}
             </div>
-            {/* Safety copy: was 10px slate-400 (2.56:1, fails AA) and
-                `truncate`d mid-sentence. Now 11px slate-600 (7.6:1) and
-                allowed to wrap. */}
-            <div className="mt-2 flex items-start justify-between gap-3 px-1 text-[11px] text-slate-600 dark:text-slate-400">
-              <span className="inline-flex items-start gap-1.5">
-                <svg className="mt-px h-3 w-3 flex-shrink-0 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
-                </svg>
-                <span>AI replies may be inaccurate. Verify before acting.</span>
-              </span>
-              <span className="hidden flex-shrink-0 items-center gap-1 sm:inline-flex">
-                <Kbd>Enter</Kbd>
-                <span className="opacity-70">send</span>
-                <span className="mx-0.5 opacity-30">·</span>
-                <Kbd>⇧</Kbd>
-                <Kbd>Enter</Kbd>
-                <span className="opacity-70">newline</span>
-                {!isFullscreen && (
-                  <>
-                    <span className="mx-0.5 opacity-30">·</span>
-                    <Kbd>Esc</Kbd>
-                  </>
-                )}
-              </span>
+            {/* One quiet line in the 420px dock; keyboard hints only have
+                room (and an audience) in fullscreen. */}
+            <div className={`mt-2 flex items-center justify-between gap-3 px-1 ${TYPE.meta}`}>
+              <span>AI replies may be inaccurate. Verify before acting.</span>
+              {isFullscreen && (
+                <span className="hidden flex-shrink-0 items-center gap-1 sm:inline-flex">
+                  <Kbd>Enter</Kbd>
+                  <span>send</span>
+                  <span aria-hidden className="mx-0.5">·</span>
+                  <Kbd>Shift</Kbd>
+                  <Kbd>Enter</Kbd>
+                  <span>new line</span>
+                </span>
+              )}
             </div>
           </div>
         </div>
