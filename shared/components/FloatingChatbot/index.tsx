@@ -416,9 +416,16 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
           <div
             ref={listRef}
             onScroll={onListScroll}
-            className="agent-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
+            /* The scrollbar (8px) must not shift the thread against the
+               composer, which has none. Reserve its space: on both edges in
+               fullscreen so the centered column shares the composer's
+               center, and on the right only in the dock, where pr-2 + 8px
+               gutter = the composer's px-4. */
+            className={`agent-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden ${
+              isFullscreen ? "[scrollbar-gutter:stable_both-edges]" : "[scrollbar-gutter:stable]"
+            }`}
           >
-            <div className={`${isFullscreen ? `${LAYOUT.column} py-8` : "py-4"} ${LAYOUT.gutter}`}>
+            <div className={isFullscreen ? `${LAYOUT.column} ${LAYOUT.gutter} py-8` : "py-4 pl-4 pr-2"}>
               {messages.length === 0 && (
                 <EmptyChatState
                   fullscreen={isFullscreen}
