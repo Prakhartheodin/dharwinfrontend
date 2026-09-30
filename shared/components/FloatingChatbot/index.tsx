@@ -19,6 +19,7 @@ import {
   type ChatbotConfig,
 } from "@/shared/lib/api/chatbotSettings";
 import ChatMessage from "./ChatMessage";
+import { ConfirmResolveContext, type ConfirmResolved } from "./renderers/ConfirmBlock";
 import { useDraggableFab } from "./useDraggableFab";
 import {
   AgentOrb,
@@ -50,6 +51,14 @@ function blocksNeedFullscreen(blocks?: Block[]): boolean {
     if (b.type === "group" && blocksNeedFullscreen(b.blocks)) return true;
   }
   return false;
+}
+
+function withConfirmResolved(blocks: Block[], key: string, resolved: ConfirmResolved): Block[] {
+  return blocks.map((b) => {
+    if (b.type === "confirm" && b.key === key) return { ...b, resolved };
+    if (b.type === "group") return { ...b, blocks: withConfirmResolved(b.blocks, key, resolved) };
+    return b;
+  });
 }
 
 interface Message {
@@ -137,6 +146,14 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
       /* ignore quota */
     }
   }, [messages, storageKey]);
+
+  // A settled confirm card is written into its message, and so into the
+  // localStorage effect above, so a reload never shows a live Confirm again.
+  const resolveConfirm = useCallback((key: string, resolved: ConfirmResolved) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.blocks?.length ? { ...m, blocks: withConfirmResolved(m.blocks, key, resolved) } : m))
+    );
+  }, []);
 
   // Instant, not smooth: a smooth scroll per token fired a new animation on
   // every chunk, and its intermediate scroll events read as "user scrolled
@@ -336,7 +353,7 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
   });
 
   return (
-    <>
+    <ConfirmResolveContext.Provider value={resolveConfirm}>
       <ConsoleStyles />
 
       {/* Backdrop */}
@@ -593,7 +610,7 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
           </svg>
         </span>
       </button>
-    </>
+    </ConfirmResolveContext.Provider>
   );
 }
 

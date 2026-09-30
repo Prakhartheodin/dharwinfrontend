@@ -75,6 +75,19 @@ export interface ActionsBlock   {
   type: "actions";
   buttons: { label: string; intent: "query" | "navigate"; payload: string }[];
 }
+export type ConfirmOutcome = "done" | "failed" | "cancelled" | "expired";
+export interface ConfirmBlock   {
+  type: "confirm";
+  key: string;
+  title: string;
+  lines: string[];
+  targetCount: number;
+  confirmLabel: string;
+  expiresAt: string;
+  // Client-only: written into the stored message once the card settles, so a
+  // reload never shows an active Confirm again. The backend never sends it.
+  resolved?: { state: ConfirmOutcome; message: string };
+}
 
 export type Block =
   | TextBlock
@@ -86,7 +99,8 @@ export type Block =
   | CardsBlock
   | GroupBlock
   | FallbackBlock
-  | ActionsBlock;
+  | ActionsBlock
+  | ConfirmBlock;
 
 export interface ChatMeta {
   kind: string | null;
@@ -105,7 +119,7 @@ export interface ChatResponse {
 
 const BLOCK_TYPES = new Set<Block["type"]>([
   "text", "heading", "callout", "kv", "badge_row",
-  "table", "cards", "group", "fallback", "actions",
+  "table", "cards", "group", "fallback", "actions", "confirm",
 ]);
 
 export function isBlock(value: unknown): value is Block {

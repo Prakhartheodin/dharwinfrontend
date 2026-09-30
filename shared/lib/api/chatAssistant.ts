@@ -1,5 +1,6 @@
 "use client";
 
+import axios from "axios";
 import { apiClient, normalizeApiBase } from "@/shared/lib/api/client";
 import { AUTH_ENDPOINTS } from "@/shared/lib/constants";
 import type { ChatResponse, Block, ChatMeta } from "@/shared/types/chatResponse";
@@ -118,6 +119,48 @@ export async function clearChatConversation(): Promise<{ deletedMemoryRow: boole
   } catch {
     return { deletedMemoryRow: false };
   }
+}
+
+/**
+ * Outcome of a Sage draft confirm/cancel. HTTP errors resolve too (the backend's
+ * 403/404/409/410 bodies carry the message to show); only a network failure throws.
+ * `status` is the backend's: done | failed | cancelled | executing | expired | not_found | refused.
+ */
+export interface SageActionResult {
+  httpStatus: number;
+  status: string;
+  message: string;
+  details?: unknown;
+}
+
+async function postSageAction(key: string, op: "confirm" | "cancel"): Promise<SageActionResult> {
+  try {
+    const res = await apiClient.post(`/chat-assistant/actions/${encodeURIComponent(key)}/${op}`, {});
+    return {
+      httpStatus: res.status,
+      status: String(res.data?.status ?? ""),
+      message: String(res.data?.message ?? ""),
+      details: res.data?.details,
+    };
+  } catch (err) {
+    if (!axios.isAxiosError(err) || !err.response) throw err;
+    const data = err.response.data as { status?: unknown; message?: unknown; details?: unknown } | undefined;
+    return {
+      httpStatus: err.response.status,
+      status: String(data?.status ?? ""),
+      message: String(data?.message ?? ""),
+      details: data?.details,
+    };
+  }
+}
+
+/** Runs the drafted write. No chat message is sent — the card shows the result. */
+export function confirmSageAction(key: string): Promise<SageActionResult> {
+  return postSageAction(key, "confirm");
+}
+
+export function cancelSageAction(key: string): Promise<SageActionResult> {
+  return postSageAction(key, "cancel");
 }
 
 async function fetchStream(url: string, messages: ChatMessage[], uiContext?: ChatUiContext | null, signal?: AbortSignal): Promise<Response> {

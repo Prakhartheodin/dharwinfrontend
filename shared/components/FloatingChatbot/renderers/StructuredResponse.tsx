@@ -37,6 +37,7 @@ import {
   TYPE,
   WRAP_ANYWHERE,
 } from "../ui";
+import { ConfirmBlockView } from "./ConfirmBlock";
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -123,6 +124,7 @@ function BlockRenderer({
     case "group":     return <GroupBlockView block={block} compact={compact} onAction={onAction} />;
     case "fallback":  return <FallbackBlockView block={block} />;
     case "actions":   return <ActionsBlockView block={block} onAction={onAction} />;
+    case "confirm":   return <ConfirmBlockView block={block} />;
     default:          return null;
   }
 }
