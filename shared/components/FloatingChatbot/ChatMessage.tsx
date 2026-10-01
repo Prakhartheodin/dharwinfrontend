@@ -6,7 +6,6 @@ import type { Block } from "@/shared/types/chatResponse";
 import {
   AgentOrb,
   CopyButton,
-  LAYOUT,
   ReasoningIndicator,
   SURFACE,
   TYPE,
@@ -63,10 +62,6 @@ export default function ChatMessage({
   const visibleBlocks = blocksMatchEntity(blocks, entityType);
   if (status === "done" && !content && visibleBlocks.length === 0) return null;
 
-  // Tables and card grids may break out of the 48rem reading column in
-  // fullscreen; prose stays in the column.
-  const wide = fullscreen && visibleBlocks.some((b) => b.type === "table" || b.type === "cards");
-
   return (
     <article
       data-slot="message"
@@ -96,14 +91,14 @@ export default function ChatMessage({
               </div>
             ) : null}
             {visibleBlocks.length > 0 ? (
-              <div className={wide ? LAYOUT.breakout : undefined}>
-                <StructuredResponse
-                  blocks={visibleBlocks}
-                  compact={!fullscreen}
-                  onAction={onAction}
-                  queryId={queryId}
-                />
-              </div>
+              // Blocks stay in the reply column, under the text they belong to;
+              // a wide table scrolls inside its own frame (RealTable).
+              <StructuredResponse
+                blocks={visibleBlocks}
+                compact={!fullscreen}
+                onAction={onAction}
+                queryId={queryId}
+              />
             ) : null}
           </div>
         )}

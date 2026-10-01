@@ -87,12 +87,12 @@ export const TYPE = {
 } as const;
 
 // Layout — fullscreen is one centered reading column shared by the thread and
-// the composer, so both have the same width and the same left edge. Wide
-// structured blocks (tables, card grids) may break out to 64rem from lg up.
+// the composer, so both have the same width and the same left edge. Structured
+// blocks stay in that column under their reply; a wide table scrolls inside its
+// own frame rather than breaking out (which pulled every block left of the text).
 export const LAYOUT = {
   column:   "mx-auto w-full max-w-3xl",
   gutter:   "px-4 sm:px-6",
-  breakout: "lg:relative lg:left-1/2 lg:w-[min(64rem,calc(100vw-7rem))] lg:max-w-none lg:-translate-x-1/2",
 } as const;
 
 // Controls — one icon-button recipe. `header` is a 36px target with an 18px
