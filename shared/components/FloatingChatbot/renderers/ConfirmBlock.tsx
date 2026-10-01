@@ -13,13 +13,13 @@ import {
   type SageActionResult,
 } from "@/shared/lib/api/chatAssistant";
 import { BRAND_INK, Callout, CONTAINMENT, CONTROL, SURFACE, TYPE, WRAP_ANYWHERE } from "../ui";
+import { EXPIRED_TEXT, expiryLabel, serverSettlesExpired } from "./confirmExpiry.js";
 
 export type ConfirmResolved = NonNullable<ConfirmBlock["resolved"]>;
 
 /** FloatingChatbot provides this to write a settled card back into the stored message. */
 export const ConfirmResolveContext = createContext<(key: string, resolved: ConfirmResolved) => void>(() => {});
 
-const EXPIRED_TEXT = "This draft expired — ask Sage again";
 const TICK_MS = 15_000;
 // A task plan can list up to 60 titles; show this many until asked.
 const LINES_SHOWN = 8;
@@ -51,11 +51,10 @@ function interpret(r: SageActionResult): { resolved: ConfirmResolved } | { note:
   });
   const { httpStatus, status, message } = r;
 
-  if (httpStatus === 410) return settle("expired", EXPIRED_TEXT);
+  if (serverSettlesExpired(httpStatus, status)) return settle("expired", EXPIRED_TEXT);
   if (httpStatus === 403 || httpStatus === 404) return settle("failed", message || "This action is not available.");
   if (httpStatus < 300 || httpStatus === 409 || httpStatus >= 500) {
     if (status === "done" || status === "failed" || status === "cancelled") return settle(status, message);
-    if (status === "expired") return settle("expired", EXPIRED_TEXT);
   }
   // 409 `executing` (another tab is running it), 429, or a 5xx with no stored outcome:
   // leave Confirm live; the next click returns the real stored result.
@@ -63,45 +62,23 @@ function interpret(r: SageActionResult): { resolved: ConfirmResolved } | { note:
   return { note: message || "Something went wrong. Try again in a moment." };
 }
 
-function msLeft(expiresAt: string, now: number): number | null {
-  const t = Date.parse(expiresAt);
-  return Number.isNaN(t) ? null : t - now;
-}
-
-function expiryText(ms: number): string {
-  if (ms < 60_000) return "expires in under a minute";
-  return `expires in ${Math.ceil(ms / 60_000)} min`;
-}
-
 export function ConfirmBlockView({ block }: { block: ConfirmBlock }) {
   const onResolve = useContext(ConfirmResolveContext);
   const [now, setNow] = useState(() => Date.now());
-  const [resolved, setResolved] = useState<ConfirmResolved | null>(() => {
-    if (block.resolved) return block.resolved;
-    const left = msLeft(block.expiresAt, Date.now());
-    return left !== null && left <= 0 ? { state: "expired", message: EXPIRED_TEXT } : null;
-  });
+  // A laptop clock must not write expired into stored state. Only the server settles that.
+  const [resolved, setResolved] = useState<ConfirmResolved | null>(block.resolved ?? null);
   const [busy, setBusy] = useState<Op | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const inFlight = useRef(false);
 
-  const left = msLeft(block.expiresAt, now);
+  const label = expiryLabel(block.expiresAt, now);
 
   useEffect(() => {
     if (resolved) return;
     const id = setInterval(() => setNow(Date.now()), TICK_MS);
     return () => clearInterval(id);
   }, [resolved]);
-
-  // Clock ran out while the card sat pending: expire without a call. A request
-  // already in flight decides for itself.
-  useEffect(() => {
-    if (resolved || busy || left === null || left > 0) return;
-    const r: ConfirmResolved = { state: "expired", message: EXPIRED_TEXT };
-    setResolved(r);
-    onResolve(block.key, r);
-  }, [resolved, busy, left, block.key, onResolve]);
 
   const run = async (op: Op) => {
     if (inFlight.current || resolved) return;
@@ -134,7 +111,7 @@ export function ConfirmBlockView({ block }: { block: ConfirmBlock }) {
         {!resolved && (
           <p className={`text-[11px] font-medium ${BRAND_INK}`}>
             Draft · nothing is sent or changed until you confirm
-            {left !== null && left > 0 && <span className="font-normal text-slate-500 dark:text-slate-400"> · {expiryText(left)}</span>}
+            {label && <span className="font-normal text-slate-500 dark:text-slate-400"> · {label}</span>}
           </p>
         )}
       </div>
