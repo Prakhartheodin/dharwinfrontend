@@ -12,7 +12,7 @@ import {
   confirmSageAction,
   type SageActionResult,
 } from "@/shared/lib/api/chatAssistant";
-import { Callout, CONTAINMENT, CONTROL, SURFACE, TYPE, WRAP_ANYWHERE } from "../ui";
+import { BRAND_INK, Callout, CONTAINMENT, CONTROL, SURFACE, TYPE, WRAP_ANYWHERE } from "../ui";
 
 export type ConfirmResolved = NonNullable<ConfirmBlock["resolved"]>;
 
@@ -21,6 +21,12 @@ export const ConfirmResolveContext = createContext<(key: string, resolved: Confi
 
 const EXPIRED_TEXT = "This draft expired — ask Sage again";
 const TICK_MS = 15_000;
+// A task plan can list up to 60 titles; show this many until asked.
+const LINES_SHOWN = 8;
+// One focus recipe for both buttons; the offset keeps the ring visible on the filled Confirm.
+const BUTTON_FOCUS = `${CONTROL.focus} focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900`;
+// Backend lines that start with "• " are items under the line above (e.g. each recipient).
+const SUB_ITEM = /^•\s*/;
 
 const OUTCOME_TONE: Record<ConfirmOutcome, Tone> = {
   done: "success",
@@ -77,6 +83,7 @@ export function ConfirmBlockView({ block }: { block: ConfirmBlock }) {
   });
   const [busy, setBusy] = useState<Op | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const inFlight = useRef(false);
 
   const left = msLeft(block.expiresAt, now);
@@ -117,25 +124,40 @@ export function ConfirmBlockView({ block }: { block: ConfirmBlock }) {
     }
   };
 
-  const count = block.targetCount;
-  const people = `${count} ${count === 1 ? "person" : "people"}`;
+  const hidden = showAll ? 0 : Math.max(0, block.lines.length - LINES_SHOWN);
+  const lines = hidden ? block.lines.slice(0, LINES_SHOWN) : block.lines;
 
   return (
     <div className={`space-y-2.5 px-3.5 py-3 ${SURFACE.card} ${CONTAINMENT} ${WRAP_ANYWHERE}`}>
       <div className="space-y-1">
         <p className={TYPE.title}>{block.title}</p>
-        <p className={TYPE.meta}>
-          {people}
-          {!resolved && left !== null && left > 0 && <> · {expiryText(left)}</>}
-        </p>
+        {!resolved && (
+          <p className={`text-[11px] font-medium ${BRAND_INK}`}>
+            Draft · nothing is sent or changed until you confirm
+            {left !== null && left > 0 && <span className="font-normal text-slate-500 dark:text-slate-400"> · {expiryText(left)}</span>}
+          </p>
+        )}
       </div>
 
-      {block.lines.length > 0 && (
+      {lines.length > 0 && (
         <ul className={`ml-4 list-disc space-y-0.5 marker:text-slate-400 ${TYPE.body}`}>
-          {block.lines.map((line, i) => (
-            <li key={i}>{line}</li>
-          ))}
+          {lines.map((line, i) =>
+            SUB_ITEM.test(line) ? (
+              <li key={i} className="ml-4 list-[circle]">{line.replace(SUB_ITEM, "")}</li>
+            ) : (
+              <li key={i}>{line}</li>
+            )
+          )}
         </ul>
+      )}
+      {hidden > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className={`rounded text-[12.5px] font-medium ${BRAND_INK} hover:underline ${CONTROL.focus}`}
+        >
+          Show {hidden} more
+        </button>
       )}
 
       <div role="status" aria-live="polite">
@@ -152,7 +174,7 @@ export function ConfirmBlockView({ block }: { block: ConfirmBlock }) {
             type="button"
             onClick={() => run("confirm")}
             disabled={busy !== null}
-            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-50 dark:focus-visible:ring-offset-slate-900"
+            className={`inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_FOCUS}`}
           >
             {busy === "confirm" && (
               <span
@@ -166,7 +188,7 @@ export function ConfirmBlockView({ block }: { block: ConfirmBlock }) {
             type="button"
             onClick={() => run("cancel")}
             disabled={busy !== null}
-            className={`inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-800 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-100 dark:hover:bg-slate-800 ${CONTROL.focus}`}
+            className={`inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-800 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-100 dark:hover:bg-slate-800 ${BUTTON_FOCUS}`}
           >
             {busy === "cancel" && (
               <span
