@@ -5,6 +5,19 @@ import Link from 'next/link'
 import JobQuickSearch from './JobQuickSearch'
 import type { JobListQueryScope } from '@/shared/lib/ats/job-list-filters'
 
+function jobsListSortChipLabel(sort: string): string | null {
+  if (!sort || sort === 'newest-first' || sort === 'date-newest') return null
+  const labels: Record<string, string> = {
+    'oldest-first': 'Oldest first',
+    'date-oldest': 'Oldest first',
+    'title-asc': 'Title A\u2013Z',
+    'title-desc': 'Title Z\u2013A',
+    'company-asc': 'Company A\u2013Z',
+    'company-desc': 'Company Z\u2013A',
+  }
+  return labels[sort] ?? null
+}
+
 export interface JobsToolbarProps {
   totalResults: number
   jobNameSearch: string
@@ -176,6 +189,18 @@ export function JobsToolbar({
               </li>
             </ul>
           </div>
+
+          {jobsListSortChipLabel(selectedSort) ? (
+            <button
+              type="button"
+              className="jobs-toolbar-sort-chip inline-flex items-center gap-1 rounded-md border border-primary/25 bg-primary/10 px-2 py-1 text-[0.75rem] font-medium text-primary"
+              onClick={() => onSortChange('clear-sort')}
+              aria-label={`Clear sort: ${jobsListSortChipLabel(selectedSort)}`}
+            >
+              <span className="max-w-[10rem] truncate">{jobsListSortChipLabel(selectedSort)}</span>
+              <i className="ri-close-line text-[0.875rem]" aria-hidden />
+            </button>
+          ) : null}
 
           {showExcelMenu ? (
             <div className="hs-dropdown ti-dropdown">

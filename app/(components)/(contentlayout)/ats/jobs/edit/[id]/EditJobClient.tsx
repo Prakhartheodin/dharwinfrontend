@@ -21,8 +21,7 @@ import { PHONE_COUNTRIES, getPhoneValidationError, formatPhoneForApi } from '@/s
 import { usePmReactSelectStyles } from '@/shared/hooks/usePmReactSelectStyles'
 import { JobFormTabList } from '../../_components/form/JobFormTabList'
 import { JobFormFooter } from '../../_components/form/JobFormFooter'
-import { JobFormCard } from '../../_components/form/JobFormCard'
-import { JobFormBodyLoadingSkeleton, JobFormShell } from '../../_components/form/JobFormShell'
+import { JobFormBox, JobFormBodyLoadingSkeleton, JobFormShell } from '../../_components/form/JobFormShell'
 import { JobFormHeader } from '../../_components/form/JobFormHeader'
 import { JobFormPanel } from '../../_components/form/JobFormPanel'
 import { JobSection } from '../../_components/form/JobSection'
@@ -54,7 +53,7 @@ import {
   buildJobDescriptionWithRequirements,
   splitRequirementsFromDescription,
 } from '../../_components/form/jobFormDescriptionHtml'
-import { createSkillOption, handleJobSkillsComboboxKeyDown } from '../../_components/form/jobFormSkills'
+import { createSkillOption, handleJobSkillsComboboxKeyDown } from '../../_components/form/jobFormSections/shared'
 import { JobFormPermissionDenied } from '../../_components/form/JobFormPermissionGate'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 import { useConfirm } from '@/shared/components/ui/useConfirm'
@@ -571,7 +570,7 @@ export default function EditJobClient() {
 
   if (jobId === '_') {
     return (
-      <JobFormShell mode="edit" title="Edit posting" seoTitle="Edit posting" loading>
+      <JobFormShell seoTitle="Edit posting" loading>
         {null}
       </JobFormShell>
     )
@@ -579,7 +578,7 @@ export default function EditJobClient() {
 
   if (permissionsLoading) {
     return (
-      <JobFormShell mode="edit" title="Edit posting" seoTitle="Edit posting" loading>
+      <JobFormShell seoTitle="Edit posting" loading>
         {null}
       </JobFormShell>
     )
@@ -590,10 +589,10 @@ export default function EditJobClient() {
   }
 
   return (
-    <JobFormShell mode="edit" title="Edit posting" seoTitle="Edit posting">
+    <JobFormShell seoTitle="Edit posting">
       {confirmDialog}
       {templateNameDialog}
-      <JobFormCard>
+      <JobFormBox>
       <JobFormHeader mode="edit" status={formData.status?.value} />
       {!loading ? (
         <JobFormRoleStrip
@@ -736,7 +735,7 @@ export default function EditJobClient() {
       </form>
         </>
       )}
-      </JobFormCard>
+      </JobFormBox>
       {!loading ? (
         <JobFormFooter
           mode="edit"

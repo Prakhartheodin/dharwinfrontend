@@ -2,7 +2,7 @@
 
 import React from 'react'
 import Link from 'next/link'
-import { JobStatusBadge } from '../JobStatusBadge'
+import { JobStatusBadge } from '../JobPills'
 
 export function JobFormHeader({
   mode,
@@ -21,7 +21,7 @@ export function JobFormHeader({
   return (
     <header className="jobs-form-header shrink-0 border-b border-defaultborder/60 dark:border-white/10">
       <div className="jobs-surface-x jobs-form-header__inner pb-3 pt-3">
-        <div className="jobs-form-header__command">
+        <div className="jobs-command-strip jobs-form-header__command">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <Link

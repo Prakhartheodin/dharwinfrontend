@@ -9,8 +9,7 @@ import { resolveTemplateVars, type TemplateVarContext } from '@/shared/lib/ats/t
 import { validateVacanciesInput } from '@/shared/lib/ats/jobVacancy'
 import { JobFormTabList } from '../_components/form/JobFormTabList'
 import { JobFormFooter } from '../_components/form/JobFormFooter'
-import { JobFormCard } from '../_components/form/JobFormCard'
-import { JobFormShell } from '../_components/form/JobFormShell'
+import { JobFormBox, JobFormShell } from '../_components/form/JobFormShell'
 import { JobFormHeader } from '../_components/form/JobFormHeader'
 import { JobFormPanel } from '../_components/form/JobFormPanel'
 import { JobSection } from '../_components/form/JobSection'
@@ -38,7 +37,7 @@ import {
   JobFormValidationSummary,
 } from '../_components/form/jobFormValidation'
 import { buildJobDescriptionWithRequirements } from '../_components/form/jobFormDescriptionHtml'
-import { createSkillOption, handleJobSkillsComboboxKeyDown } from '../_components/form/jobFormSkills'
+import { createSkillOption, handleJobSkillsComboboxKeyDown } from '../_components/form/jobFormSections/shared'
 import { JobFormPermissionDenied } from '../_components/form/JobFormPermissionGate'
 import { getPhoneValidationError, formatPhoneForApi } from '@/shared/lib/phoneCountries'
 import { usePmReactSelectStyles } from '@/shared/hooks/usePmReactSelectStyles'
@@ -47,7 +46,6 @@ import { useConfirm } from '@/shared/components/ui/useConfirm'
 import { JobFormRoleStrip } from '../_components/form/JobFormRoleStrip'
 import { JobFormGeneralJumpNav } from '../_components/form/JobFormGeneralJumpNav'
 import { computeJobFormTabCompletion } from '../_components/form/jobFormTabCompletion'
-import { isCreateJobFormDirty } from '../_components/form/jobFormDirty'
 import { useTemplateNameDialog } from '../_components/form/useTemplateNameDialog'
 
 const CreateJob = () => {
@@ -390,11 +388,10 @@ const CreateJob = () => {
     [formData, jobDescription, requirements, interviewRounds.length, interviewerPool.length]
   )
 
-  const formDirty = isCreateJobFormDirty({
-    jobTitle: formData.jobTitle,
-    organisationName: formData.organisationName,
-    jobDescriptionHtml: jobDescription,
-  })
+  const formDirty =
+    Boolean(formData.jobTitle.trim()) ||
+    Boolean(formData.organisationName.trim()) ||
+    Boolean(jobDescription.replace(/<[^>]+>/g, '').trim())
 
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -422,7 +419,7 @@ const CreateJob = () => {
 
   if (permissionsLoading) {
     return (
-      <JobFormShell mode="create" title="New job posting" seoTitle="New job posting" loading>
+      <JobFormShell seoTitle="New job posting" loading>
         {null}
       </JobFormShell>
     )
@@ -433,10 +430,10 @@ const CreateJob = () => {
   }
 
   return (
-    <JobFormShell mode="create" title="New job posting" seoTitle="New job posting">
+    <JobFormShell seoTitle="New job posting">
       {confirmDialog}
       {templateNameDialog}
-      <JobFormCard>
+      <JobFormBox>
       <JobFormHeader mode="create" status={formData.status?.value} />
       <JobFormRoleStrip
         mode="create"
@@ -556,7 +553,7 @@ const CreateJob = () => {
           </JobInterviewSetup>
         </JobFormPanel>
       </form>
-      </JobFormCard>
+      </JobFormBox>
       <JobFormFooter
         mode="create"
         submitting={submitting}

@@ -18,7 +18,7 @@ export function JobFormFooter({
 }): React.JSX.Element {
   return (
     <footer className="jobs-form-footer">
-      <div className="jobs-form-footer__command">
+      <div className="jobs-command-strip jobs-form-footer__command">
         <Link
           href={onCancelHref}
           className="ti-btn ti-btn-light jobs-form-footer__btn"

@@ -53,7 +53,16 @@ interface JobPreviewPanelProps {
   callingJobId: string | null
   getOrganisationPhone: (job: any) => string
   handleApplyClick: (job: any) => void
+  canEdit?: boolean
 }
+
+const PREVIEW_TABS = [
+  { id: 'details' as const, label: 'Job details', icon: 'ri-briefcase-line' },
+  { id: 'applicants' as const, label: 'Applicants', icon: 'ri-user-add-line' },
+]
+
+const PREVIEW_META_CHIP =
+  'inline-flex items-center h-6 rounded-md border px-2 text-xs font-medium border-defaultborder/60 bg-light/40 text-defaulttextcolor/80 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/70'
 
 const APPLICANT_SKELETON_ROW_COUNT = 4
 
@@ -135,6 +144,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
   callingJobId,
   getOrganisationPhone,
   handleApplyClick,
+  canEdit = false,
 }) => {
   const [selectedCandidates, setSelectedCandidates] = useState<Set<string>>(new Set())
   const [callingCandidates, setCallingCandidates] = useState<Set<string>>(new Set())
@@ -268,7 +278,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
   return (
       <div
         id="job-preview-panel"
-        className="hs-overlay hidden ti-offcanvas ti-offcanvas-right !z-[105] !w-full sm:!w-auto sm:!max-w-[40rem] md:!max-w-[50rem] lg:!max-w-[60rem]"
+        className="hs-overlay hidden ti-offcanvas ti-offcanvas-right !z-[105] !flex !flex-col !w-full sm:!w-auto sm:!max-w-[40rem] md:!max-w-[50rem] lg:!max-w-[60rem]"
         tabIndex={-1}
       >
         <div className="ti-offcanvas-header bg-gray-50 dark:bg-black/20 !py-2.5">
@@ -288,35 +298,37 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
             </svg>
           </button>
         </div>
-        <div className="ti-offcanvas-body !p-4">
+        <div className="ti-offcanvas-body jobs-preview-body !p-4 flex flex-col min-h-0 overflow-hidden">
                 {previewJob ? (
-                <div className="space-y-4">
+                <div className="jobs-preview-layout flex flex-col flex-1 min-h-0 gap-3">
                   {/* Job Header Info */}
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0">
                     <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1">
-                      <span className={`badge ${getUrgencyBadge(previewJob.urgency || 'medium').color} text-white`}>
+                      <span className={PREVIEW_META_CHIP}>
                         {getUrgencyBadge(previewJob.urgency || 'medium').label}
                       </span>
                       {(() => {
                         const jobTypeInfo = getJobTypeInfo(previewJob)
                         return (
-                          <span className={`badge bg-primary/10 text-primary ${jobTypeInfo.color}`}>
-                            <i className={`${jobTypeInfo.icon} me-1`}></i>
+                          <span className={PREVIEW_META_CHIP}>
+                            <i className={`${jobTypeInfo.icon} me-1`} aria-hidden />
                             {jobTypeInfo.label}
                           </span>
                         )
                       })()}
                       {previewJob.jobOrigin === 'external' && (
-                        <span className="badge bg-info/10 text-info border border-info/30">
-                          <i className="ri-external-link-line me-1"></i>External listing
+                        <span className={PREVIEW_META_CHIP}>
+                          <i className="ri-external-link-line me-1" aria-hidden />
+                          External
                         </span>
                       )}
                       {previewJob.isRemote && (
-                        <span className="badge bg-success/10 text-success border border-success/30">
-                          <i className="ri-home-line me-1"></i>Remote
+                        <span className={PREVIEW_META_CHIP}>
+                          <i className="ri-home-line me-1" aria-hidden />
+                          Remote
                         </span>
                       )}
-                      <span className={`badge ${getSalaryTierBadge(previewJob.salaryTier || 'medium').color} text-white`}>
+                      <span className={PREVIEW_META_CHIP}>
                         {getSalaryTierBadge(previewJob.salaryTier || 'medium').label}
                       </span>
                     </div>
@@ -330,36 +342,59 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                     </button>
                   </div>
 
-                  {/* Tabs */}
-                  <div className="border-b border-gray-200 dark:border-defaultborder/10 mb-4">
-                    <nav className="-mb-px flex space-x-2 sm:space-x-4 overflow-x-auto">
-                      {[
-                        { id: 'details' as const, label: 'Job Details', icon: 'ri-briefcase-line' },
-                        { id: 'applicants' as const, label: 'Applicants', icon: 'ri-user-add-line' },
-                      ].map((tab) => (
+                  <nav
+                    className="jobs-command-strip jobs-preview-tabs shrink-0"
+                    role="tablist"
+                    aria-label="Job preview"
+                  >
+                    {PREVIEW_TABS.map((tab) => {
+                      const selected = jobPreviewTab === tab.id
+                      return (
                         <button
                           key={tab.id}
                           type="button"
+                          role="tab"
+                          id={`job-preview-${tab.id}-tab`}
+                          aria-selected={selected}
+                          aria-controls={`job-preview-${tab.id}-panel`}
+                          tabIndex={selected ? 0 : -1}
                           onClick={() => setJobPreviewTab(tab.id)}
-                          className={`py-2 px-1 sm:px-2 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap flex-shrink-0 flex items-center gap-1 ${
-                            jobPreviewTab === tab.id ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                          onKeyDown={(e) => {
+                            if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
+                            e.preventDefault()
+                            const next = tab.id === 'details' ? 'applicants' : 'details'
+                            setJobPreviewTab(next)
+                            requestAnimationFrame(() => {
+                              document.getElementById(`job-preview-${next}-tab`)?.focus()
+                            })
+                          }}
+                          className={`jobs-preview-tabs__btn flex-1 min-w-0 inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-2 text-xs sm:text-sm font-medium transition-colors ${
+                            selected
+                              ? 'bg-primary/10 text-primary'
+                              : 'text-defaulttextcolor/65 hover:bg-light/60 dark:text-white/55 dark:hover:bg-white/[0.04]'
                           }`}
                         >
-                          <i className={tab.icon}></i>
-                          {tab.label}
-                          {tab.id === 'applicants' && (
-                            <span className="badge bg-primary/10 text-primary !rounded-full text-[0.65rem] px-1.5">{uniqueApplications.length}</span>
-                          )}
+                          <i className={tab.icon} aria-hidden />
+                          <span>{tab.label}</span>
+                          {tab.id === 'applicants' ? (
+                            <span className="tabular-nums text-[0.65rem] font-semibold rounded-full bg-primary/15 px-1.5 py-0.5">
+                              {uniqueApplications.length}
+                            </span>
+                          ) : null}
                         </button>
-                      ))}
-                    </nav>
-                  </div>
+                      )
+                    })}
+                  </nav>
 
-                  {/* Tab content: Job Details */}
-                  {jobPreviewTab === 'details' && (
-                  <div className="space-y-4">
+                  <div
+                    id="job-preview-details-panel"
+                    role="tabpanel"
+                    aria-labelledby="job-preview-details-tab"
+                    hidden={jobPreviewTab !== 'details'}
+                    className={`flex-1 min-h-0 overflow-y-auto space-y-4 motion-safe:animate-[jobsFormPanelIn_0.15s_ease-out] ${jobPreviewTab !== 'details' ? 'hidden' : ''}`}
+                  >
                   {/* Per-job analytics card */}
-                  <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-defaultborder/10 dark:bg-black/30">
+                  <div className="rounded-lg border border-defaultborder/65 bg-light/30 p-4 dark:border-white/10 dark:bg-white/[0.03]">
                     <div className="mb-3 flex items-center justify-between">
                       <h6 className="text-sm font-semibold text-gray-800 dark:text-white flex items-center gap-2">
                         <i className="ri-bar-chart-2-line text-primary"></i>
@@ -621,11 +656,14 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                     </div>
                   </div>
                   </div>
-                  )}
 
-                  {/* Tab content: Applicants */}
-                  {jobPreviewTab === 'applicants' && (
-                  <div className="pt-2">
+                  <div
+                    id="job-preview-applicants-panel"
+                    role="tabpanel"
+                    aria-labelledby="job-preview-applicants-tab"
+                    hidden={jobPreviewTab !== 'applicants'}
+                    className={`flex flex-1 min-h-0 flex-col pt-1 motion-safe:animate-[jobsFormPanelIn_0.15s_ease-out] ${jobPreviewTab !== 'applicants' ? 'hidden' : ''}`}
+                  >
                     <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
                       <i className="ri-user-add-line text-primary"></i>
                       Applied ({uniqueApplications.length})
@@ -642,10 +680,10 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                     ) : uniqueApplications.length === 0 ? (
                       <p className="text-sm text-gray-500 dark:text-gray-400 py-2">No applicants yet.</p>
                     ) : (
-                      <div className="table-responsive max-h-[14rem] overflow-y-auto rounded-lg border border-gray-200 dark:border-defaultborder/10">
-                        <table className="table table-hover table-sm mb-0 text-[0.8125rem] min-w-full whitespace-nowrap">
-                          <thead>
-                            <tr className="bg-gray-50 dark:bg-black/20">
+                      <div className="jobs-preview-table-wrap flex-1 min-h-0 overflow-auto rounded-lg border border-defaultborder/65 dark:border-white/10">
+                        <table className="jobs-preview-table w-full mb-0 text-[0.8125rem] min-w-full border-collapse">
+                          <thead className="sticky top-0 z-[1]">
+                            <tr className="border-b border-defaultborder/60 bg-light/50 dark:border-white/10 dark:bg-white/[0.04]">
                               <th className="!py-2 !px-3 w-12">
                                 <input
                                   type="checkbox"
@@ -657,7 +695,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                               <th className="!py-2 !px-3">Applicant</th>
                               <th className="!py-2 !px-3">Email</th>
                               <th className="!py-2 !px-3 w-28">Status</th>
-                              <th className="!py-2 !px-3 text-center min-w-[12rem]">Actions</th>
+                              <th className="!py-2 !px-3 text-end min-w-[10rem]">Actions</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -703,8 +741,8 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                                       onChange={(next) => handleApplicationStatusChange(String(appId), next)}
                                     />
                                   </td>
-                                  <td className="!py-2 !px-3 text-center overflow-visible">
-                                    <div className="flex flex-wrap items-center justify-center gap-1.5">
+                                  <td className="!py-2 !px-3 text-end overflow-visible">
+                                    <div className="flex flex-wrap items-center justify-end gap-1.5">
                                       {isInterviewSchedulingBlocked(app.status) ? (
                                         <span
                                           title={getInterviewSchedulingBlockReason(app.status) ?? undefined}
@@ -730,11 +768,11 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                                       {candidateId && (
                                         <Link
                                           href={`/ats/employees/edit/?id=${candidateId}`}
-                                          className="ti-btn ti-btn-sm ti-btn-light inline-flex items-center justify-center !py-1 !px-2.5 !text-[0.75rem] whitespace-nowrap min-w-[5.5rem] overflow-visible"
+                                          className="text-xs font-medium text-primary hover:underline whitespace-nowrap px-1"
                                           target="_blank"
                                           rel="noopener noreferrer"
                                         >
-                                          View Profile
+                                          View profile
                                         </Link>
                                       )}
                                     </div>
@@ -747,65 +785,64 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                       </div>
                     )}
                   </div>
-                  )}
 
-                  {/* Action Buttons */}
-                  {previewJob && (
-                    <div className="pt-4 border-t border-gray-200 dark:border-defaultborder/10 flex flex-wrap gap-2 sm:gap-3">
-                      <button 
-                        type="button" 
-                        className="hs-dropdown-toggle ti-btn ti-btn-light flex-1 min-w-0 overflow-hidden whitespace-nowrap px-4"
+                  {previewJob ? (
+                    <div className="jobs-command-strip jobs-preview-footer shrink-0 flex flex-wrap gap-2 p-2 sm:p-2.5">
+                      <button
+                        type="button"
+                        className="hs-dropdown-toggle ti-btn ti-btn-light flex-1 min-w-[6rem]"
                         data-hs-overlay="#job-preview-panel"
                         onClick={() => setPreviewJob(null)}
                       >
                         Close
                       </button>
+                      {jobPreviewTab === 'details' && canEdit && previewJob.jobOrigin !== 'external' ? (
+                        <Link
+                          href={`/ats/jobs/edit/${previewJob.id}`}
+                          className="ti-btn ti-btn-primary-full flex-1 min-w-[6rem] text-center"
+                        >
+                          Edit job
+                        </Link>
+                      ) : null}
+                      {jobPreviewTab === 'details' && previewJob.jobOrigin !== 'external' ? (
+                        <button
+                          type="button"
+                          className="ti-btn ti-btn-light flex-1 min-w-[6rem] disabled:opacity-50"
+                          onClick={() => handleInitiateCall(previewJob)}
+                          disabled={!getOrganisationPhone(previewJob) || callingJobId === previewJob.id}
+                          title="Job posting verification call to organisation"
+                        >
+                          {callingJobId === previewJob.id ? 'Calling…' : 'Verify posting'}
+                        </button>
+                      ) : null}
                       {jobPreviewTab === 'applicants' ? (
                         <button
                           type="button"
-                          className="ti-btn ti-btn-success flex-1 min-w-0 overflow-hidden whitespace-nowrap px-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="ti-btn ti-btn-success flex-1 min-w-[6rem] disabled:opacity-50"
                           onClick={handleInitiateCandidateCall}
                           disabled={
                             previewJobApplicationsLoading ||
                             selectedCandidates.size === 0 ||
                             callingCandidates.size > 0
                           }
-                          title="Applicant verification: uses the employee Bolna agent (not job-post verification)"
-                          aria-label="Call selected applicants for application verification"
+                          aria-label="Call selected applicants"
                         >
-                          {callingCandidates.size > 0 ? (
-                            <span className="inline-flex items-center justify-center gap-2">
-                              <span
-                                className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none motion-reduce:rounded-sm motion-reduce:border-0 motion-reduce:bg-current/30"
-                                aria-hidden
-                              />
-                              Calling…
-                            </span>
-                          ) : (
-                            `Call Selected (${selectedCandidates.size})`
-                          )}
-                        </button>
-                      ) : previewJob.jobOrigin !== 'external' ? (
-                        <button
-                          type="button"
-                          className="ti-btn ti-btn-primary flex-1 min-w-0 overflow-hidden whitespace-nowrap px-4 disabled:opacity-50 disabled:cursor-not-allowed"
-                          onClick={() => previewJob && handleInitiateCall(previewJob)}
-                          disabled={!getOrganisationPhone(previewJob) || callingJobId === previewJob.id}
-                          title="Job posting verification: call organisation (recruiter Bolna agent)"
-                          aria-label="Initiate job posting verification call to organisation"
-                        >
-                          {callingJobId === previewJob.id ? 'Calling...' : 'Initiate Call'}
+                          {callingCandidates.size > 0
+                            ? 'Calling…'
+                            : `Call selected (${selectedCandidates.size})`}
                         </button>
                       ) : null}
-                      <button
-                        type="button"
-                        className="ti-btn ti-btn-primary flex-1 min-w-0 overflow-hidden whitespace-nowrap px-4"
-                        onClick={() => previewJob && handleApplyClick(previewJob)}
-                      >
-                        Apply Now
-                      </button>
+                      {previewJob.jobOrigin === 'external' ? (
+                        <button
+                          type="button"
+                          className="ti-btn ti-btn-primary-full flex-1 min-w-[6rem]"
+                          onClick={() => handleApplyClick(previewJob)}
+                        >
+                          Apply
+                        </button>
+                      ) : null}
                     </div>
-                  )}
+                  ) : null}
                 </div>
                 ) : (
                   <div className="text-center py-8 text-gray-500">No job selected</div>

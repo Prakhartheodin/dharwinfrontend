@@ -12,7 +12,7 @@ export function JobFormPermissionDenied({
 }): React.JSX.Element {
   const seoTitle = mode === 'create' ? 'New job posting' : 'Edit posting'
   return (
-    <JobFormShell mode={mode} title={seoTitle} seoTitle={seoTitle}>
+    <JobFormShell seoTitle={seoTitle}>
       <JobFormHeader mode={mode} />
       <div className="box-body jobs-surface-x">
         <p className="text-default mb-3">

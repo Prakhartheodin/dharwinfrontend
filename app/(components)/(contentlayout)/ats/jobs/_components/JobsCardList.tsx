@@ -3,7 +3,7 @@
 import React from 'react'
 import type { DisplayJob } from '@/shared/lib/ats/jobMappers'
 import { HireForecastChip } from './HireForecastCell'
-import { JobOriginBadge } from './JobOriginBadge'
+import { JobOriginBadge } from './JobPills'
 import { JobRowActions } from './JobRowActions'
 
 export interface JobsCardListProps {

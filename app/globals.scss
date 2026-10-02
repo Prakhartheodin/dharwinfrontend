@@ -921,23 +921,34 @@ html.swal2-shown {
   @apply border-white/10 bg-black/10;
 }
 
-.jobs-list-footer__command {
-  padding: 0.625rem 0.75rem;
+.jobs-command-strip {
   border-radius: 0.75rem;
   @apply border border-defaultborder/65 bg-light/45;
 }
 
-.dark .jobs-list-footer__command {
+.dark .jobs-command-strip {
   @apply border-white/10 bg-white/[0.03];
+}
+
+.jobs-list-footer__command {
+  padding: 0.625rem 0.75rem;
 }
 
 .jobs-list-pagination {
   width: 100%;
   min-width: 0;
   align-items: center;
-  justify-content: flex-start !important;
+  justify-content: space-between !important;
   row-gap: 0.625rem;
   column-gap: 0.75rem;
+}
+
+.jobs-list-pagination .list-pagination__summary .bi-arrow-right {
+  display: none;
+}
+
+.jobs-list-pagination .pagination-style-4 .page-item:last-child .page-link {
+  color: rgb(var(--default-text-color)) !important;
 }
 
 .jobs-list-pagination .list-pagination__summary,
@@ -1253,12 +1264,6 @@ html.swal2-shown {
 
 .jobs-form-header__command {
   padding: 0.75rem 0.875rem 0.875rem;
-  border-radius: 0.75rem;
-  @apply border border-defaultborder/65 bg-light/45;
-}
-
-.dark .jobs-form-header__command {
-  @apply border-white/10 bg-white/[0.03];
 }
 
 .jobs-form-role-strip {
@@ -1394,12 +1399,6 @@ html.swal2-shown {
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
-  border-radius: 0.75rem;
-  @apply border border-defaultborder/65 bg-light/45;
-}
-
-.dark .jobs-form-footer__command {
-  @apply border-white/10 bg-white/[0.03];
 }
 
 @media (min-width: 640px) {
@@ -1420,6 +1419,47 @@ html.swal2-shown {
 
 .jobs-form-footer__btn--primary {
   min-width: 7.5rem;
+}
+
+/* Job preview offcanvas ? align with jobs list chrome */
+.jobs-preview-body {
+  flex: 1;
+  min-height: 0;
+  max-height: calc(100dvh - 3.25rem);
+}
+
+.jobs-preview-layout {
+  min-height: 12rem;
+}
+
+.jobs-preview-tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.35rem;
+}
+
+.jobs-preview-table-wrap {
+  min-height: 8rem;
+}
+
+.jobs-preview-table thead th {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  @apply text-gray-600 dark:text-gray-400;
+}
+
+.jobs-preview-table tbody tr {
+  border-bottom: 1px solid rgb(var(--default-border) / 0.45);
+}
+
+.jobs-preview-table tbody tr:hover {
+  @apply bg-gray-50/70 dark:bg-white/[0.02];
+}
+
+.jobs-toolbar-sort-chip {
+  max-width: 100%;
 }
 
 .jobs-form-template-bar {

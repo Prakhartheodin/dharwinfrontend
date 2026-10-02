@@ -11,8 +11,7 @@ import { AppliedFiltersBar } from './_components/AppliedFiltersBar'
 import { JobsTable } from './_components/JobsTable'
 import { JobsCardList } from './_components/JobsCardList'
 import { JobsListSkeleton } from './_components/JobsListSkeleton'
-import { JobStatusBadge } from './_components/JobStatusBadge'
-import { JobOriginBadge } from './_components/JobOriginBadge'
+import { JobOriginBadge, JobStatusBadge } from './_components/JobPills'
 import { JobRowActions } from './_components/JobRowActions'
 import JobPreviewPanel from './_components/JobPreviewPanel'
 import JobShareModal from './_components/JobShareModal'
@@ -21,7 +20,6 @@ import { HireForecastColumnHeader, HireForecastInfoDrawer } from './_components/
 import { JobsPaginationFooter } from './_components/JobsPaginationFooter'
 import { JobsListSaveFlash } from './_components/JobsListSaveFlash'
 import { useJobsListContainerLayout } from './_components/useJobsListContainerLayout'
-import { JOBS_TABLE_EMPTY } from './_components/jobsTableConstants'
 import { CompanyWebsiteLink } from '@/shared/components/ats/CompanyWebsiteLink'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 import { useAuth } from '@/shared/contexts/auth-context'
@@ -173,6 +171,20 @@ function formatPostingDateMeta(raw?: string | null): { formatted: string; relati
   else if (diffDays >= 30 && diffDays < 365) relative = `${Math.floor(diffDays / 30)}mo ago`
   else if (diffDays >= 365) relative = `${Math.floor(diffDays / 365)}y ago`
   return { formatted, relative }
+}
+
+/** ponytail: do not call HSStaticMethods.autoInit on open — full re-scan throws on partial React trees */
+function openHsOverlay(selector: string) {
+  try {
+    const HSOverlay = (window as { HSOverlay?: { open?: (sel: string) => void } }).HSOverlay
+    HSOverlay?.open?.(selector)
+  } catch {
+    /* Preline overlay */
+  }
+}
+
+function scheduleOpenHsOverlay(selector: string, delayMs = 50) {
+  window.setTimeout(() => openHsOverlay(selector), delayMs)
 }
 
 const Jobs = () => {
@@ -951,12 +963,7 @@ const Jobs = () => {
           const job = row.original
           const openJobPreview = () => {
             setPreviewJob(job)
-            setTimeout(() => {
-              const HSOverlay = (window as any).HSOverlay
-              const HSStaticMethods = (window as any).HSStaticMethods
-              if (HSStaticMethods?.autoInit) HSStaticMethods.autoInit()
-              if (HSOverlay?.open) HSOverlay.open('#job-preview-panel')
-            }, 50)
+            scheduleOpenHsOverlay('#job-preview-panel')
           }
           const { formatted: postedOn, relative } = formatPostingDateMeta(job.postingDate)
           const locationText = job.location != null ? String(job.location).trim() : ''
@@ -1002,12 +1009,7 @@ const Jobs = () => {
           const job = row.original
           const handleCompanyClick = () => {
             setCompanyModal(job)
-            setTimeout(() => {
-              const HSOverlay = (window as any).HSOverlay
-              const HSStaticMethods = (window as any).HSStaticMethods
-              if (HSStaticMethods?.autoInit) HSStaticMethods.autoInit()
-              if (HSOverlay?.open) HSOverlay.open('#company-info-panel')
-            }, 50)
+            scheduleOpenHsOverlay('#company-info-panel')
           }
           return (
             <button
@@ -1032,7 +1034,7 @@ const Jobs = () => {
         accessor: 'vacancies',
         Cell: ({ value }: { value?: number | null }) => {
           if (value == null || value <= 0) {
-            return <span className="text-gray-400 dark:text-gray-500">{JOBS_TABLE_EMPTY}</span>
+            return <span className="text-gray-400 dark:text-gray-500">{'\u2014'}</span>
           }
           return (
             <span className="inline-flex items-center gap-1 text-gray-800 dark:text-white">
@@ -1084,7 +1086,7 @@ const Jobs = () => {
         accessor: 'status',
         disableSortBy: true,
         Cell: ({ row }: any) => {
-          const status = row.original.status || JOBS_TABLE_EMPTY
+          const status = row.original.status || '\u2014'
           return <JobStatusBadge status={status} />
         },
       },
@@ -1438,12 +1440,7 @@ const Jobs = () => {
                   onRowSelect={handleRowSelect}
                   onOpenPreview={(job) => {
                     setPreviewJob(job)
-                    setTimeout(() => {
-                      const HSOverlay = (window as any).HSOverlay
-                      const HSStaticMethods = (window as any).HSStaticMethods
-                      if (HSStaticMethods?.autoInit) HSStaticMethods.autoInit()
-                      if (HSOverlay?.open) HSOverlay.open('#job-preview-panel')
-                    }, 50)
+                    scheduleOpenHsOverlay('#job-preview-panel')
                   }}
                   formatPostingDateMeta={formatPostingDateMeta}
                   canEdit={canEdit}
@@ -1689,6 +1686,7 @@ const Jobs = () => {
         callingJobId={callingJobId}
         getOrganisationPhone={getOrganisationPhone}
         handleApplyClick={handleApplyClick}
+        canEdit={canEdit}
       />
 
       {/* Bookmark Notes Panel (Offcanvas) */}

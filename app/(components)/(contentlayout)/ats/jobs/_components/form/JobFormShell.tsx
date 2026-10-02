@@ -2,16 +2,17 @@
 
 import React, { type ReactNode } from 'react'
 import Seo from '@/shared/layout-components/seo/seo'
-import { JobFormCard } from './JobFormCard'
 
-export { JobFormCard } from './JobFormCard'
+export const JOB_FORM_BOX_CLASS = 'box custom-box jobs-form-box mb-0 overflow-hidden'
 
 export interface JobFormShellProps {
-  mode: 'create' | 'edit'
-  title: string
   seoTitle: string
   loading?: boolean
   children: ReactNode
+}
+
+export function JobFormBox({ children }: { children: ReactNode }): React.JSX.Element {
+  return <div className={JOB_FORM_BOX_CLASS}>{children}</div>
 }
 
 export function JobFormBodyLoadingSkeleton(): React.JSX.Element {
@@ -31,8 +32,6 @@ export function JobFormBodyLoadingSkeleton(): React.JSX.Element {
 }
 
 export function JobFormShell({
-  mode: _mode,
-  title: _title,
   seoTitle,
   loading,
   children,
@@ -42,9 +41,9 @@ export function JobFormShell({
       <Seo title={seoTitle} />
       <div className="jobs-page-container jobs-form-page-shell mt-2 w-full min-w-0 max-w-full sm:mt-3 pb-3">
         {loading ? (
-          <JobFormCard>
+          <JobFormBox>
             <JobFormBodyLoadingSkeleton />
-          </JobFormCard>
+          </JobFormBox>
         ) : (
           children
         )}

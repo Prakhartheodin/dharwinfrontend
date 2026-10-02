@@ -36,17 +36,11 @@ export function JobsPaginationFooter(props: JobsPaginationFooterProps) {
   const touchFriendly = useNarrowViewport(640);
 
   return (
-    <div className="jobs-list-footer__command w-full min-w-0">
+    <div className="jobs-command-strip jobs-list-footer__command w-full min-w-0">
       <ListPagination
         {...props}
-        layout="footer-split"
         className="jobs-list-pagination"
-        summaryClassName="jobs-list-pagination__summary"
         showPageSize={false}
-        showSummaryIcon={false}
-        useEnDashInSummary={false}
-        neutralNavButtons
-        compactControls
         touchFriendly={touchFriendly}
         ariaLabel="Pagination"
       />

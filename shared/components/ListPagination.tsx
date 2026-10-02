@@ -29,18 +29,6 @@ export type ListPaginationProps = {
   showSummary?: boolean;
   /** Prev/Next, page numbers, and go-to-page. Default true. */
   showPager?: boolean;
-  /** Summary left / controls right on one row (e.g. table footers). */
-  layout?: "default" | "footer-split";
-  summaryClassName?: string;
-  /** Trailing arrow after summary. Default true. */
-  showSummaryIcon?: boolean;
-  /** Use an en dash between range values (presentation only). */
-  useEnDashInSummary?: boolean;
-  /** Do not highlight Next with primary text color. */
-  neutralNavButtons?: boolean;
-  /** h-8 controls for pager + go-to form. */
-  compactControls?: boolean;
-  pagerGroupClassName?: string;
 };
 
 /**
@@ -63,18 +51,7 @@ export default function ListPagination({
   showPageSize = true,
   showSummary = true,
   showPager = true,
-  layout = "default",
-  summaryClassName,
-  showSummaryIcon = true,
-  useEnDashInSummary = false,
-  neutralNavButtons = false,
-  compactControls = false,
-  pagerGroupClassName,
 }: ListPaginationProps) {
-  const isFooterSplit = layout === "footer-split";
-  const pageLinkClass = compactControls
-    ? "!inline-flex !h-8 !min-h-8 !items-center !justify-center !px-2.5 sm:!px-3 !py-0"
-    : "px-3 py-[0.375rem]";
   const touchClass = touchFriendly
     ? "[&_.page-link]:!min-h-11 [&_.page-link]:!min-w-11 [&_.page-link]:!inline-flex [&_.page-link]:!items-center [&_.page-link]:!justify-center [&_.ti-btn]:!min-h-11 [&_input.ti-form-control]:!min-h-11"
     : "";
@@ -96,12 +73,8 @@ export default function ListPagination({
     return null;
   }
 
-  const rangeSeparator = useEnDashInSummary ? "\u2013" : "to";
-
   return (
-    <div
-      className={`flex flex-wrap items-center ${isFooterSplit ? "w-full min-w-0 justify-between gap-x-4 gap-y-2" : "gap-4"} ${touchClass} ${className ?? ""}`}
-    >
+    <div className={`flex flex-wrap items-center gap-4 ${touchClass} ${className ?? ""}`}>
       {showPageSizeControl ? (
         <select
           id={rowsSelectId}
@@ -118,23 +91,19 @@ export default function ListPagination({
         </select>
       ) : null}
       {showSummary ? (
-        <div
-          className={`list-pagination__summary shrink-0 ${isFooterSplit ? "text-[0.8125rem] text-[#8c9097] dark:text-white/60" : ""} ${summaryClassName ?? ""}`}
-        >
-          Showing {start} {rangeSeparator} {end} of {totalResults} entries
-          {showSummaryIcon ? <i className="bi bi-arrow-right ms-2 font-semibold" aria-hidden="true" /> : null}
+        <div className="list-pagination__summary shrink-0">
+          Showing {start} to {end} of {totalResults} entries{" "}
+          <i className="bi bi-arrow-right ms-2 font-semibold" aria-hidden="true" />
         </div>
       ) : null}
       {showPagerControls ? (
-      <div
-        className={`list-pagination__pager-group flex flex-wrap items-center gap-x-3 gap-y-2 ${isFooterSplit ? "justify-end" : "ms-auto"} ${pagerGroupClassName ?? ""}`}
-      >
+      <div className="list-pagination__pager-group ms-auto flex flex-wrap items-center gap-x-4 gap-y-2">
         <nav aria-label={ariaLabel} className="pagination-style-4">
           <ul className="ti-pagination mb-0">
             <li className={`page-item ${atStart ? "disabled" : ""}`}>
               <button
                 type="button"
-                className={`page-link ${pageLinkClass} ${disabledNavClass(atStart)}`}
+                className={`page-link px-3 py-[0.375rem] ${disabledNavClass(atStart)}`}
                 onClick={() => onPageChange(page - 1)}
                 disabled={atStart}
                 aria-disabled={atStart}
@@ -146,7 +115,7 @@ export default function ListPagination({
             {buildPaginationItems(page - 1, safeTotalPages).map((item, idx) =>
               item.type === "ellipsis" ? (
                 <li key={`ellipsis-${idx}`} className="page-item disabled" aria-hidden="true">
-                  <span className={`page-link ${pageLinkClass}`}>…</span>
+                  <span className="page-link px-3 py-[0.375rem]">…</span>
                 </li>
               ) : (
                 <li
@@ -155,7 +124,7 @@ export default function ListPagination({
                 >
                   <button
                     type="button"
-                    className={`page-link ${pageLinkClass}`}
+                    className="page-link px-3 py-[0.375rem]"
                     onClick={() => onPageChange(item.page + 1)}
                     aria-current={page === item.page + 1 ? "page" : undefined}
                     aria-label={`Go to page ${item.page + 1}`}
@@ -168,7 +137,7 @@ export default function ListPagination({
             <li className={`page-item ${atEnd ? "disabled" : ""}`}>
               <button
                 type="button"
-                className={`page-link ${pageLinkClass} ${neutralNavButtons ? "" : "text-primary"} ${disabledNavClass(atEnd)}`}
+                className={`page-link px-3 py-[0.375rem] text-primary ${disabledNavClass(atEnd)}`}
                 onClick={() => onPageChange(page + 1)}
                 disabled={atEnd}
                 aria-disabled={atEnd}
@@ -182,7 +151,7 @@ export default function ListPagination({
 
         {safeTotalPages > 1 && (
           <form
-            className={`list-pagination__goto flex shrink-0 items-center gap-2 min-w-0 ${compactControls ? "[&_.ti-btn]:!h-8 [&_.ti-btn]:!shrink-0 [&_.ti-btn]:!px-3 [&_.ti-btn]:!py-0 [&_.ti-btn]:!leading-none [&_input]:!shrink-0" : ""}`}
+            className="list-pagination__goto flex shrink-0 items-center gap-2 min-w-0"
             onSubmit={(e) => {
               e.preventDefault();
               const raw = gotoPageInput.trim();
@@ -206,14 +175,14 @@ export default function ListPagination({
               onChange={(e) => setGotoPageInput(e.currentTarget.value)}
               placeholder={String(page)}
               aria-describedby={hintId}
-              className={`ti-form-control form-control-sm ${compactControls ? "!min-w-[2.75rem] !w-[3.25rem] !max-w-[3.5rem] !h-8 !py-0 !px-1" : "!w-[4.5rem] !py-[0.375rem]"}`}
+              className="ti-form-control form-control-sm !w-[4.5rem] !py-[0.375rem]"
             />
             <span id={hintId} className="sr-only">
               Enter a page number between 1 and {safeTotalPages}
             </span>
             <button
               type="submit"
-              className={`ti-btn ti-btn-primary ti-btn-sm !mb-0 ${compactControls ? "!h-8 !py-0" : "!py-[0.375rem]"}`}
+              className="ti-btn ti-btn-primary ti-btn-sm !mb-0 !py-[0.375rem]"
             >
               Go
             </button>
