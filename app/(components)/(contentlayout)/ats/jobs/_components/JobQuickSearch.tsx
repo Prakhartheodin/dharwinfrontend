@@ -442,7 +442,7 @@ export default function JobQuickSearch({
   }
 
   return (
-    <div className="relative flex-1 min-w-[10rem] sm:min-w-[12rem] sm:max-w-xs me-2">
+    <div className="relative w-full min-w-0 flex-1">
       {/* Flex row, not absolutely positioned adornments: the text field shrinks to leave room
           for the scope tag / spinner / clear button, so long values ellipsize instead of
           running underneath them. */}
@@ -469,7 +469,7 @@ export default function JobQuickSearch({
         aria-autocomplete="both"
         aria-activedescendant={showDropdown ? activeOptionId : undefined}
         aria-label="Search jobs"
-        className="h-full w-full min-w-0 truncate border-0 bg-transparent p-0 text-[0.75rem] text-defaulttextcolor outline-none ring-0 placeholder:text-defaulttextcolor/50 focus:outline-none focus:ring-0 dark:text-white dark:placeholder:text-white/40"
+        className="h-full w-full min-w-0 truncate border-0 bg-transparent p-0 text-[0.8125rem] text-defaulttextcolor outline-none ring-0 placeholder:text-defaulttextcolor/50 focus:outline-none focus:ring-0 dark:text-white dark:placeholder:text-white/40"
         title={value.length > 30 ? value : undefined}
         placeholder="Search jobs by title, company or location…"
         value={value}
@@ -484,7 +484,7 @@ export default function JobQuickSearch({
           input text underneath (rendered by the browser) is never obscured. */}
       {ghost && (
         <div
-          className="pointer-events-none absolute inset-0 flex items-center overflow-hidden whitespace-pre text-[0.75rem]"
+          className="pointer-events-none absolute inset-0 flex items-center overflow-hidden whitespace-pre text-[0.8125rem]"
           aria-hidden
         >
           <span className="invisible">{value}</span>

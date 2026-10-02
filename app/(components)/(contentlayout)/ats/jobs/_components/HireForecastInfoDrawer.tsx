@@ -59,7 +59,7 @@ export function HireForecastColumnHeader() {
       </span>
       <button
         type="button"
-        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        className="inline-flex h-8 w-8 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
         aria-label="How Time to hire is calculated with AI"
         title="How AI calculates Time to hire"
         onClick={(event) => {

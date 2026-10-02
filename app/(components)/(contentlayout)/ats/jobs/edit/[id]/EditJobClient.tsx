@@ -1,84 +1,67 @@
 "use client"
 
-import React, { Fragment, useState, useEffect, useRef } from 'react'
-import dynamic from 'next/dynamic'
-import Link from 'next/link'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
-import Swal from 'sweetalert2'
-import Seo from '@/shared/layout-components/seo/seo'
-import TiptapEditor from '@/shared/data/forms/form-editors/tiptapeditor'
 import {
   getJobById,
   updateJob,
   getJobTemplate,
   listJobTemplates,
   createJobTemplate,
-  COMPANY_SIZE_BUCKETS,
   type UpdateJobPayload,
   type InterviewRoundPlanRow,
 } from '@/shared/lib/api/jobs'
 import JobRoundPlanSection from '@/shared/components/interview/JobRoundPlanSection'
 import InterviewerPoolSelect from '@/shared/components/interview/InterviewerPoolSelect'
-import { ROUTES } from '@/shared/lib/constants'
 import { normalizeTipTapHtmlFromApi } from '@/shared/lib/tiptapHtml'
-import { YmdFilterDateInput } from '@/shared/components/filters/YmdFilterDateInput'
 
-/**
- * Marker the Create / Edit flows insert when appending the Requirements & Qualifications
- * block to the job description. We use it to split a stored description back into
- * (jobDescription, requirements) so re-saving an edited job doesn't duplicate the block.
- *
- * Matches the literal heading produced by handleSubmit below (case-insensitive,
- * tolerates an &amp; entity since payloads may pass through xss-clean middleware).
- */
-const REQUIREMENTS_SECTION_HEADER = '<h3>Requirements & Qualifications</h3>'
-const REQUIREMENTS_SPLIT_REGEX = /<h3>\s*Requirements\s*(?:&amp;|&)\s*Qualifications\s*<\/h3>/i
-
-function splitRequirementsFromDescription(rawHtml: string): { description: string; requirements: string } {
-  if (!rawHtml) return { description: '', requirements: '' }
-  const match = rawHtml.match(REQUIREMENTS_SPLIT_REGEX)
-  if (!match || match.index === undefined) {
-    return { description: rawHtml, requirements: '' }
-  }
-  const before = rawHtml.slice(0, match.index).replace(/\s+$/, '')
-  const after = rawHtml.slice(match.index + match[0].length).replace(/^\s+/, '')
-  return { description: before, requirements: after }
-}
 import { resolveTemplateVars, type TemplateVarContext } from '@/shared/lib/ats/templateVars'
 import { validateVacanciesInput } from '@/shared/lib/ats/jobVacancy'
-import { PHONE_COUNTRIES, getPhoneCountry, getPhoneValidationError, formatPhoneForApi } from '@/shared/lib/phoneCountries'
-import { PhoneCountrySelect } from '@/shared/components/PhoneCountrySelect'
+import { PHONE_COUNTRIES, getPhoneValidationError, formatPhoneForApi } from '@/shared/lib/phoneCountries'
 import { usePmReactSelectStyles } from '@/shared/hooks/usePmReactSelectStyles'
-// Both react-select entry points must follow the same SSR boundary —
-// mixing a static import (CreatableSelect) with a dynamic ssr:false
-// import (Select) created an inconsistent chunk graph that confused
-// Turbopack's analyser and contributed to the production
-// `[root-of-the-server]__<hash>.js` MODULE_NOT_FOUND issue.
-const Select          = dynamic(() => import('react-select'),          { ssr: false })
-const CreatableSelect = dynamic(() => import('react-select/creatable'), { ssr: false })
-
-const jobTypeOptions = [
-  { value: 'Full-time', label: 'Full Time' },
-  { value: 'Part-time', label: 'Part Time' },
-  { value: 'Contract', label: 'Contract' },
-  { value: 'Temporary', label: 'Temporary' },
-  { value: 'Internship', label: 'Internship' },
-  { value: 'Freelance', label: 'Freelance' },
-]
-
-const experienceLevelOptions = [
-  { value: 'Entry Level', label: 'Entry Level' },
-  { value: 'Mid Level', label: 'Mid Level' },
-  { value: 'Senior Level', label: 'Senior Level' },
-  { value: 'Executive', label: 'Executive' },
-]
-
-const statusOptions = [
-  { value: 'Draft', label: 'Draft' },
-  { value: 'Active', label: 'Active' },
-  { value: 'Closed', label: 'Closed' },
-  { value: 'Archived', label: 'Archived' },
-]
+import { JobFormTabList } from '../../_components/form/JobFormTabList'
+import { JobFormFooter } from '../../_components/form/JobFormFooter'
+import { JobFormCard } from '../../_components/form/JobFormCard'
+import { JobFormBodyLoadingSkeleton, JobFormShell } from '../../_components/form/JobFormShell'
+import { JobFormHeader } from '../../_components/form/JobFormHeader'
+import { JobFormPanel } from '../../_components/form/JobFormPanel'
+import { JobSection } from '../../_components/form/JobSection'
+import { JobInterviewSetup } from '../../_components/form/JobInterviewSetup'
+import { JobBasicsSection } from '../../_components/form/jobFormSections/JobBasicsSection'
+import { JobOrganisationSection } from '../../_components/form/jobFormSections/JobOrganisationSection'
+import { JobCompensationSection } from '../../_components/form/jobFormSections/JobCompensationSection'
+import { JobDescriptionSection } from '../../_components/form/jobFormSections/JobDescriptionSection'
+import { JobSkillsSection } from '../../_components/form/jobFormSections/JobSkillsSection'
+import {
+  JobExperienceEducationSection,
+  JobRequirementsQualificationsSection,
+} from '../../_components/form/jobFormSections/JobRequirementsSections'
+import { JobPublishingSection } from '../../_components/form/jobFormSections/JobPublishingSection'
+import {
+  EXPERIENCE_LEVEL_OPTIONS,
+  JOB_FORM_SECTION_HEADING_IDS,
+  JOB_TYPE_OPTIONS,
+  STATUS_OPTIONS,
+  type JobFormTabKey,
+} from '../../_components/form/jobFormConstants'
+import {
+  applyJobFormFieldErrors,
+  validateJobFormRequired,
+  FieldInlineError,
+  JobFormValidationSummary,
+} from '../../_components/form/jobFormValidation'
+import {
+  buildJobDescriptionWithRequirements,
+  splitRequirementsFromDescription,
+} from '../../_components/form/jobFormDescriptionHtml'
+import { createSkillOption, handleJobSkillsComboboxKeyDown } from '../../_components/form/jobFormSkills'
+import { JobFormPermissionDenied } from '../../_components/form/JobFormPermissionGate'
+import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
+import { useConfirm } from '@/shared/components/ui/useConfirm'
+import { JobFormRoleStrip } from '../../_components/form/JobFormRoleStrip'
+import { JobFormGeneralJumpNav } from '../../_components/form/JobFormGeneralJumpNav'
+import { computeJobFormTabCompletion } from '../../_components/form/jobFormTabCompletion'
+import { useTemplateNameDialog } from '../../_components/form/useTemplateNameDialog'
 
 const dialCodeOptions = PHONE_COUNTRIES.map((country) => ({
   code: country.code,
@@ -104,12 +87,18 @@ function parseOrganisationPhone(phone: string) {
 export default function EditJobClient() {
   const router = useRouter()
   const params = useParams()
+  const { canEdit, isLoading: permissionsLoading } = useFeaturePermissions('ats.jobs')
+  const { confirm, confirmDialog } = useConfirm()
+  const { promptTemplateName, templateNameDialog } = useTemplateNameDialog()
+  const [validationFocusToken, setValidationFocusToken] = useState(0)
+  const [formTouched, setFormTouched] = useState(false)
   const searchParams = useSearchParams()
   const templateQueryHandled = useRef<string | null>(null)
   const jobId = params?.id as string
   const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } =
     usePmReactSelectStyles(9999)
-  const [activeTab, setActiveTab] = useState('general')
+  const [activeTab, setActiveTab] = useState<JobFormTabKey>('general')
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [jobDescription, setJobDescription] = useState('')
   const [requirements, setRequirements] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -150,9 +139,6 @@ export default function EditJobClient() {
   const [skillsInputValue, setSkillsInputValue] = useState('')
   const [templates, setTemplates] = useState<{ _id: string; title: string }[]>([])
   const [templatesLoading, setTemplatesLoading] = useState(false)
-  const components = { DropdownIndicator: null }
-  const createOption = (label: string) => ({ label, value: label })
-
   useEffect(() => {
     listJobTemplates({ limit: 100 })
       .then((res) => setTemplates(res.results ?? []))
@@ -179,18 +165,18 @@ export default function EditJobClient() {
       if (!prev.jobTitle?.trim() && t.title) next.jobTitle = t.title
       if (!prev.location?.trim() && t.location) next.location = t.location
       if (!prev.jobType && t.jobType) {
-        const opt = jobTypeOptions.find((o) => o.value === t.jobType)
+        const opt = JOB_TYPE_OPTIONS.find((o) => o.value === t.jobType)
         if (opt) next.jobType = opt
       }
       if (!prev.experienceLevel && t.experienceLevel) {
-        const opt = experienceLevelOptions.find((o) => o.value === t.experienceLevel)
+        const opt = EXPERIENCE_LEVEL_OPTIONS.find((o) => o.value === t.experienceLevel)
         if (opt) next.experienceLevel = opt
       }
       if (!prev.salaryMin && t.salaryRange?.min != null) next.salaryMin = String(t.salaryRange.min)
       if (!prev.salaryMax && t.salaryRange?.max != null) next.salaryMax = String(t.salaryRange.max)
       if (!prev.salaryCurrency && t.salaryRange?.currency) next.salaryCurrency = t.salaryRange.currency
       if ((!prev.skills || prev.skills.length === 0) && Array.isArray(t.skillTags) && t.skillTags.length > 0) {
-        next.skills = t.skillTags.map((s) => createOption(s))
+        next.skills = t.skillTags.map((s) => createSkillOption(s))
       }
       if (!prev.education?.trim() && t.education) next.education = t.education
       return next
@@ -212,14 +198,14 @@ export default function EditJobClient() {
 
   const handleLoadTemplate = (templateId: string) => {
     if (!templateId) return
-    Swal.fire({
-      icon: 'warning',
-      title: 'Overwrite description?',
-      text: 'Loading a template replaces the current job description. Continue?',
-      showCancelButton: true,
-      confirmButtonText: 'Load template',
-    }).then((res) => {
-      if (!res.isConfirmed) return
+    void confirm({
+      title: 'Replace current description?',
+      message: 'Loading a template replaces the current job description.',
+      confirmLabel: 'Use template',
+      cancelLabel: 'Cancel',
+      tone: 'primary',
+    }).then((ok) => {
+      if (!ok) return
       setTemplatesLoading(true)
       getJobTemplate(templateId)
         .then((t) => applyTemplateToForm(t))
@@ -232,20 +218,17 @@ export default function EditJobClient() {
   const handleSaveAsTemplate = async () => {
     const html = jobDescription.trim()
     if (!html) {
-      Swal.fire({ icon: 'info', title: 'Nothing to save', text: 'Write a job description first.' })
+      void confirm({
+        title: 'Nothing to save',
+        message: 'Write a job description first.',
+        confirmLabel: 'OK',
+        hideCancel: true,
+        tone: 'primary',
+      })
       return
     }
-    const { value: title, isConfirmed } = await Swal.fire({
-      title: 'Save as template',
-      input: 'text',
-      inputLabel: 'Template name',
-      inputValue: formData.jobTitle?.trim() || '',
-      inputPlaceholder: 'e.g. Senior Backend Engineer',
-      showCancelButton: true,
-      confirmButtonText: 'Save',
-      inputValidator: (v) => (!v?.trim() ? 'Name is required' : null),
-    })
-    if (!isConfirmed || !title) return
+    const title = await promptTemplateName(formData.jobTitle?.trim() || '')
+    if (!title) return
     try {
       setSavingTemplate(true)
       const minNum = formData.salaryMin ? Number(formData.salaryMin) : undefined
@@ -272,9 +255,21 @@ export default function EditJobClient() {
       })
       const refreshed = await listJobTemplates({ limit: 100 })
       setTemplates(refreshed.results ?? [])
-      Swal.fire({ icon: 'success', title: 'Saved', text: `“${title.trim()}” saved to your templates.`, timer: 1800, showConfirmButton: false })
+      void confirm({
+        title: 'Template saved',
+        message: `“${title.trim()}” is available under your job templates.`,
+        confirmLabel: 'OK',
+        hideCancel: true,
+        tone: 'success',
+      })
     } catch {
-      Swal.fire({ icon: 'error', title: 'Save failed', text: 'Could not save template. Try again.' })
+      void confirm({
+        title: 'Save failed',
+        message: 'Could not save template. Try again.',
+        confirmLabel: 'OK',
+        hideCancel: true,
+        tone: 'danger',
+      })
     } finally {
       setSavingTemplate(false)
     }
@@ -285,12 +280,13 @@ export default function EditJobClient() {
     getJobById(jobId)
       .then((job) => {
         if (job.jobOrigin === 'external') {
-          Swal.fire({
-            icon: 'info',
+          void confirm({
             title: 'External job',
-            text: 'External jobs are managed from External jobs. They cannot be edited here.',
-          })
-          router.replace('/ats/jobs')
+            message: 'External jobs are managed from External jobs and cannot be edited here.',
+            confirmLabel: 'Go to jobs',
+            hideCancel: true,
+            tone: 'primary',
+          }).then(() => router.replace('/ats/jobs'))
           return
         }
         const parsedPhone = parseOrganisationPhone(job.organisation?.phone || '')
@@ -310,9 +306,9 @@ export default function EditJobClient() {
           salaryMax: job.salaryRange?.max ? String(job.salaryRange.max) : '',
           salaryCurrency: job.salaryRange?.currency || 'USD',
           location: job.location || '',
-          jobType: job.jobType ? jobTypeOptions.find((o) => o.value === job.jobType) || { value: job.jobType, label: job.jobType } : null,
-          experienceLevel: job.experienceLevel ? experienceLevelOptions.find((o) => o.value === job.experienceLevel) || { value: job.experienceLevel, label: job.experienceLevel } : null,
-          status: statusOptions.find((o) => o.value === job.status) || { value: 'Active', label: 'Active' },
+          jobType: job.jobType ? JOB_TYPE_OPTIONS.find((o) => o.value === job.jobType) || { value: job.jobType, label: job.jobType } : null,
+          experienceLevel: job.experienceLevel ? EXPERIENCE_LEVEL_OPTIONS.find((o) => o.value === job.experienceLevel) || { value: job.experienceLevel, label: job.experienceLevel } : null,
+          status: STATUS_OPTIONS.find((o) => o.value === job.status) || { value: 'Active', label: 'Active' },
           skills: (job.skillTags || []).map((s: string) => ({ value: s, label: s })),
           // Prefer canonical numeric fields when present; legacy regex below
           // (Experience embedded in description) only fills these if still empty.
@@ -388,96 +384,90 @@ export default function EditJobClient() {
         setRequirements(remainingReq.trim())
       })
       .catch(() => {
-        Swal.fire({ icon: 'error', title: 'Error', text: 'Job not found.' })
-        router.push('/ats/jobs')
+        void confirm({
+          title: 'Job not found',
+          message: 'This posting may have been removed or you may not have access.',
+          confirmLabel: 'All jobs',
+          hideCancel: true,
+          tone: 'danger',
+        }).then(() => router.push('/ats/jobs'))
       })
       .finally(() => setLoading(false))
   }, [jobId, router])
 
   const handleInputChange = (field: string, value: any) => {
+    setFormTouched(true)
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleSkillsKeyDown = (event: any) => {
-    if (!skillsInputValue) return
-    if (event.key === 'Enter' || event.key === 'Tab') {
-      setFormData((prev) => ({
-        ...prev,
-        skills: [...prev.skills, createOption(skillsInputValue)],
-      }))
-      setSkillsInputValue('')
-      event.preventDefault()
-    }
+  const handleSkillsKeyDown = (event: React.KeyboardEvent) => {
+    handleJobSkillsComboboxKeyDown(
+      event,
+      skillsInputValue,
+      (label) => {
+        setFormTouched(true)
+        setFormData((prev) => ({
+          ...prev,
+          skills: [...prev.skills, createSkillOption(label)],
+        }))
+      },
+      () => setSkillsInputValue('')
+    )
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (roundPlanErrorMsg) {
-      Swal.fire({ icon: 'error', title: 'Validation', text: roundPlanErrorMsg })
-      return
-    }
-    if (!jobId || jobId === '_' || !formData.jobTitle?.trim() || !formData.organisationName?.trim() || !formData.location?.trim() || !formData.jobType?.value || !jobDescription?.trim()) {
-      Swal.fire({ icon: 'error', title: 'Validation', text: 'Please fill in required fields.' })
-      return
-    }
+    setFieldErrors({})
     const orgPhoneDigits = (formData.organisationPhone || '').replace(/\D/g, '')
-    if (orgPhoneDigits) {
-      const phoneError = getPhoneValidationError(orgPhoneDigits, formData.organisationCountryCode)
-      if (phoneError) {
-        Swal.fire({ icon: 'error', title: 'Validation', text: phoneError })
-        return
-      }
-    }
+    const phoneError = orgPhoneDigits
+      ? getPhoneValidationError(orgPhoneDigits, formData.organisationCountryCode)
+      : null
     const foundedRaw = (formData.organisationFounded || '').trim()
     const foundedNum = foundedRaw ? Number(foundedRaw) : undefined
-    if (foundedRaw && (!Number.isInteger(foundedNum) || foundedNum! < 1800 || foundedNum! > new Date().getFullYear())) {
-      Swal.fire({ icon: 'error', title: 'Validation', text: `Founded must be a year between 1800 and ${new Date().getFullYear()}.` })
+    const foundedInvalid = Boolean(
+      foundedRaw && (!Number.isInteger(foundedNum) || foundedNum! < 1800 || foundedNum! > new Date().getFullYear())
+    )
+    const vacanciesCheck = validateVacanciesInput(formData.vacancies)
+    const clientErrors = validateJobFormRequired({
+      jobTitle: formData.jobTitle,
+      organisationName: formData.organisationName,
+      location: formData.location,
+      jobType: formData.jobType,
+      jobDescriptionHtml: jobDescription,
+      phoneError,
+      foundedInvalid,
+      roundPlanError: roundPlanErrorMsg,
+      vacanciesError: vacanciesCheck.ok ? null : vacanciesCheck.message,
+    })
+    if (clientErrors.length > 0) {
+      applyJobFormFieldErrors(clientErrors, setActiveTab, setFieldErrors)
+      setValidationFocusToken((n) => n + 1)
       return
     }
+    if (!jobId || jobId === '_') return
     if (loadedInterviewRounds.length > 0 && interviewRounds.length === 0) {
-      const ok = await Swal.fire({
-        icon: 'warning',
+      const ok = await confirm({
         title: 'Remove all interview rounds?',
-        text: 'This job will no longer have a set round sequence. Candidates already part-way through keep the sequence they started on.',
-        showCancelButton: true,
-        confirmButtonText: 'Remove rounds',
+        message:
+          'This job will no longer have a set round sequence. Candidates already part-way through keep the sequence they started on.',
+        confirmLabel: 'Remove rounds',
+        cancelLabel: 'Keep rounds',
+        tone: 'danger',
       })
-      if (!ok.isConfirmed) return
+      if (!ok) return
     }
     setSubmitting(true)
     try {
-      // Always start from the bare description (no appended Requirements block).
-      // If the user kept the loaded content unchanged, jobDescription is already the
-      // pre-split description — so we never append the block twice.
-      let finalDescription = jobDescription.trim()
-      // Safety belt: if jobDescription somehow still carries a Requirements header,
-      // strip everything from it onward before we re-append.
-      const strayHeader = finalDescription.match(REQUIREMENTS_SPLIT_REGEX)
-      if (strayHeader && strayHeader.index !== undefined) {
-        finalDescription = finalDescription.slice(0, strayHeader.index).replace(/\s+$/, '')
-      }
-      // Education + free-form Requirements rich text are still appended for
-      // display continuity. Experience is NOT inlined any more — it lives on
-      // the document as `minExperience`/`maxExperience` and is rendered via
-      // the shared `formatExperience` SSoT.
-      const reqParts: string[] = []
-      if (formData.education?.trim()) reqParts.push(`<p><strong>Education:</strong> ${formData.education.trim()}</p>`)
-      if (requirements?.trim()) reqParts.push(requirements.trim())
-      if (reqParts.length > 0) {
-        finalDescription += '\n\n' + REQUIREMENTS_SECTION_HEADER + '\n' + reqParts.join('\n')
-      }
+      const finalDescription = buildJobDescriptionWithRequirements(
+        jobDescription,
+        requirements,
+        formData.education
+      )
 
       const minExpNum = formData.minExperience ? Number(formData.minExperience) : undefined
       const maxExpNum = formData.maxExperience ? Number(formData.maxExperience) : undefined
-      const vacancies = validateVacanciesInput(formData.vacancies)
-      if (!vacancies.ok) {
-        Swal.fire({ icon: 'error', title: 'Check vacancies', text: vacancies.message })
-        setSubmitting(false)
-        // Put the cursor on the field the message is about, so the fix is one keystroke away.
-        document.getElementById('vacancies')?.focus()
-        return
-      }
-      const vacanciesNum = vacancies.value
+      if (!vacanciesCheck.ok) return
+      const vacanciesNum = vacanciesCheck.value
 
       const roundsChanged =
         JSON.stringify(interviewRounds) !== JSON.stringify(loadedInterviewRounds)
@@ -495,7 +485,7 @@ export default function EditJobClient() {
           companySize: formData.organisationCompanySize || undefined,
         },
         jobDescription: finalDescription,
-        jobType: formData.jobType.value,
+        jobType: formData.jobType!.value,
         location: formData.location.trim(),
         skillTags: formData.skills?.map((s) => s.value || s.label) || [],
         salaryRange: {
@@ -511,519 +501,250 @@ export default function EditJobClient() {
           ? new Date(formData.applicationDeadline).toISOString()
           : null,
         status: formData.status?.value || 'Active',
-        // On edit an empty array is a real instruction ("remove this job's rubrics"), so it
-        // is sent — unlike on create. Skipped when unchanged, so a plain title edit does not
-        // need interview access (audit J11).
         ...(roundsChanged ? { interviewRounds } : {}),
         ...(JSON.stringify(interviewerPool) !== JSON.stringify(loadedInterviewerPool) ? { interviewerPool } : {}),
         ...(assignedRecruiter !== loadedAssignedRecruiter ? { assignedRecruiter } : {}),
       }
       await updateJob(jobId, payload)
-      await Swal.fire({ icon: 'success', title: 'Job Updated', text: 'The job has been updated successfully.' })
-      router.push('/ats/jobs')
+      router.push('/ats/jobs?saved=updated')
     } catch (err: any) {
       const message = err?.response?.data?.message || err?.message || 'Failed to update job.'
-      Swal.fire({ icon: 'error', title: 'Error', text: message })
+      void confirm({
+        title: 'Could not save changes',
+        message,
+        confirmLabel: 'OK',
+        hideCancel: true,
+        tone: 'danger',
+      })
     } finally {
       setSubmitting(false)
     }
   }
 
-  if (jobId === '_' || loading) {
+
+  const selectLayer = {
+    menuPortalTarget: selectMenuPortalTarget,
+    styles: selectMenuLayerStyles,
+  }
+
+  const tabCompletion = useMemo(
+    () =>
+      computeJobFormTabCompletion({
+        jobTitle: formData.jobTitle,
+        organisationName: formData.organisationName,
+        location: formData.location,
+        jobType: formData.jobType,
+        jobDescriptionHtml: jobDescription,
+        education: formData.education,
+        minExperience: formData.minExperience,
+        maxExperience: formData.maxExperience,
+        requirementsHtml: requirements,
+        interviewRoundsCount: interviewRounds.length,
+        interviewerPoolCount: interviewerPool.length,
+      }),
+    [formData, jobDescription, requirements, interviewRounds.length, interviewerPool.length]
+  )
+
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!formTouched || loading || submitting) return
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [formTouched, loading, submitting])
+
+  const handleCancel = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!formTouched) return
+    event.preventDefault()
+    void confirm({
+      title: 'Leave without saving?',
+      message: 'You have unsaved changes to this job posting.',
+      confirmLabel: 'Leave',
+      cancelLabel: 'Keep editing',
+      tone: 'danger',
+    }).then((ok) => {
+      if (ok) router.push('/ats/jobs')
+    })
+  }
+
+  if (jobId === '_') {
     return (
-      <Fragment>
-        <Seo title="Edit Job" />
-        <div className="flex justify-center items-center min-h-[60vh]">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-        </div>
-      </Fragment>
+      <JobFormShell mode="edit" title="Edit posting" seoTitle="Edit posting" loading>
+        {null}
+      </JobFormShell>
     )
   }
 
-  const sectionLabel = "text-sm font-semibold text-defaulttextcolor dark:text-defaulttextcolor/90 mb-3 pb-2 border-b border-defaultborder dark:border-defaultborder/10"
-  const tabBtn = (key: string, icon: string, text: string) => (
-    <button
-      type="button"
-      onClick={() => setActiveTab(key)}
-      className={`-mb-px py-2 px-3 sm:px-4 inline-flex items-center gap-2 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${
-        activeTab === key
-          ? 'bg-primary/10 text-primary border-primary'
-          : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 border-transparent'
-      }`}
-      role="tab"
-      aria-selected={activeTab === key}
-    >
-      <i className={icon}></i>{text}
-    </button>
-  )
+  if (permissionsLoading) {
+    return (
+      <JobFormShell mode="edit" title="Edit posting" seoTitle="Edit posting" loading>
+        {null}
+      </JobFormShell>
+    )
+  }
+
+  if (!canEdit) {
+    return <JobFormPermissionDenied mode="edit" />
+  }
 
   return (
-    <Fragment>
-      <Seo title="Edit Job" />
-      <div className="grid grid-cols-12 gap-6">
-        <div className="xl:col-span-12 col-span-12">
-          <div className="box custom-box">
-            <div className="box-header flex justify-between items-center">
-              <div className="box-title">Edit Job</div>
-              <Link href="/ats/jobs" className="ti-btn ti-btn-secondary !py-1 !px-2 !text-[0.75rem]">
-                <i className="ri-arrow-left-line font-semibold align-middle me-1"></i>Back to Jobs
-              </Link>
+    <JobFormShell mode="edit" title="Edit posting" seoTitle="Edit posting">
+      {confirmDialog}
+      {templateNameDialog}
+      <JobFormCard>
+      <JobFormHeader mode="edit" status={formData.status?.value} />
+      {!loading ? (
+        <JobFormRoleStrip
+          mode="edit"
+          jobTitle={formData.jobTitle}
+          location={formData.location}
+          jobTypeLabel={formData.jobType?.label}
+        />
+      ) : null}
+      <JobFormTabList activeTab={activeTab} onTabChange={setActiveTab} tabCompletion={tabCompletion} />
+      <div className="jobs-surface-x pt-3">
+        <JobFormValidationSummary fieldErrors={fieldErrors} focusToken={validationFocusToken} />
+      </div>
+      {loading ? (
+        <JobFormBodyLoadingSkeleton />
+      ) : (
+        <>
+      <form id="job-form" onSubmit={handleSubmit}>
+        <JobFormPanel tabKey="general" activeTab={activeTab} labelledBy="general-tab">
+          <JobFormGeneralJumpNav />
+          <JobSection title="Basics" headingId={JOB_FORM_SECTION_HEADING_IDS.basics}>
+            <JobBasicsSection
+              formData={formData}
+              fieldErrors={fieldErrors}
+              onFieldChange={handleInputChange}
+              selectLayer={selectLayer}
+              datePortalId="ats-jobs-datepicker-portal-application-deadline-edit"
+            />
+          </JobSection>
+          <JobSection title="Organisation" headingId={JOB_FORM_SECTION_HEADING_IDS.organisation}>
+            <JobOrganisationSection
+              formData={formData}
+              fieldErrors={fieldErrors}
+              onFieldChange={handleInputChange}
+            />
+          </JobSection>
+          <JobSection title="Compensation" headingId={JOB_FORM_SECTION_HEADING_IDS.compensation}>
+            <JobCompensationSection formData={formData} onFieldChange={handleInputChange} />
+          </JobSection>
+          <JobSection
+            title="Job description"
+            headingId={JOB_FORM_SECTION_HEADING_IDS.jobDescription}
+            required
+          >
+            <JobDescriptionSection
+              jobDescription={jobDescription}
+              onDescriptionChange={(html) => {
+                setFormTouched(true)
+                setJobDescription(html)
+              }}
+              fieldErrors={fieldErrors}
+              templates={templates}
+              templatesLoading={templatesLoading}
+              savingTemplate={savingTemplate}
+              onLoadTemplate={handleLoadTemplate}
+              onSaveAsTemplate={handleSaveAsTemplate}
+              labelledBy={JOB_FORM_SECTION_HEADING_IDS.jobDescription}
+            />
+          </JobSection>
+          <JobSection title="Skills" headingId={JOB_FORM_SECTION_HEADING_IDS.skills}>
+            <JobSkillsSection
+              skills={formData.skills}
+              skillsInputValue={skillsInputValue}
+              onSkillsChange={(value) => handleInputChange('skills', value)}
+              onSkillsInputChange={setSkillsInputValue}
+              onSkillsKeyDown={handleSkillsKeyDown}
+              selectLayer={selectLayer}
+              labelledBy={JOB_FORM_SECTION_HEADING_IDS.skills}
+            />
+          </JobSection>
+        </JobFormPanel>
+
+        <JobFormPanel tabKey="requirements" activeTab={activeTab} labelledBy="requirements-tab">
+          <JobSection title="Experience & Education" headingId={JOB_FORM_SECTION_HEADING_IDS.experienceEducation}>
+            <JobExperienceEducationSection
+              minExperience={formData.minExperience}
+              maxExperience={formData.maxExperience}
+              education={formData.education}
+              onFieldChange={handleInputChange}
+            />
+          </JobSection>
+          <JobSection
+            title="Requirements & Qualifications"
+            headingId={JOB_FORM_SECTION_HEADING_IDS.requirements}
+          >
+            <JobRequirementsQualificationsSection
+              requirements={requirements}
+              onRequirementsChange={(html) => {
+                setFormTouched(true)
+                setRequirements(html)
+              }}
+              helperText="Detailed requirements appended to the job description on save. Leave blank if description already includes requirements."
+              labelledBy={JOB_FORM_SECTION_HEADING_IDS.requirements}
+            />
+          </JobSection>
+        </JobFormPanel>
+
+        <JobFormPanel tabKey="settings" activeTab={activeTab} labelledBy="settings-tab">
+          <JobSection title="Publishing" headingId={JOB_FORM_SECTION_HEADING_IDS.publishing}>
+            <JobPublishingSection
+              status={formData.status}
+              onStatusChange={(value) => handleInputChange('status', value)}
+              selectLayer={selectLayer}
+              labelledBy={JOB_FORM_SECTION_HEADING_IDS.publishing}
+            />
+          </JobSection>
+          <JobInterviewSetup
+            defaultOpen={interviewRounds.length > 0 || interviewerPool.length > 0}
+            headingId={JOB_FORM_SECTION_HEADING_IDS.interviewSetup}
+          >
+            {interviewRounds.length === 0 && hasLegacyRubrics ? (
+              <p className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+                This job still uses the older per-round-type scoring setup, which keeps working. Adding rounds here
+                replaces it for every round scheduled from now on.
+              </p>
+            ) : null}
+            <div id="interview-round-plan">
+              <JobRoundPlanSection
+                value={interviewRounds}
+                onChange={(rounds) => {
+                  setFormTouched(true)
+                  setInterviewRounds(rounds)
+                }}
+                jobId={jobId}
+                onValidityChange={setRoundPlanErrorMsg}
+              />
             </div>
-            <div className="box-body">
-              <div className="border-b border-gray-200 dark:border-defaultborder/10 mb-6">
-                <nav className="flex flex-nowrap space-x-2 rtl:space-x-reverse overflow-x-auto -mb-px scrollbar-thin" role="tablist">
-                  {tabBtn('general', 'ri-file-text-line', 'General')}
-                  {tabBtn('requirements', 'ri-checkbox-line', 'Requirements')}
-                </nav>
-              </div>
-              <form onSubmit={handleSubmit}>
-                  {activeTab === 'general' && (
-                    <div className="space-y-5">
-                      {/* Basics */}
-                      <section>
-                        <div className={sectionLabel}>Basics</div>
-                        <div className="grid grid-cols-12 gap-3">
-                          <div className="xl:col-span-6 md:col-span-6 col-span-12">
-                            <label className="form-label">Job Title <span className="text-danger">*</span></label>
-                            <input
-                              type="text"
-                              className="form-control !rounded-md"
-                              placeholder="e.g., Senior Software Engineer"
-                              value={formData.jobTitle}
-                              onChange={(e) => handleInputChange('jobTitle', e.target.value)}
-                              required
-                            />
-                          </div>
-                          <div className="xl:col-span-6 md:col-span-6 col-span-12">
-                            <label className="form-label">Organisation Name <span className="text-danger">*</span></label>
-                            <input
-                              type="text"
-                              className="form-control !rounded-md"
-                              placeholder="e.g., Acme Corp"
-                              value={formData.organisationName}
-                              onChange={(e) => handleInputChange('organisationName', e.target.value)}
-                              required
-                            />
-                          </div>
-                          <div className="xl:col-span-4 md:col-span-6 col-span-12">
-                            <label className="form-label">Location <span className="text-danger">*</span></label>
-                            <input
-                              type="text"
-                              className="form-control !rounded-md"
-                              placeholder="City, State or Remote"
-                              value={formData.location}
-                              onChange={(e) => handleInputChange('location', e.target.value)}
-                              required
-                            />
-                          </div>
-                          <div className="xl:col-span-3 md:col-span-6 col-span-12">
-                            <label className="form-label">Job Type <span className="text-danger">*</span></label>
-                            <Select
-                              options={jobTypeOptions}
-                              value={formData.jobType}
-                              onChange={(s: any) => handleInputChange('jobType', s)}
-                              placeholder="Select"
-                              classNamePrefix="Select2"
-                              className="ti-form-select !p-0"
-                              menuPlacement="auto"
-                              menuPortalTarget={selectMenuPortalTarget}
-                              styles={selectMenuLayerStyles}
-                            />
-                          </div>
-                          <div className="xl:col-span-3 md:col-span-6 col-span-12">
-                            <label className="form-label">Experience Level</label>
-                            <Select
-                              options={experienceLevelOptions}
-                              value={formData.experienceLevel}
-                              onChange={(s: any) => handleInputChange('experienceLevel', s)}
-                              isClearable
-                              placeholder="Select"
-                              classNamePrefix="Select2"
-                              className="ti-form-select !p-0"
-                              menuPlacement="auto"
-                              menuPortalTarget={selectMenuPortalTarget}
-                              styles={selectMenuLayerStyles}
-                            />
-                          </div>
-                          <div className="xl:col-span-2 md:col-span-4 col-span-12">
-                            <label className="form-label">Status</label>
-                            <Select
-                              options={statusOptions}
-                              value={formData.status}
-                              onChange={(s: any) => handleInputChange('status', s || { value: 'Active', label: 'Active' })}
-                              classNamePrefix="Select2"
-                              className="ti-form-select !p-0"
-                              menuPlacement="auto"
-                              menuPortalTarget={selectMenuPortalTarget}
-                              styles={selectMenuLayerStyles}
-                            />
-                          </div>
-                          <div className="xl:col-span-3 md:col-span-6 col-span-12">
-                            <label htmlFor="vacancies" className="form-label">
-                              Vacancies / Openings <span className="text-danger">*</span>
-                            </label>
-                            <input
-                              type="number"
-                              inputMode="numeric"
-                              id="vacancies"
-                              className="form-control w-full !rounded-md"
-                              placeholder="e.g., 5"
-                              min={1}
-                              max={10000}
-                              step={1}
-                              required
-                              value={formData.vacancies}
-                              onChange={(e) =>
-                                handleInputChange('vacancies', e.target.value.replace(/\D/g, ''))
-                              }
-                            />
-                          </div>
-                          <div className="xl:col-span-3 md:col-span-6 col-span-12">
-                            <YmdFilterDateInput
-                              label="Application deadline (optional)"
-                              variant="form"
-                              inputId="applicationDeadline"
-                              value={formData.applicationDeadline}
-                              onCommit={(sanitized) => handleInputChange('applicationDeadline', sanitized)}
-                              portalId="ats-jobs-datepicker-portal-application-deadline-edit"
-                              popperClassName="!z-[9999]"
-                              inputClassName="form-control w-full !rounded-md"
-                              labelClassName="form-label"
-                            />
-                          </div>
-                        </div>
-                      </section>
-
-                      {/* Organisation */}
-                      <section>
-                        <div className={sectionLabel}>Organisation</div>
-                        <div className="grid grid-cols-12 gap-3">
-                          <div className="xl:col-span-4 md:col-span-6 col-span-12">
-                            <label className="form-label">Website</label>
-                            <input
-                              type="url"
-                              className="form-control !rounded-md"
-                              placeholder="https://example.com"
-                              value={formData.organisationWebsite}
-                              onChange={(e) => handleInputChange('organisationWebsite', e.target.value)}
-                            />
-                          </div>
-                          <div className="xl:col-span-4 md:col-span-6 col-span-12">
-                            <label className="form-label">Email</label>
-                            <input
-                              type="email"
-                              className="form-control !rounded-md"
-                              placeholder="hr@example.com"
-                              value={formData.organisationEmail}
-                              onChange={(e) => handleInputChange('organisationEmail', e.target.value)}
-                            />
-                          </div>
-                          <div className="xl:col-span-4 md:col-span-6 col-span-12">
-                            <label className="form-label">Phone</label>
-                            <div className="flex gap-2 w-full">
-                              <PhoneCountrySelect
-                                name="organisationCountryCode"
-                                value={formData.organisationCountryCode}
-                                onChange={(code) => handleInputChange('organisationCountryCode', code)}
-                                className="!w-44 shrink-0"
-                              />
-                              <input
-                                type="tel"
-                                className="form-control flex-1 min-w-0 !rounded-md"
-                                value={formData.organisationPhone}
-                                placeholder={getPhoneCountry(formData.organisationCountryCode).placeholder}
-                                onChange={(e) =>
-                                  handleInputChange(
-                                    'organisationPhone',
-                                    e.target.value.replace(/\D/g, '').slice(0, getPhoneCountry(formData.organisationCountryCode).maxLength),
-                                  )
-                                }
-                                maxLength={getPhoneCountry(formData.organisationCountryCode).maxLength}
-                                inputMode="numeric"
-                              />
-                            </div>
-                          </div>
-                          <div className="col-span-12">
-                            <label className="form-label">Address</label>
-                            <input
-                              type="text"
-                              className="form-control !rounded-md"
-                              placeholder="123 Main St, City, State"
-                              value={formData.organisationAddress}
-                              onChange={(e) => handleInputChange('organisationAddress', e.target.value)}
-                            />
-                          </div>
-                          {/* Company Information — surfaced in job details panel */}
-                          <div className="xl:col-span-4 md:col-span-6 col-span-12 flex flex-col">
-                            <label className="form-label">Industry</label>
-                            <input
-                              type="text"
-                              className="form-control !rounded-md"
-                              placeholder="e.g., Software, FinTech, Healthcare"
-                              value={formData.organisationIndustry}
-                              onChange={(e) => handleInputChange('organisationIndustry', e.target.value)}
-                              maxLength={120}
-                            />
-                          </div>
-                          <div className="xl:col-span-4 md:col-span-6 col-span-12 flex flex-col">
-                            <label className="form-label">Founded</label>
-                            <input
-                              type="number"
-                              inputMode="numeric"
-                              className="form-control !rounded-md"
-                              placeholder="e.g., 2014"
-                              min={1800}
-                              max={new Date().getFullYear()}
-                              step={1}
-                              value={formData.organisationFounded}
-                              onChange={(e) =>
-                                handleInputChange(
-                                  'organisationFounded',
-                                  e.target.value.replace(/\D/g, '').slice(0, 4),
-                                )
-                              }
-                            />
-                          </div>
-                          <div className="xl:col-span-4 md:col-span-6 col-span-12 flex flex-col">
-                            <label className="form-label">Company Size</label>
-                            <select
-                              className="form-select w-full !rounded-md"
-                              value={formData.organisationCompanySize}
-                              onChange={(e) => handleInputChange('organisationCompanySize', e.target.value)}
-                            >
-                              <option value="">Select size</option>
-                              {COMPANY_SIZE_BUCKETS.map((b) => (
-                                <option key={b} value={b}>{b} employees</option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                      </section>
-
-                      {/* Compensation */}
-                      <section>
-                        <div className={sectionLabel}>Compensation</div>
-                        <div className="grid grid-cols-12 gap-3">
-                          <div className="xl:col-span-6 md:col-span-6 col-span-12">
-                            <label className="form-label">Min Salary</label>
-                            <div className="input-group">
-                              <span className="input-group-text">$</span>
-                              <input
-                                type="number"
-                                className="form-control !rounded-e-md"
-                                placeholder="50000"
-                                value={formData.salaryMin}
-                                onChange={(e) => handleInputChange('salaryMin', e.target.value)}
-                              />
-                            </div>
-                          </div>
-                          <div className="xl:col-span-6 md:col-span-6 col-span-12">
-                            <label className="form-label">Max Salary</label>
-                            <div className="input-group">
-                              <span className="input-group-text">$</span>
-                              <input
-                                type="number"
-                                className="form-control !rounded-e-md"
-                                placeholder="100000"
-                                value={formData.salaryMax}
-                                onChange={(e) => handleInputChange('salaryMax', e.target.value)}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </section>
-
-                      {/* Description */}
-                      <section>
-                        <div className={`${sectionLabel}`}>
-                          <span>Description</span>
-                        </div>
-                        <div className="grid grid-cols-12 gap-3">
-                          <div className="col-span-12">
-                            {/* Stacked layout: label, then template controls row (left-aligned), then editor. */}
-                            <label className="form-label mb-1 block">
-                              Job Description <span className="text-danger">*</span>
-                            </label>
-                            <div className="flex items-center flex-wrap gap-2 mt-2 mb-2">
-                              {templates.length > 0 ? (
-                                <>
-                                  <select
-                                    className="form-control !w-auto !py-1 !px-2 !text-xs !rounded-md"
-                                    defaultValue=""
-                                    onChange={(e) => {
-                                      handleLoadTemplate(e.target.value)
-                                      e.target.value = ''
-                                    }}
-                                    disabled={templatesLoading}
-                                    aria-label="Load job template"
-                                  >
-                                    <option value="">Load template…</option>
-                                    {templates.map((t) => {
-                                      const oid = (t as { _id?: string; id?: string })._id ?? (t as { id?: string }).id ?? ''
-                                      return (
-                                        <option key={oid} value={oid}>{t.title}</option>
-                                      )
-                                    })}
-                                  </select>
-                                  <button
-                                    type="button"
-                                    className="ti-btn ti-btn-light !py-1 !px-2 !text-xs !rounded-md"
-                                    onClick={handleSaveAsTemplate}
-                                    disabled={savingTemplate}
-                                  >
-                                    {savingTemplate ? 'Saving…' : 'Save as template'}
-                                  </button>
-                                  <Link
-                                    href={ROUTES.settingsJobTemplates}
-                                    className="ti-btn ti-btn-light !py-1 !px-2 !text-xs !rounded-md"
-                                  >
-                                    Manage
-                                  </Link>
-                                  {templatesLoading && <span className="text-xs text-muted">Loading…</span>}
-                                </>
-                              ) : (
-                                <>
-                                  <button
-                                    type="button"
-                                    className="ti-btn ti-btn-light !py-1 !px-2 !text-xs !rounded-md"
-                                    onClick={handleSaveAsTemplate}
-                                    disabled={savingTemplate}
-                                  >
-                                    {savingTemplate ? 'Saving…' : 'Save as template'}
-                                  </button>
-                                  <Link
-                                    href={ROUTES.settingsJobTemplates}
-                                    className="ti-btn ti-btn-light !py-1 !px-2 !text-xs !rounded-md"
-                                  >
-                                    + Add templates
-                                  </Link>
-                                </>
-                              )}
-                            </div>
-                            <div className="border border-gray-200 dark:border-defaultborder/10 rounded-md min-h-[260px]">
-                              <TiptapEditor content={jobDescription} placeholder="Enter detailed job description..." onChange={(html) => setJobDescription(html)} />
-                            </div>
-                            <p className="text-muted text-xs mt-2 mb-0">
-                              Provide a comprehensive description of the role, responsibilities, and what makes this opportunity unique.
-                            </p>
-                          </div>
-                          <div className="col-span-12">
-                            <label className="form-label">Skills</label>
-                            <CreatableSelect
-                              components={components}
-                              classNamePrefix="react-select"
-                              inputValue={skillsInputValue}
-                              isClearable
-                              isMulti
-                              menuIsOpen={false}
-                              onChange={(v: any) => handleInputChange('skills', Array.isArray(v) ? v : [])}
-                              onInputChange={setSkillsInputValue}
-                              onKeyDown={handleSkillsKeyDown}
-                              placeholder="Type a skill and press Enter to add..."
-                              value={formData.skills}
-                              className="ti-form-select"
-                              menuPortalTarget={selectMenuPortalTarget}
-                              styles={selectMenuLayerStyles}
-                            />
-                            <p className="text-muted text-xs mt-2 mb-0">
-                              Add relevant skills required for this position. Press Enter after typing each skill.
-                            </p>
-                          </div>
-                        </div>
-                      </section>
-                    </div>
-                  )}
-                  {activeTab === 'requirements' && (
-                    <div id="requirements-panel" role="tabpanel" aria-labelledby="requirements-tab" className="space-y-5">
-                      <section>
-                        <div className={sectionLabel}>Experience & Education</div>
-                        <div className="grid grid-cols-12 gap-3">
-                          <div className="xl:col-span-3 col-span-6">
-                            <label htmlFor="min-experience" className="form-label">Min Years</label>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.5"
-                              className="form-control !rounded-md"
-                              id="min-experience"
-                              placeholder="0"
-                              value={formData.minExperience}
-                              onChange={(e) => handleInputChange('minExperience', e.target.value)}
-                            />
-                          </div>
-                          <div className="xl:col-span-3 col-span-6">
-                            <label htmlFor="max-experience" className="form-label">Max Years</label>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.5"
-                              className="form-control !rounded-md"
-                              id="max-experience"
-                              placeholder="5"
-                              value={formData.maxExperience}
-                              onChange={(e) => handleInputChange('maxExperience', e.target.value)}
-                            />
-                          </div>
-                          <div className="xl:col-span-6 md:col-span-6 col-span-12">
-                            <label htmlFor="education" className="form-label">Education</label>
-                            <input
-                              type="text"
-                              className="form-control !rounded-md"
-                              id="education"
-                              placeholder="e.g., Bachelor's degree in Computer Science"
-                              value={formData.education}
-                              onChange={(e) => handleInputChange('education', e.target.value)}
-                            />
-                          </div>
-                        </div>
-                      </section>
-                      <section>
-                        <div className={sectionLabel}>Requirements & Qualifications</div>
-                        <div className="border border-gray-200 dark:border-defaultborder/10 rounded-md min-h-[260px]">
-                          <TiptapEditor
-                            content={requirements}
-                            placeholder="List key requirements, must-have skills, certifications, and qualifications..."
-                            onChange={(html) => setRequirements(html)}
-                          />
-                        </div>
-                        <p className="text-muted text-xs mt-2 mb-0">
-                          Detailed requirements appended to the job description on save. Leave blank if description already includes requirements.
-                        </p>
-                      </section>
-                    </div>
-                  )}
-                  {interviewRounds.length === 0 && hasLegacyRubrics && (
-                    <p className="mb-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
-                      This job still uses the older per-round-type scoring setup, which keeps working. Adding rounds here
-                      replaces it for every round scheduled from now on.
-                    </p>
-                  )}
-                  <JobRoundPlanSection
-                    value={interviewRounds}
-                    onChange={setInterviewRounds}
-                    jobId={jobId}
-                    onValidityChange={setRoundPlanErrorMsg}
-                  />
-                  <InterviewerPoolSelect
-                    value={interviewerPool}
-                    onChange={setInterviewerPool}
-                    recruiter={assignedRecruiter}
-                    onRecruiterChange={setAssignedRecruiter}
-                  />
-                  <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-gray-200 dark:border-defaultborder/10">
-                    <Link href="/ats/jobs" className="ti-btn ti-btn-secondary">
-                      Cancel
-                    </Link>
-                    <button type="submit" className="ti-btn ti-btn-primary" disabled={submitting || Boolean(roundPlanErrorMsg)}>
-                      <i className="ri-save-line font-semibold align-middle me-1"></i>
-                      {submitting ? 'Saving...' : 'Save Changes'}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
-        </div>
-    </Fragment>
+            <FieldInlineError fieldId="interview-round-plan" fieldErrors={fieldErrors} />
+            <InterviewerPoolSelect
+              value={interviewerPool}
+              onChange={(pool) => {
+                setFormTouched(true)
+                setInterviewerPool(pool)
+              }}
+              recruiter={assignedRecruiter}
+              onRecruiterChange={setAssignedRecruiter}
+            />
+          </JobInterviewSetup>
+        </JobFormPanel>
+      </form>
+        </>
+      )}
+      </JobFormCard>
+      {!loading ? (
+        <JobFormFooter
+          mode="edit"
+          submitting={submitting}
+          submitDisabled={Boolean(roundPlanErrorMsg)}
+          onCancel={handleCancel}
+        />
+      ) : null}
+    </JobFormShell>
   )
 }

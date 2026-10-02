@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { YmdFilterDateInput } from '@/shared/components/filters/YmdFilterDateInput'
 import { DROPDOWN_ITEM, PortalDropdown } from './PortalDropdown'
+import { FilterDrawerShell } from './FilterDrawerShell'
 
 interface FilterState {
   jobTitle: string[]
@@ -51,6 +52,7 @@ interface JobsFilterPanelProps {
   handleResetFilters: () => void
   salaryRangesConst: { min: number; max: number }
   experienceRangesConst: { min: number; max: number }
+  restoreFocusRef?: React.RefObject<HTMLButtonElement | null>
 }
 
 const FALLBACK_STATUS_OPTIONS = ['Active', 'Closed', 'Draft', 'Archived']
@@ -125,6 +127,7 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
   uniqueStatuses,
   salaryRangesConst,
   experienceRangesConst,
+  restoreFocusRef,
 }) => {
   const jobTitleInputRef = useRef<HTMLInputElement>(null)
   const companyInputRef = useRef<HTMLInputElement>(null)
@@ -311,57 +314,44 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
   }
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        aria-hidden={!layoutOpen}
-        onClick={onCloseLayout}
-        className={
-          'fixed inset-0 z-[60] bg-black/45 backdrop-blur-sm transition-opacity duration-200 motion-reduce:transition-none ' +
-          (layoutOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none')
-        }
-      />
-      <aside
-        id="jobs-filter-panel"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Job search and filters"
-        aria-hidden={!layoutOpen}
-        tabIndex={-1}
-        className={
-          'fixed right-0 top-0 z-[61] h-screen w-full sm:max-w-[28rem] transform-gpu bg-white dark:bg-bodybg flex flex-col shadow-[-12px_0_40px_-12px_rgba(15,23,42,0.25)] border-l border-defaultborder/60 dark:border-white/10 transition-transform duration-300 ease-out motion-reduce:transition-none ' +
-          (layoutOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none')
-        }
-      >
-        {/* Sticky Header */}
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-defaultborder/60 dark:border-white/10 bg-white/95 dark:bg-bodybg/95 backdrop-blur px-5 py-3.5">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <i className="ri-filter-3-line text-[1rem]" aria-hidden />
-            </span>
-            <div className="leading-tight">
-              <div className="text-[0.95rem] font-semibold text-gray-900 dark:text-white">
-                Advanced Search / Apply Filter
-              </div>
-              <div className="text-[0.7rem] text-gray-500 dark:text-gray-400">
-                {draftActiveCount > 0
+    <FilterDrawerShell
+      open={layoutOpen}
+      onClose={onCloseLayout}
+      panelId="jobs-filter-panel"
+      title="Filters"
+      ariaLabel="Filters — job search and filter options"
+      restoreFocusRef={restoreFocusRef}
+      subtitle={
+        draftActiveCount > 0
                   ? `${draftActiveCount} pending change${draftActiveCount === 1 ? '' : 's'}`
-                  : 'Company, location, salary, status & more'}
-              </div>
-            </div>
-          </div>
+                  : 'Listing type, status, salary & more'
+      }
+      footer={
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/10 dark:hover:text-white transition-colors"
-            onClick={onCloseLayout}
-            aria-label="Close filters"
+            onClick={handleClearAll}
+            className="ti-btn ti-btn-light !text-[0.8125rem] !py-2 !px-3 !rounded-lg flex-1"
           >
-            <i className="ri-close-line text-base" aria-hidden />
+            <i className="ri-refresh-line me-1.5" aria-hidden />Clear All
+          </button>
+          <button
+            type="button"
+            onClick={handleApply}
+            className="ti-btn ti-btn-primary !text-[0.8125rem] !py-2 !px-3 !rounded-lg flex-[1.4] inline-flex items-center justify-center gap-1.5"
+          >
+            <i className="ri-check-line" aria-hidden />
+            Apply Filters
+            {draftActiveCount > 0 && (
+              <span className="bg-white/25 text-white text-[0.65rem] font-semibold rounded-full px-1.5 py-0.5">
+                {draftActiveCount}
+              </span>
+            )}
           </button>
         </div>
+      }
+    >
 
-        {/* Scrollable body */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
           {/* Listing & Status row */}
           <section className="grid grid-cols-2 gap-3">
             <div>
@@ -453,8 +443,8 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
                         type="button"
                         role="option"
                         aria-selected={selected}
-                        className={`${DROPDOWN_ITEM} hover:bg-primary/10 dark:hover:bg-primary/15 ${
-                          selected ? 'bg-primary/10 text-primary' : 'text-gray-800 dark:text-gray-200'
+                        className={`${DROPDOWN_ITEM} hover:bg-gray-100 dark:hover:bg-white/10 ${
+                          selected ? 'bg-gray-100 dark:bg-white/10 text-defaulttextcolor' : 'text-gray-800 dark:text-gray-200'
                         }`}
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => selectJobTitle(title)}
@@ -462,7 +452,7 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
                         <span
                           className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${
                             selected
-                              ? 'border-primary bg-primary text-white'
+                              ? 'border-gray-500 bg-gray-600 text-white'
                               : 'border-gray-300 dark:border-gray-600'
                           }`}
                         >
@@ -490,7 +480,7 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
                 {draft.jobTitle.map((title) => (
                   <span
                     key={title}
-                    className={`${CHIP} bg-primary/10 border-primary/30 text-primary`}
+                    className={`${CHIP} bg-gray-100 dark:bg-white/[0.06] border-defaultborder/60 text-defaulttextcolor`}
                   >
                     <span className="truncate">{title}</span>
                     <button
@@ -539,8 +529,8 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
                         type="button"
                         role="option"
                         aria-selected={selected}
-                        className={`${DROPDOWN_ITEM} hover:bg-success/10 dark:hover:bg-success/15 ${
-                          selected ? 'bg-success/10 text-success' : 'text-gray-800 dark:text-gray-200'
+                        className={`${DROPDOWN_ITEM} hover:bg-gray-100 dark:hover:bg-white/10 ${
+                          selected ? 'bg-gray-100 dark:bg-white/10 text-defaulttextcolor' : 'text-gray-800 dark:text-gray-200'
                         }`}
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => selectCompany(company)}
@@ -548,7 +538,7 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
                         <span
                           className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${
                             selected
-                              ? 'border-success bg-success text-white'
+                              ? 'border-gray-500 bg-gray-600 text-white'
                               : 'border-gray-300 dark:border-gray-600'
                           }`}
                         >
@@ -576,7 +566,7 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
                 {draft.company.map((company) => (
                   <span
                     key={company}
-                    className={`${CHIP} bg-success/10 border-success/30 text-success`}
+                    className={`${CHIP} bg-gray-100 dark:bg-white/[0.06] border-defaultborder/60 text-defaulttextcolor`}
                   >
                     <span className="truncate">{company}</span>
                     <button
@@ -837,33 +827,8 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
                 : 'Leave empty for no limit. Numbers auto-format with commas.'}
             </p>
           </section>
-        </div>
 
-        {/* Sticky Footer */}
-        <div className="sticky bottom-0 z-10 flex items-center gap-2 border-t border-defaultborder/60 dark:border-white/10 bg-white/95 dark:bg-bodybg/95 backdrop-blur px-5 py-3">
-          <button
-            type="button"
-            onClick={handleClearAll}
-            className="ti-btn ti-btn-light !text-[0.8125rem] !py-2 !px-3 !rounded-lg flex-1"
-          >
-            <i className="ri-refresh-line me-1.5" aria-hidden />Clear All
-          </button>
-          <button
-            type="button"
-            onClick={handleApply}
-            className="ti-btn ti-btn-primary !text-[0.8125rem] !py-2 !px-3 !rounded-lg flex-[1.4] inline-flex items-center justify-center gap-1.5"
-          >
-            <i className="ri-check-line" aria-hidden />
-            Apply Filters
-            {draftActiveCount > 0 && (
-              <span className="bg-white/25 text-white text-[0.65rem] font-semibold rounded-full px-1.5 py-0.5">
-                {draftActiveCount}
-              </span>
-            )}
-          </button>
-        </div>
-      </aside>
-    </>
+    </FilterDrawerShell>
   )
 }
 

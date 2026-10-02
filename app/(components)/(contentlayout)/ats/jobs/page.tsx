@@ -6,12 +6,22 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useTable, useSortBy } from 'react-table'
 import Link from 'next/link'
 import JobsFilterPanel from './_components/JobsFilterPanel'
-import JobQuickSearch from './_components/JobQuickSearch'
+import { JobsToolbar } from './_components/JobsToolbar'
+import { AppliedFiltersBar } from './_components/AppliedFiltersBar'
+import { JobsTable } from './_components/JobsTable'
+import { JobsCardList } from './_components/JobsCardList'
+import { JobsListSkeleton } from './_components/JobsListSkeleton'
+import { JobStatusBadge } from './_components/JobStatusBadge'
+import { JobOriginBadge } from './_components/JobOriginBadge'
+import { JobRowActions } from './_components/JobRowActions'
 import JobPreviewPanel from './_components/JobPreviewPanel'
 import JobShareModal from './_components/JobShareModal'
 import { HireForecastCell, HireForecastChip } from './_components/HireForecastCell'
 import { HireForecastColumnHeader, HireForecastInfoDrawer } from './_components/HireForecastInfoDrawer'
-import ListPagination from '@/shared/components/ListPagination'
+import { JobsPaginationFooter } from './_components/JobsPaginationFooter'
+import { JobsListSaveFlash } from './_components/JobsListSaveFlash'
+import { useJobsListContainerLayout } from './_components/useJobsListContainerLayout'
+import { JOBS_TABLE_EMPTY } from './_components/jobsTableConstants'
 import { CompanyWebsiteLink } from '@/shared/components/ats/CompanyWebsiteLink'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 import { useAuth } from '@/shared/contexts/auth-context'
@@ -68,7 +78,7 @@ type ApplyCandidateOption = { value: string; label: string }
 const DEFAULT_SALARY_RANGE = { min: 0, max: 200000 }
 const DEFAULT_EXPERIENCE_RANGE = { min: 0, max: 20 }
 
-// Jobs data loaded from API in component – see jobsData state below
+// Jobs data loaded from API in component Ã¢â‚¬â€œ see jobsData state below
 
 
 
@@ -136,7 +146,7 @@ const DEFAULT_JOB_FILTERS: JobSidebarFilters = {
 
 type BookmarkNote = JobBookmarkNote
 
-/** neutral → A–Z → Z–A → neutral (handlers call `clear-sort` via return value). */
+/** neutral Ã¢â€ â€™ AÃ¢â‚¬â€œZ Ã¢â€ â€™ ZÃ¢â‚¬â€œA Ã¢â€ â€™ neutral (handlers call `clear-sort` via return value). */
 function nextJobTitleSortToggle(current: string): 'title-asc' | 'title-desc' | 'clear-sort' {
   if (current === 'title-asc') return 'title-desc'
   if (current === 'title-desc') return 'clear-sort'
@@ -165,21 +175,9 @@ function formatPostingDateMeta(raw?: string | null): { formatted: string; relati
   return { formatted, relative }
 }
 
-/** Per-column visibility classes for md→2xl table view (mobile uses card list instead). */
-const COLUMN_VISIBILITY: Record<string, string> = {
-  checkbox: '',
-  jobTitle: 'max-w-[22rem] min-w-0 overflow-hidden whitespace-normal',
-  company: '',
-  vacancies: 'hidden xl:table-cell',
-  hireForecast: 'hidden lg:table-cell',
-  postingDate: 'hidden w-0 max-w-0 !p-0 !border-0 overflow-hidden',
-  salary: 'hidden md:table-cell',
-  jobOrigin: 'hidden xl:table-cell',
-  postedBy: 'hidden 2xl:table-cell',
-  id: '',
-}
-
 const Jobs = () => {
+  const { containerRef: jobsListContainerRef, showTable: showJobsTable, showCards: showJobsCards } =
+    useJobsListContainerLayout()
   const { canView, canCreate, canEdit, canDelete, isLoading: permissionsLoading } = useFeaturePermissions("ats.jobs")
   const { confirm: askConfirm, confirmDialog } = useConfirm()
   const { roleNames } = useAuth()
@@ -215,7 +213,7 @@ const Jobs = () => {
   const [debouncedJobNameSearch, setDebouncedJobNameSearch] = useState(
     () => searchParams.get('q')?.trim() || ''
   )
-  /** Quick search — job name only (toolbar input). */
+  /** Quick search Ã¢â‚¬â€ job name only (toolbar input). */
   const [jobNameSearch, setJobNameSearch] = useState(() => searchParams.get('q')?.trim() || '')
   /**
    * Toolbar quick-search preview (live, while an option is highlighted) and commit (sticky, once
@@ -263,7 +261,7 @@ const Jobs = () => {
   const [bookmarkNotes, setBookmarkNotes] = useState<BookmarkNote[]>([])
   const [newNote, setNewNote] = useState({ text: '', visibility: 'public' as 'public' | 'private' })
   const [shareJob, setShareJob] = useState<any>(null)
-  /** HMAC `ref` for the open share modal — unique to current user + job (30d). */
+  /** HMAC `ref` for the open share modal Ã¢â‚¬â€ unique to current user + job (30d). */
   const [jobShareRefToken, setJobShareRefToken] = useState<string | null>(null)
   const [jobShareRefLoading, setJobShareRefLoading] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -273,6 +271,7 @@ const Jobs = () => {
   /** Default: newest jobs first (matches postingDate / createdAt). */
   const [selectedSort, setSelectedSort] = useState<string>(initialSortOption)
   const [jobsFilterPanelOpen, setJobsFilterPanelOpen] = useState(false)
+  const filterButtonRef = useRef<HTMLButtonElement>(null)
   const closeJobsFilterPanel = () => setJobsFilterPanelOpen(false)
 
   // Seeded from the URL: ?status=Draft|Archived|all routes straight into the status filter,
@@ -509,7 +508,7 @@ const Jobs = () => {
     return typeof maybePhone === 'string' ? maybePhone.trim() : ''
   }
 
-  /** Recruiter / job-post verification → POST /bolna/call → BOLNA_AGENT_ID (not applicant agent). */
+  /** Recruiter / job-post verification Ã¢â€ â€™ POST /bolna/call Ã¢â€ â€™ BOLNA_AGENT_ID (not applicant agent). */
   const handleInitiateCall = async (job: any) => {
     const phone = getOrganisationPhone(job)
     if (!phone) {
@@ -777,7 +776,7 @@ const Jobs = () => {
   // Generate public URL for job (with per-sharer `ref` when loaded)
   const getJobPublicUrl = (jobId: string) => {
     if (jobShareRefLoading && shareJob?.id === jobId) {
-      return '' // Return empty string while loading — prevents accidental clipboard copy of placeholder
+      return '' // Return empty string while loading Ã¢â‚¬â€ prevents accidental clipboard copy of placeholder
     }
     const base =
       typeof window !== 'undefined'
@@ -800,7 +799,7 @@ const Jobs = () => {
     }
   }
 
-  // Share on WhatsApp (must use the same `?ref=` as Copy — never the placeholder or bare URL)
+  // Share on WhatsApp (must use the same `?ref=` as Copy Ã¢â‚¬â€ never the placeholder or bare URL)
   const handleShareWhatsApp = (job: any) => {
     if (!jobShareRefToken || shareJob?.id !== job.id) {
       alert('Your personal tracking link is not ready yet. Wait a moment, or close and open Share again.')
@@ -847,7 +846,7 @@ const Jobs = () => {
       setShareEmailError(msg)
     } finally {
       if (process.env.NODE_ENV !== 'production') {
-        console.debug('[share-email] finally — reset sending state')
+        console.debug('[share-email] finally Ã¢â‚¬â€ reset sending state')
       }
       setShareEmailSending(false)
     }
@@ -868,7 +867,7 @@ const Jobs = () => {
     }
   }
 
-  // Handle share button click — fetch HMAC `ref` so the URL is unique to the logged-in user + job
+  // Handle share button click Ã¢â‚¬â€ fetch HMAC `ref` so the URL is unique to the logged-in user + job
   const handleShareClick = (job: any) => {
     setShareJob(job)
     setShowEmailInput(false)
@@ -887,12 +886,12 @@ const Jobs = () => {
 
   // Get salary tier icon and color
   const getSalaryTierIcon = (tier: string) => {
-    const icons: { [key: string]: { icon: string; color: string } } = {
-      'high': { icon: 'ri-money-dollar-circle-fill', color: 'text-success' },
-      'medium': { icon: 'ri-money-dollar-circle-line', color: 'text-info' },
-      'low': { icon: 'ri-money-cny-circle-line', color: 'text-secondary' }
+    const icons: { [key: string]: { icon: string; color: string; label: string } } = {
+      high: { icon: 'ri-money-dollar-circle-fill', color: 'text-success', label: 'High pay tier' },
+      medium: { icon: 'ri-money-dollar-circle-line', color: 'text-info', label: 'Medium pay tier' },
+      low: { icon: 'ri-money-cny-circle-line', color: 'text-secondary', label: 'Entry level pay tier' },
     }
-    return icons[tier] || icons['medium']
+    return icons[tier] || icons.medium
   }
 
   // Get job type icon and label
@@ -930,7 +929,7 @@ const Jobs = () => {
   const columns = useMemo(
     () => {
       const checkboxColumn = {
-        Header: 'All',
+        Header: () => <span className="sr-only">Select rows</span>,
         accessor: 'checkbox',
         id: 'checkbox',
         disableSortBy: true,
@@ -963,18 +962,19 @@ const Jobs = () => {
           const locationText = job.location != null ? String(job.location).trim() : ''
           const dateLine = postedOn
             ? relative
-              ? `${postedOn} · ${relative}`
+              ? `${postedOn} \u00b7 ${relative}`
               : postedOn
             : ''
           return (
-            <div className="min-w-0 max-w-[18rem] sm:max-w-[22rem] overflow-hidden">
-              <span
-                className="font-semibold text-gray-800 dark:text-white cursor-pointer hover:text-primary block leading-snug line-clamp-2"
+            <div className="min-w-0 overflow-hidden">
+              <button
+                type="button"
+                className="font-semibold text-gray-800 dark:text-white text-left w-full hover:text-primary block leading-snug line-clamp-2 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                 title={job.jobTitle}
                 onClick={openJobPreview}
               >
                 {job.jobTitle}
-              </span>
+              </button>
               {(dateLine || locationText) && (
                 <div className="mt-1 space-y-0.5 text-[0.7rem] leading-snug text-defaulttextcolor/70">
                   {dateLine && (
@@ -1010,17 +1010,19 @@ const Jobs = () => {
             }, 50)
           }
           return (
-            <span 
-              className="font-medium text-gray-800 dark:text-white cursor-pointer hover:text-primary"
+            <button
+              type="button"
+              className="font-medium text-gray-800 dark:text-white text-left max-w-full truncate hover:text-primary rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               onClick={handleCompanyClick}
             >
               {job.company}
-            </span>
+            </button>
           )
         },
       },
+      /* Layout-only column: date shown under job title; hidden via CSS (see jobsTableResponsive). */
       {
-        Header: 'Posted Date',
+        Header: () => <span className="sr-only">Posted date</span>,
         accessor: 'postingDate',
         id: 'postingDate',
         Cell: () => null,
@@ -1030,7 +1032,7 @@ const Jobs = () => {
         accessor: 'vacancies',
         Cell: ({ value }: { value?: number | null }) => {
           if (value == null || value <= 0) {
-            return <span className="text-gray-400 dark:text-gray-500">—</span>
+            return <span className="text-gray-400 dark:text-gray-500">{JOBS_TABLE_EMPTY}</span>
           }
           return (
             <span className="inline-flex items-center gap-1 text-gray-800 dark:text-white">
@@ -1066,9 +1068,13 @@ const Jobs = () => {
               >
                 {salaryLabel}
               </span>
-              {hasSalary && (
-                <i className={`${salaryTierIcon.icon} ${salaryTierIcon.color} text-lg`}></i>
-              )}
+              {hasSalary ? (
+                <i
+                  className={`${salaryTierIcon.icon} ${salaryTierIcon.color} text-lg`}
+                  aria-label={salaryTierIcon.label}
+                  role="img"
+                />
+              ) : null}
             </div>
           )
         },
@@ -1078,18 +1084,8 @@ const Jobs = () => {
         accessor: 'status',
         disableSortBy: true,
         Cell: ({ row }: any) => {
-          const status = row.original.status || '—'
-          const cls =
-            status === 'Active'
-              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
-              : status === 'Closed' || status === 'Archived'
-                ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30'
-                : 'bg-stone-500/15 text-stone-700 dark:text-stone-300 border-stone-500/30'
-          return (
-            <span className={`badge border !rounded-md !px-2 !py-1 text-xs font-medium ${cls}`}>
-              {status}
-            </span>
-          )
+          const status = row.original.status || JOBS_TABLE_EMPTY
+          return <JobStatusBadge status={status} />
         },
       },
       {
@@ -1097,127 +1093,32 @@ const Jobs = () => {
         accessor: 'jobOrigin',
         disableSortBy: true,
         Cell: ({ row }: any) => {
-          const ext = row.original.jobOrigin === 'external'
-          return (
-            <span
-              className={`badge ${ext ? 'bg-info/15 text-info border border-info/30' : 'bg-secondary/15 text-secondary border border-secondary/30'} !rounded-md !px-2 !py-1 text-xs font-medium`}
-            >
-              {ext ? 'External' : 'Internal'}
-            </span>
-          )
-        },
-      },
-      {
-        Header: 'Posted By',
-        accessor: 'postedBy',
-        Cell: ({ row }: any) => {
-          const name: string | undefined = row.original.postedBy
-          const email: string | undefined = row.original.postedByEmail
-          if (!name && !email) {
-            return <span className="text-defaulttextcolor/50 text-xs italic">—</span>
-          }
-          const initials = (name ?? email ?? '?')
-            .split(/\s+/)
-            .filter(Boolean)
-            .slice(0, 2)
-            .map((s: string) => s[0]?.toUpperCase() ?? '')
-            .join('') || '?'
-          return (
-            <div className="flex items-center gap-2 min-w-0">
-              <span
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-[10px] font-semibold ring-1 ring-primary/15"
-                aria-hidden
-              >
-                {initials}
-              </span>
-              <div className="flex flex-col min-w-0">
-                <span className="text-sm font-medium text-defaulttextcolor truncate" title={name || email}>
-                  {name || email || '—'}
-                </span>
-                {name && email && (
-                  <span className="text-[11px] text-defaulttextcolor/60 truncate" title={email}>
-                    {email}
-                  </span>
-                )}
-              </div>
-            </div>
-          )
+          return <JobOriginBadge jobOrigin={row.original.jobOrigin} />
         },
       },
       {
         Header: 'Actions',
         accessor: 'id',
         disableSortBy: true,
-        Cell: ({ row }: any) => (
-          <div className="flex items-center justify-center gap-2">
-            {canEdit && !isSalesAgent && row.original.jobOrigin !== 'external' && (
-              <div className="hs-tooltip ti-main-tooltip">
-                <Link
-                  href={`/ats/jobs/edit/${row.original.id}`}
-                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-info"
-                >
-                  <i className="ri-pencil-line"></i>
-                  <span
-                    className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
-                    role="tooltip">
-                    Edit Job
-                  </span>
-                </Link>
-              </div>
-            )}
-            <div className="hs-tooltip ti-main-tooltip">
-              <button
-                type="button"
-                onClick={() => handleBookmark(row.original.id)}
-                disabled={bookmarkTogglingId === row.original.id}
-                className={`hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ${bookmarkedJobs.has(row.original.id) ? 'ti-btn-warning' : 'ti-btn-light'}`}
-              >
-                <i className={bookmarkedJobs.has(row.original.id) ? 'ri-bookmark-fill' : 'ri-bookmark-line'}></i>
-                <span
-                  className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
-                  role="tooltip">
-                  {bookmarkedJobs.has(row.original.id) ? 'View notes' : 'Bookmark Job'}
-                </span>
-              </button>
-            </div>
-            {row.original.jobOrigin !== 'external' && (
-              <div className="hs-tooltip ti-main-tooltip">
-                <button
-                  type="button"
-                  onClick={() => handleInitiateCall(row.original)}
-                  disabled={!getOrganisationPhone(row.original) || callingJobId === row.original.id}
-                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                  aria-label="Verify job posting: call organisation (recruiter Bolna agent)"
-                >
-                  <i className="ri-phone-line"></i>
-                  <span
-                    className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
-                    role="tooltip">
-                    {!getOrganisationPhone(row.original)
-                      ? 'Organisation phone required'
-                      : callingJobId === row.original.id
-                        ? 'Calling...'
-                        : 'Verify job post (recruiter call)'}
-                  </span>
-                </button>
-              </div>
-            )}
-            <div className="hs-tooltip ti-main-tooltip">
-              <button
-                type="button"
-                onClick={() => handleShareClick(row.original)}
-                className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
-              >
-                <i className="ri-share-line"></i>
-                <span
-                  className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
-                  role="tooltip">
-                  Share Job
-                </span>
-              </button>
-            </div>
-          </div>
-        ),
+        Cell: ({ row }: any) => {
+          const job = row.original
+          const phone = getOrganisationPhone(job)
+          return (
+            <JobRowActions
+              job={job}
+              canEdit={canEdit}
+              isSalesAgent={isSalesAgent}
+              bookmarked={bookmarkedJobs.has(job.id)}
+              bookmarkToggling={bookmarkTogglingId === job.id}
+              calling={callingJobId === job.id}
+              canCall={Boolean(phone)}
+              callDisabledReason="Organisation phone required"
+              onBookmark={() => handleBookmark(job.id)}
+              onCall={() => handleInitiateCall(job)}
+              onShare={() => handleShareClick(job)}
+            />
+          )
+        },
       },
     ]
       return canDelete && !isSalesAgent ? [checkboxColumn, ...restColumns] : restColumns
@@ -1298,7 +1199,7 @@ const Jobs = () => {
     })
   }
 
-  /** Default status filter is Active only — counts as “custom” when user picks All / Draft / Archived / etc. */
+  /** Default status filter is Active only Ã¢â‚¬â€ counts as Ã¢â‚¬Å“customÃ¢â‚¬Â when user picks All / Draft / Archived / etc. */
   const hasActiveFilters =
     listJobOrigin !== '' ||
     filters.jobTitle.length > 0 ||
@@ -1412,7 +1313,7 @@ const Jobs = () => {
     return (
       <Fragment>
         <Seo title="Jobs" />
-        <div className="container-fluid mt-5 pt-2 sm:mt-6">
+        <div className="container-fluid mt-2 pt-2 sm:mt-3">
           <div className="flex items-center justify-center py-16">
             <div className="text-center">
               <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent mx-auto mb-3" />
@@ -1427,177 +1328,64 @@ const Jobs = () => {
   return (
     <Fragment>
   
-      <div className="jobs-page-shell mt-5 grid grid-cols-12 gap-6 sm:mt-6">
-        <div className="xl:col-span-12 col-span-12 h-full min-h-0 flex flex-col">
-          <div className="box custom-box h-full min-h-0 flex flex-col overflow-hidden">
-            <div className="box-header shrink-0 flex items-center justify-between flex-wrap gap-3 sm:gap-4 !px-5 !py-3 sm:!py-4 bg-white dark:bg-bodybg">
-              <div className="box-title">
-                Jobs
-                <span className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle">
-                  {totalResults}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1.5 sm:gap-2 items-center w-full sm:w-auto">
-                {/* Job quick search (live type-ahead) + advanced filters drawer */}
-                <JobQuickSearch
-                  value={jobNameSearch}
-                  onChange={setJobNameSearch}
-                  status={filters.status}
-                  jobOrigin={listJobOrigin}
-                  loading={jobsListFetching}
-                  onPreview={setPreviewScope}
-                  onCommit={setCommittedScope}
-                  committedScope={committedScope}
-                />
-                <button
-                  type="button"
-                  className={`ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] me-2 whitespace-nowrap ${jobsFilterPanelOpen ? 'ring-2 ring-primary/30 bg-primary/[0.06]' : ''}`}
-                  aria-expanded={jobsFilterPanelOpen}
-                  aria-controls="jobs-filter-panel"
-                  onClick={() => setJobsFilterPanelOpen((v) => !v)}
-                >
-                  <i className="ri-filter-3-line font-semibold align-middle me-1"></i>
-                  Advanced Search / Apply Filter
-                  {hasActiveFilters && (
-                    <span className="badge bg-primary text-white rounded-full ms-1 text-[0.65rem]">
-                      {activeFilterCount}
-                    </span>
-                  )}
-                </button>
-                {/* Rows per page. Moved up from the box-footer: it shapes the view, like
-                    Search / Filter / Sort beside it, rather than reporting on it the way
-                    the footer's "Showing x to y" and pager do. Sized to match the other
-                    toolbar controls (h-8, 0.75rem). */}
-                <select
-                  className="form-control select-show-page-size !w-auto !h-8 !py-1 !text-[0.75rem] !rounded-lg me-2"
-                  value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
-                  aria-label="Jobs per page"
-                >
-                  {PAGE_SIZE_OPTIONS.map((size) => (
-                    <option key={size} value={size}>
-                      Show {size}
-                    </option>
-                  ))}
-                </select>
-                <div className="hs-dropdown ti-dropdown me-2">
-                  <button
-                    type="button"
-                    className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] ti-dropdown-toggle"
-                    id="sort-dropdown-button"
-                    aria-expanded="false"
-                  >
-                    <i className="ri-arrow-up-down-line font-semibold align-middle me-1"></i>Sort
-                    <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
-                  </button>
-                  <ul className="hs-dropdown-menu ti-dropdown-menu hidden" aria-labelledby="sort-dropdown-button">
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${
-                          selectedSort === 'newest-first' || selectedSort === 'date-newest' ? 'active' : ''
-                        }`}
-                        onClick={() => handleSortChange('newest-first')}
-                      >
-                        <i className="ri-arrow-down-line me-2 align-middle inline-block"></i>Newest First
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${
-                          selectedSort === 'oldest-first' || selectedSort === 'date-oldest' ? 'active' : ''
-                        }`}
-                        onClick={() => handleSortChange('oldest-first')}
-                      >
-                        <i className="ri-arrow-up-line me-2 align-middle inline-block"></i>Oldest First
-                      </button>
-                    </li>
-                    <li className="ti-dropdown-divider"></li>
-                    <li>
-                      <button
-                        type="button"
-                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left text-gray-500 dark:text-gray-400"
-                        onClick={() => handleSortChange('clear-sort')}
-                      >
-                        <i className="ri-close-line me-2 align-middle inline-block"></i>Clear Sort
-                      </button>
-                    </li>
-                  </ul>
-                </div>
-                {canCreate && !isSalesAgent && (
-                  <Link
-                    href="/ats/jobs/create"
-                    className="ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem] me-2"
-                  >
-                    <i className="ri-add-line font-semibold align-middle"></i>Create Job
-                  </Link>
-                )}
-                {!isSalesAgent && (
-                  <div className="hs-dropdown ti-dropdown me-2">
-                    <button
-                      type="button"
-                      className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem] ti-dropdown-toggle"
-                      id="excel-dropdown-button"
-                      aria-expanded="false"
-                    >
-                      <i className="ri-file-excel-2-line font-semibold align-middle me-1"></i>Excel
-                      <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
-                    </button>
-                    <ul className="hs-dropdown-menu ti-dropdown-menu hidden" aria-labelledby="excel-dropdown-button">
-                      <li>
-                        <button
-                          type="button"
-                          className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                          onClick={handleImportExcel}
-                          disabled={excelImporting}
-                        >
-                          <i className="ri-upload-2-line me-2 align-middle inline-block"></i>{excelImporting ? 'Importing...' : 'Import'}
-                        </button>
-                      </li>
-                      <li>
-                        <button
-                          type="button"
-                          className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                          onClick={handleExportExcel}
-                        >
-                          <i className="ri-file-excel-2-line me-2 align-middle inline-block"></i>Export
-                        </button>
-                      </li>
-                      <li>
-                        <button
-                          type="button"
-                          className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                          onClick={handleDownloadTemplate}
-                        >
-                          <i className="ri-download-line me-2 align-middle inline-block"></i>Template
-                        </button>
-                      </li>
-                    </ul>
-                  </div>
-                )}
-                {canDelete && !isSalesAgent && (
-                  <button
-                    type="button"
-                    className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem] disabled:opacity-50 disabled:cursor-not-allowed"
-                    onClick={handleDeleteSelected}
-                    disabled={selectedRows.size === 0}
-                  >
-                    <i className="ri-delete-bin-line font-semibold align-middle me-1"></i>Delete
-                  </button>
-                )}
-                <input
-                  ref={excelInputRef}
-                  type="file"
-                  accept=".xlsx,.xls"
-                  className="hidden"
-                  onChange={onExcelFileChange}
-                />
-              </div>
-            </div>
-
+      <div className="jobs-page-shell jobs-page-container mt-2 grid w-full grid-cols-12 gap-0 sm:mt-3 min-w-0 max-w-full overflow-x-hidden">
+        <div className="xl:col-span-12 col-span-12 h-full min-h-0 min-w-0 max-w-full flex flex-col">
+          <div className="box custom-box h-full min-h-0 min-w-0 max-w-full flex flex-col overflow-hidden">
+            <JobsListSaveFlash />
+            <JobsToolbar
+              totalResults={totalResults}
+              jobNameSearch={jobNameSearch}
+              setJobNameSearch={setJobNameSearch}
+              filtersStatus={filters.status}
+              listJobOrigin={listJobOrigin}
+              jobsListFetching={jobsListFetching}
+              setPreviewScope={setPreviewScope}
+              setCommittedScope={setCommittedScope}
+              committedScope={committedScope}
+              jobsFilterPanelOpen={jobsFilterPanelOpen}
+              onToggleFilters={() => setJobsFilterPanelOpen((v) => !v)}
+              filterButtonRef={filterButtonRef}
+              hasActiveFilters={hasActiveFilters}
+              activeFilterCount={activeFilterCount}
+              pageSize={pageSize}
+              pageSizeOptions={PAGE_SIZE_OPTIONS}
+              onPageSizeChange={setPageSize}
+              selectedSort={selectedSort}
+              onSortChange={handleSortChange}
+              canCreate={canCreate}
+              isSalesAgent={isSalesAgent}
+              canDelete={canDelete}
+              selectedCount={selectedRows.size}
+              onDeleteSelected={handleDeleteSelected}
+              excelImporting={excelImporting}
+              onImportExcel={handleImportExcel}
+              onExportExcel={handleExportExcel}
+              onDownloadTemplate={handleDownloadTemplate}
+              showExcelMenu={!isSalesAgent}
+            />
+            <AppliedFiltersBar
+              filters={filters}
+              setFilters={setFilters}
+              listJobOrigin={listJobOrigin}
+              setListJobOrigin={setListJobOrigin}
+              committedScope={committedScope}
+              setCommittedScope={setCommittedScope}
+              setPreviewScope={setPreviewScope}
+              salaryRangesConst={salaryRangesConst}
+              experienceRangesConst={experienceRangesConst}
+              onClearAll={handleResetFilters}
+              hasActiveFilters={hasActiveFilters}
+            />
+            <input
+              ref={excelInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={onExcelFileChange}
+            />
             <JobsFilterPanel
               layoutOpen={jobsFilterPanelOpen}
+              restoreFocusRef={filterButtonRef}
               onCloseLayout={closeJobsFilterPanel}
               listJobOrigin={listJobOrigin}
               setListJobOrigin={setListJobOrigin}
@@ -1628,312 +1416,78 @@ const Jobs = () => {
               experienceRangesConst={experienceRangesConst}
             />
 
-            <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden relative">
+            <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden relative min-w-0 max-w-full w-full">
               {jobsListFetching && jobsEverLoadedRef.current ? (
-                <div
-                  className="absolute inset-0 z-[100] flex items-center justify-center bg-white/70 dark:bg-black/50 pointer-events-none"
-                  aria-busy
-                  aria-label="Loading jobs"
-                >
-                  <div className="animate-spin rounded-full h-9 w-9 border-2 border-primary border-t-transparent" />
+                <div className="absolute inset-0 z-[20] bg-white/60 dark:bg-black/40 pointer-events-none">
+                  <JobsListSkeleton />
                 </div>
               ) : null}
-              {/* Mobile card list — shown <md; mirrors paginated react-table `page` rows. */}
-              <div className="md:hidden flex-1 overflow-y-auto px-3 py-3 space-y-3" style={{ minHeight: 0 }}>
-                {rows.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-defaultborder/60 dark:border-white/10 py-10 text-center text-sm text-defaulttextcolor/70">
-                    No jobs match your filters.
-                  </div>
-                ) : (
-                  rows.map((row: any, i: number) => {
-                    prepareRow(row)
-                    const job = row.original
-                    const openPreview = () => {
-                      setPreviewJob(job)
-                      setTimeout(() => {
-                        const HSOverlay = (window as any).HSOverlay
-                        const HSStaticMethods = (window as any).HSStaticMethods
-                        if (HSStaticMethods?.autoInit) HSStaticMethods.autoInit()
-                        if (HSOverlay?.open) HSOverlay.open('#job-preview-panel')
-                      }, 50)
-                    }
-                    const { formatted: postedOn, relative } = formatPostingDateMeta(job.postingDate)
-                    const locationText = job.location != null ? String(job.location).trim() : ''
-                    const dateLine = postedOn
-                      ? relative
-                        ? `${postedOn} · ${relative}`
-                        : postedOn
-                      : ''
-                    return (
-                      <div
-                        key={row.id || `card-${i}`}
-                        className="rounded-xl border border-defaultborder/70 dark:border-white/10 bg-white dark:bg-bodybg shadow-sm hover:shadow transition-shadow p-3.5"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0 flex-1">
-                            <button
-                              type="button"
-                              onClick={openPreview}
-                              className="text-left font-semibold text-gray-900 dark:text-white hover:text-primary leading-snug break-words"
-                            >
-                              {job.jobTitle}
-                            </button>
-                            <div className="mt-0.5 text-xs text-defaulttextcolor/75 truncate" title={job.company}>
-                              {job.company}
-                            </div>
-                            {(dateLine || locationText) && (
-                              <div className="mt-1.5 space-y-0.5 text-[0.7rem] leading-snug text-defaulttextcolor/70">
-                                {dateLine && (
-                                  <div className="flex items-center gap-1 min-w-0">
-                                    <i className="ri-calendar-line shrink-0 text-[0.75rem]" aria-hidden />
-                                    <span className="truncate">{dateLine}</span>
-                                  </div>
-                                )}
-                                {locationText && (
-                                  <div className="flex items-start gap-1 min-w-0 whitespace-normal break-words [overflow-wrap:anywhere]">
-                                    <i className="ri-map-pin-line shrink-0 mt-0.5 text-[0.75rem]" aria-hidden />
-                                    <span>{locationText}</span>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                          {canDelete && !isSalesAgent && (
-                            <input
-                              className="form-check-input mt-1 shrink-0"
-                              type="checkbox"
-                              checked={selectedRows.has(job.id)}
-                              onChange={() => handleRowSelect(job.id)}
-                              aria-label={`Select ${job.jobTitle}`}
-                            />
-                          )}
-                        </div>
-                        <div className="mt-2.5 flex flex-wrap gap-1.5 text-[0.7rem]">
-                          {job.salary && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-white/[0.05] px-2 py-0.5 text-defaulttextcolor/85">
-                              <i className="ri-money-dollar-circle-line text-[0.75rem]" />
-                              {job.salary}
-                            </span>
-                          )}
-                          {job.vacancies != null && job.vacancies > 0 && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5">
-                              <i className="ri-team-line text-[0.75rem]" />
-                              {job.vacancies}
-                            </span>
-                          )}
-                          <HireForecastChip forecast={job.hireForecast} />
-                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ${
-                            job.jobOrigin === 'external'
-                              ? 'bg-info/15 text-info border border-info/30'
-                              : 'bg-secondary/15 text-secondary border border-secondary/30'
-                          }`}>
-                            {job.jobOrigin === 'external' ? 'External' : 'Internal'}
-                          </span>
-                        </div>
-                        <div className="mt-3 flex items-center justify-end gap-2">
-                          <div className="flex items-center gap-1.5">
-                            {canEdit && !isSalesAgent && job.jobOrigin !== 'external' && (
-                              <Link
-                                href={`/ats/jobs/edit/${job.id}`}
-                                className="ti-btn ti-btn-icon ti-btn-sm ti-btn-info"
-                                aria-label="Edit job"
-                              >
-                                <i className="ri-pencil-line" />
-                              </Link>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleBookmark(job.id)}
-                              className={`ti-btn ti-btn-icon ti-btn-sm ${bookmarkedJobs.has(job.id) ? 'ti-btn-warning' : 'ti-btn-light'}`}
-                              aria-label={bookmarkedJobs.has(job.id) ? 'View notes' : 'Bookmark job'}
-                            >
-                              <i className={bookmarkedJobs.has(job.id) ? 'ri-bookmark-fill' : 'ri-bookmark-line'} />
-                            </button>
-                            {job.jobOrigin !== 'external' && (
-                              <button
-                                type="button"
-                                onClick={() => handleInitiateCall(job)}
-                                disabled={!getOrganisationPhone(job) || callingJobId === job.id}
-                                className="ti-btn ti-btn-icon ti-btn-sm ti-btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                                aria-label="Call organisation"
-                              >
-                                <i className="ri-phone-line" />
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleShareClick(job)}
-                              className="ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
-                              aria-label="Share job"
-                            >
-                              <i className="ri-share-line" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })
-                )}
-              </div>
+              {/* Card list when jobs-list container is narrow; see globals.scss @container jobs-list. */}
+              <div
+                ref={jobsListContainerRef}
+                className="jobs-list-container flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden"
+              >
+              {showJobsCards ? (
+                <JobsCardList
+                  rows={rows}
+                  prepareRow={prepareRow}
+                  emptyMessage="No jobs found."
+                  canDelete={canDelete}
+                  isSalesAgent={isSalesAgent}
+                  selectedRows={selectedRows}
+                  onRowSelect={handleRowSelect}
+                  onOpenPreview={(job) => {
+                    setPreviewJob(job)
+                    setTimeout(() => {
+                      const HSOverlay = (window as any).HSOverlay
+                      const HSStaticMethods = (window as any).HSStaticMethods
+                      if (HSStaticMethods?.autoInit) HSStaticMethods.autoInit()
+                      if (HSOverlay?.open) HSOverlay.open('#job-preview-panel')
+                    }, 50)
+                  }}
+                  formatPostingDateMeta={formatPostingDateMeta}
+                  canEdit={canEdit}
+                  bookmarkedJobs={bookmarkedJobs}
+                  bookmarkTogglingId={bookmarkTogglingId}
+                  callingJobId={callingJobId}
+                  getOrganisationPhone={getOrganisationPhone}
+                  onBookmark={handleBookmark}
+                  onInitiateCall={handleInitiateCall}
+                  onShare={handleShareClick}
+                  onClearFilters={hasActiveFilters ? handleResetFilters : undefined}
+                  canCreate={canCreate && !isSalesAgent}
+                />
+              ) : null}
 
-              <div className="jobs-table-scroll hidden md:block table-responsive flex-1 overflow-y-auto bg-white dark:bg-bodybg" style={{ minHeight: 0 }}>
-                <table
-                  {...getTableProps()}
-                  className="table w-full max-w-full whitespace-nowrap table-striped table-hover table-bordered border-separate border-spacing-0 border-gray-300 dark:border-gray-600"
-                >
-                  <thead className="bg-gray-50 dark:bg-bodybg">
-                    {headerGroups.map((headerGroup: any, i: number) => (
-                      <tr
-                        {...headerGroup.getHeaderGroupProps()}
-                        className="border-b border-gray-300 dark:border-gray-600"
-                        key={`header-group-${i}`}
-                      >
-                        {headerGroup.headers.map((column: any, i: number) => {
-                          const headerProps = column.getHeaderProps()
-                          const isCheckboxCol = column.id === 'checkbox'
-                          const headerSortTitle = column.id === 'jobTitle'
-                          const headerSortCompany = column.id === 'company'
-                          const hidePostingCol = column.id === 'postingDate'
-                          const clickableHeader = headerSortTitle || headerSortCompany
-
-                          let sortIcon: React.ReactNode = null
-                          if (headerSortTitle && (selectedSort === 'title-asc' || selectedSort === 'title-desc')) {
-                            sortIcon =
-                              selectedSort === 'title-desc' ? (
-                                <i className="ri-arrow-down-s-line text-[0.875rem]" aria-hidden />
-                              ) : (
-                                <i className="ri-arrow-up-s-line text-[0.875rem]" aria-hidden />
-                              )
-                          } else if (
-                            headerSortCompany &&
-                            (selectedSort === 'company-asc' || selectedSort === 'company-desc')
-                          ) {
-                            sortIcon =
-                              selectedSort === 'company-desc' ? (
-                                <i className="ri-arrow-down-s-line text-[0.875rem]" aria-hidden />
-                              ) : (
-                                <i className="ri-arrow-up-s-line text-[0.875rem]" aria-hidden />
-                              )
-                          }
-
-                          return (
-                            <th
-                              {...headerProps}
-                              scope="col"
-                              className={`text-start sticky top-0 z-10 bg-gray-50 dark:bg-bodybg${hidePostingCol ? ' hidden w-0 max-w-0 !p-0 !border-0 overflow-hidden' : ''}${
-                                clickableHeader ? ' cursor-pointer select-none' : ''
-                              } ${COLUMN_VISIBILITY[column.id] ?? ''}`}
-                              key={column.id || `col-${i}`}
-                              {...(clickableHeader
-                                ? {
-                                    tabIndex: 0,
-                                    'aria-sort':
-                                      headerSortTitle && selectedSort === 'title-asc'
-                                        ? ('ascending' as const)
-                                        : headerSortTitle && selectedSort === 'title-desc'
-                                          ? ('descending' as const)
-                                          : headerSortCompany && selectedSort === 'company-asc'
-                                            ? ('ascending' as const)
-                                            : headerSortCompany && selectedSort === 'company-desc'
-                                              ? ('descending' as const)
-                                              : ('none' as const),
-                                    onClick: () => {
-                                      if (headerSortTitle) {
-                                        handleSortChange(nextJobTitleSortToggle(selectedSort))
-                                      } else if (headerSortCompany) {
-                                        handleSortChange(nextCompanySortToggle(selectedSort))
-                                      }
-                                    },
-                                    onKeyDown: (e: React.KeyboardEvent) => {
-                                      if (e.key === 'Enter' || e.key === ' ') {
-                                        e.preventDefault()
-                                        if (headerSortTitle) {
-                                          handleSortChange(nextJobTitleSortToggle(selectedSort))
-                                        } else if (headerSortCompany) {
-                                          handleSortChange(nextCompanySortToggle(selectedSort))
-                                        }
-                                      }
-                                    },
-                                    title:
-                                      headerSortTitle
-                                        ? selectedSort === 'title-asc' || selectedSort === 'title-desc'
-                                          ? selectedSort === 'title-desc'
-                                            ? 'Click to remove sort'
-                                            : 'Toggle to Z–A'
-                                          : 'Sort by job title (A–Z first)'
-                                        : headerSortCompany
-                                          ? selectedSort === 'company-asc' || selectedSort === 'company-desc'
-                                            ? selectedSort === 'company-desc'
-                                              ? 'Click to remove sort'
-                                              : 'Toggle to Z–A'
-                                            : 'Sort by company (A–Z first)'
-                                          : undefined,
-                                  }
-                                : {})}
-                              style={{
-                                ...headerProps.style,
-                                position: 'sticky',
-                                top: 0,
-                              }}
-                            >
-                              {isCheckboxCol ? (
-                                <input
-                                  className="form-check-input"
-                                  type="checkbox"
-                                  checked={isAllSelected}
-                                  ref={(input) => {
-                                    if (input) input.indeterminate = isIndeterminate
-                                  }}
-                                  onChange={handleSelectAll}
-                                  aria-label="Select all"
-                                />
-                              ) : column.id === 'hireForecast' ? (
-                                column.render('Header')
-                              ) : (
-                                <div className="flex items-center gap-2">
-                                  <span className="tabletitle">{column.render('Header')}</span>
-                                  <span className={sortIcon ? 'text-defaulttextcolor/80' : ''}>{sortIcon ?? null}</span>
-                                </div>
-                              )}
-                            </th>
-                          )
-                        })}
-                      </tr>
-                    ))}
-                  </thead>
-                  <tbody {...getTableBodyProps()}>
-                    {rows.map((row: any, i: number) => {
-                      prepareRow(row)
-                      return (
-                        <tr {...row.getRowProps()} className="border-b border-gray-300 dark:border-gray-600" key={row.id || `row-${i}`}>
-                          {row.cells.map((cell: any, i: number) => {
-                            const hidePostingCell = cell.column.id === 'postingDate'
-                            const cellProps = cell.getCellProps()
-                            return (
-                              <td
-                                {...cellProps}
-                                className={`${cellProps.className ?? ''} ${hidePostingCell ? ' hidden w-0 max-w-0 !p-0 !border-0 overflow-hidden' : ''} ${COLUMN_VISIBILITY[cell.column.id] ?? ''}`.trim()}
-                                key={cell.column.id || `cell-${i}`}
-                              >
-                                {cell.render('Cell')}
-                              </td>
-                            )
-                          })}
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+              {showJobsTable ? (
+                <JobsTable
+                  getTableProps={getTableProps}
+                  getTableBodyProps={getTableBodyProps}
+                  headerGroups={headerGroups}
+                  rows={rows}
+                  prepareRow={prepareRow}
+                  hasCheckboxColumn={canDelete && !isSalesAgent}
+                  selectedSort={selectedSort}
+                  onSortChange={handleSortChange}
+                  nextJobTitleSortToggle={nextJobTitleSortToggle}
+                  nextCompanySortToggle={nextCompanySortToggle}
+                  isAllSelected={isAllSelected}
+                  isIndeterminate={isIndeterminate}
+                  onSelectAll={handleSelectAll}
+                  emptyMessage="No jobs found."
+                  onClearFilters={hasActiveFilters ? handleResetFilters : undefined}
+                  canCreate={canCreate && !isSalesAgent}
+                />
+              ) : null}
               </div>
             </div>
-            <div className="box-footer shrink-0 !border-t-0 bg-white dark:bg-bodybg">
-              <ListPagination
+            <div className="jobs-surface-x jobs-list-footer shrink-0 min-w-0 max-w-full overflow-visible">
+              <JobsPaginationFooter
                 page={currentPage}
                 totalPages={totalPages}
                 totalResults={totalResults}
                 pageSize={pageSize}
                 onPageChange={setCurrentPage}
-                ariaLabel="Jobs page navigation"
                 gotoInputId="jobs-goto-page"
                 hideWhenSinglePage
               />
@@ -1984,15 +1538,15 @@ const Jobs = () => {
                         <div className="mt-4 grid min-w-0 grid-cols-2 gap-4 md:grid-cols-4">
                           <div className="min-w-0">
                             <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">Industry</div>
-                            <div className="font-semibold text-gray-800 dark:text-white break-words">{industry || '—'}</div>
+                            <div className="font-semibold text-gray-800 dark:text-white break-words">{industry || 'Ã¢â‚¬â€'}</div>
                           </div>
                           <div className="min-w-0">
                             <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">Company Size</div>
-                            <div className="font-semibold text-gray-800 dark:text-white break-words">{size ? `${size} employees` : '—'}</div>
+                            <div className="font-semibold text-gray-800 dark:text-white break-words">{size ? `${size} employees` : 'Ã¢â‚¬â€'}</div>
                           </div>
                           <div className="min-w-0">
                             <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">Founded</div>
-                            <div className="font-semibold text-gray-800 dark:text-white">{founded || '—'}</div>
+                            <div className="font-semibold text-gray-800 dark:text-white">{founded || 'Ã¢â‚¬â€'}</div>
                           </div>
                           <div className="min-w-0">
                             <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">Website</div>
@@ -2003,7 +1557,7 @@ const Jobs = () => {
                                 showExternalIcon
                               />
                             ) : (
-                              <div className="font-semibold text-gray-800 dark:text-white">—</div>
+                              <div className="font-semibold text-gray-800 dark:text-white">Ã¢â‚¬â€</div>
                             )}
                           </div>
                         </div>
@@ -2241,7 +1795,7 @@ const Jobs = () => {
                     disabled={!newNote.text.trim() || bookmarkSubmitting}
                   >
                     <i className="ri-add-line me-1"></i>
-                    {bookmarkSubmitting ? 'Saving…' : 'Add Note'}
+                    {bookmarkSubmitting ? 'SavingÃ¢â‚¬Â¦' : 'Add Note'}
                   </button>
                 </div>
               </div>
@@ -2254,7 +1808,7 @@ const Jobs = () => {
                 </h6>
                 <div className="space-y-3 max-h-96 overflow-y-auto">
                   {bookmarkNotesLoading ? (
-                    <div className="p-6 text-center text-sm text-gray-500">Loading…</div>
+                    <div className="p-6 text-center text-sm text-gray-500">LoadingÃ¢â‚¬Â¦</div>
                   ) : getJobNotes(bookmarkNotesJobId).length > 0 ? (
                     getJobNotes(bookmarkNotesJobId).map((note) => (
                       <div 
@@ -2307,7 +1861,7 @@ const Jobs = () => {
                     aria-label="Remove bookmark and delete all notes"
                   >
                     <i className="ri-bookmark-off-line text-base" aria-hidden />
-                    {bookmarkTogglingId === bookmarkNotesJobId ? 'Removing bookmark…' : 'Remove bookmark'}
+                    {bookmarkTogglingId === bookmarkNotesJobId ? 'Removing bookmarkÃ¢â‚¬Â¦' : 'Remove bookmark'}
                   </button>
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                     Removes this job from your saved list and deletes all notes.

@@ -24,10 +24,10 @@
 
 @use "react-color-palette/css" as *;
 
-/* Root-level @media (do not indent — nested @media can confuse the SCSS parser and break line 37). */
+/* Root-level @media (do not indent ? nested @media can confuse the SCSS parser and break line 37). */
 @media (max-width: 991.98px) {
   [data-toggled="open"] {
-    /* Tailwind `visible` — avoid @apply here (plain SCSS linters/servers don't resolve @apply and flag the next `}`) */
+    /* Tailwind `visible` ? avoid @apply here (plain SCSS linters/servers don't resolve @apply and flag the next `}`) */
     #responsive-overlay {
       visibility: visible !important;
       --tw-bg-opacity: 0.5;
@@ -78,7 +78,7 @@
   }
 }
 
-// White background for logo area in header (light mode only — dark mode uses white-text logo)
+// White background for logo area in header (light mode only ? dark mode uses white-text logo)
 html:not(.dark) .header-logo-container {
   background-color: white !important;
 
@@ -119,7 +119,7 @@ html:not(.dark) .main-sidebar-header {
 
 // Logo theme swap. Sidebar header chip is white in light mode even when the menu
 // itself is dark (data-menu-styles=dark), so the img must follow the THEME, not the
-// menu style — template rules key off menu style and pick the wrong variant.
+// menu style ? template rules key off menu style and pick the wrong variant.
 html:not(.dark):not([data-toggled]) .app-sidebar .main-sidebar-header .header-logo {
   img.desktop-dark,
   img.desktop-white,
@@ -176,7 +176,7 @@ html.dark .app-header .horizontal-logo .header-logo {
   }
 }
 
-/* Collapsed sidebar rail — keep toggle icon fully visible inside ~5rem header */
+/* Collapsed sidebar rail ? keep toggle icon fully visible inside ~5rem header */
 @media (min-width: 992px) {
   [data-toggled="icon-overlay-close"]:not([data-icon-overlay="open"]) .app-sidebar .main-sidebar-header,
   [data-toggled="icon-click-closed"] .app-sidebar .main-sidebar-header,
@@ -203,13 +203,13 @@ html.dark .app-header .horizontal-logo .header-logo {
   }
 }
 
-/* Do not zero padding on form controls — auth/login inputs use max-w-full for width only */
+/* Do not zero padding on form controls ? auth/login inputs use max-w-full for width only */
 .max-w-full:not(input):not(textarea):not(select):not(button) {
   max-width: 100% !important;
   padding: 0 !important;
 }
 
-/* Dharwin auth pages — consistent inputs (overrides global focus/padding resets) */
+/* Dharwin auth pages ? consistent inputs (overrides global focus/padding resets) */
 .auth-form {
   .auth-form-input {
     display: block;
@@ -262,7 +262,7 @@ th.text-center{
 }
 
 /* ---------------------------------------------------------------------------------------------
- * Select2 (react-select) option states — opt in with the `ats-select-menu` class
+ * Select2 (react-select) option states ? opt in with the `ats-select-menu` class
  * (see `atsSelectClassNames` in shared/lib/reactSelectTheme.ts).
  *
  * WHY THESE NEED `!important` AND A THREE-CLASS SELECTOR
@@ -270,37 +270,37 @@ th.text-center{
  *     .Select2__menu div .Select2__option--is-selected { color:#fff !important; background:primary !important }
  * That is specificity (0,2,1). A plain `.ats-select-menu .Select2__option--is-selected` is (0,2,0)
  * and loses on the element count, so the vendor's white text survives while a scoped rule sets the
- * background — which is exactly how "white text on light lavender" happened. Every rule below is
+ * background ? which is exactly how "white text on light lavender" happened. Every rule below is
  * therefore (0,3,0) or higher (react-select always renders option inside `.Select2__menu-list`) and
  * always declares `color` next to `background-color`, so the pair can never be split again.
  *
  * THE STATE MODEL
  *   normal            transparent, default text
- *   focused (cursor)  tinted fill — react-select moves this for BOTH hover and arrow keys, so it
+ *   focused (cursor)  tinted fill ? react-select moves this for BOTH hover and arrow keys, so it
  *                     is the ONLY filled row on screen and mouse/keyboard look identical
- *   selected (value)  no fill — weight + check only, so it never reads as a second cursor
+ *   selected (value)  no fill ? weight + check only, so it never reads as a second cursor
  *   selected+focused  cursor fill, keeps weight + check
  * Text is never white on a light fill: the label keeps `--default-text-color` in every state.
  * --------------------------------------------------------------------------------------------- */
 
-/* GROUPED MENUS — why a grouped list used to render as a horizontal mega-menu
+/* GROUPED MENUS ? why a grouped list used to render as a horizontal mega-menu
    The vendor ships `.Select2__menu div div { display:flex; align-items:center !important }`
    (style.css:14418) so a flat option can sit beside its icon. react-select builds a group as
-   `.Select2__group > [.Select2__group-heading, <div>{options}</div>]` — that options wrapper is an
-   UNCLASSED div (see `Group` in react-select/dist: `jsx(GroupHeading, …), jsx("div", null, children)`),
+   `.Select2__group > [.Select2__group-heading, <div>{options}</div>]` ? that options wrapper is an
+   UNCLASSED div (see `Group` in react-select/dist: `jsx(GroupHeading, ?), jsx("div", null, children)`),
    and it matches `div div` just as well. Turned into a flex row it laid every option of a group
    side by side, so the list ran off the right edge and needed horizontal scrolling.
    `> div` covers both children, so the heading sits above its options and the options stack. This
    restores normal block flow rather than masking the overflow; (0,3,0) outranks the vendor's
    (0,1,2), and neither element exists in a flat menu, so ungrouped consumers cannot be affected.
-   The options themselves stay flex — block-level, so still one per row — which is what keeps the
+   The options themselves stay flex ? block-level, so still one per row ? which is what keeps the
    selected row's check aligned with its label. */
 .ats-select-menu .Select2__menu-list .Select2__group,
 .ats-select-menu .Select2__menu-list .Select2__group > div {
   display: block !important;
 }
 
-/* Selected — the stored value. No fill at all: the check plus the bolder label carry it, so the
+/* Selected ? the stored value. No fill at all: the check plus the bolder label carry it, so the
    only filled row on screen is ever the cursor. A fill here reads as a second cursor. */
 .ats-select-menu .Select2__menu-list .Select2__option--is-selected {
   background-color: transparent !important;
@@ -308,7 +308,7 @@ th.text-center{
   font-weight: 600;
 }
 
-/* Focused — the cursor, from hover or arrow keys. Kept a clear step above selected so the two are
+/* Focused ? the cursor, from hover or arrow keys. Kept a clear step above selected so the two are
    never confused, and applied last so it wins when a row is both. */
 .ats-select-menu .Select2__menu-list .Select2__option--is-focused {
   background-color: rgb(var(--primary) / 0.24) !important;
@@ -323,7 +323,7 @@ th.text-center{
    signalled by background alone. Violet clears the 3:1 graphical-indicator floor on both fills;
    dark mode uses a lighter violet because `--primary` on the dark fill is only 2.8:1. */
 .ats-select-menu .Select2__menu-list .Select2__option--is-selected::after {
-  content: "✓";
+  content: "?";
   float: inline-end;
   margin-inline-start: 0.5rem;
   color: rgb(var(--primary));
@@ -411,7 +411,7 @@ select.form-control.form-control-block {
 }
 .animate-slide-out-right { animation: slide-out-right 0.22s ease-in forwards; }
 
-/* Header icon alignment fix (Bug 2) — force flex/center on header rows so search/theme/notification/profile icons sit on same baseline regardless of preline template overrides */
+/* Header icon alignment fix (Bug 2) ? force flex/center on header rows so search/theme/notification/profile icons sit on same baseline regardless of preline template overrides */
 .app-header .main-header-container {
   display: flex !important;
   align-items: center !important;
@@ -439,7 +439,7 @@ select.form-control.form-control-block {
   justify-content: center;
 }
 
-/* Pagination — add gap between page numbers and prev/next arrows (Bug 9) */
+/* Pagination ? add gap between page numbers and prev/next arrows (Bug 9) */
 .ti-pagination {
   display: inline-flex;
   align-items: center;
@@ -476,7 +476,7 @@ html.swal2-shown {
   The `prose`/`prose-ul:*` utility classes on these containers are no-ops because
   @tailwindcss/typography is not installed, so Tailwind preflight's `list-style: none`
   reset wins and bullets/numbers disappear after save (inline bold/underline are
-  unaffected — they are not list markers). The TipTap editor shows them only because
+  unaffected ? they are not list markers). The TipTap editor shows them only because
   it injects its own `.ProseMirror ul/ol` styles. Restore markers for the display
   containers, mirroring the editor. Scoped so theme menus (which rely on the reset)
   are untouched.
@@ -532,27 +532,27 @@ html.swal2-shown {
   }
 }
 
-/* Communication meetings table — override global overflow-y:visible so sticky thead works */
+/* Communication meetings table ? override global overflow-y:visible so sticky thead works */
 .meetings-table-scroll {
   overflow-y: auto !important;
 }
 
-/* ATS employees table — same inner scroll override */
+/* ATS employees table ? same inner scroll override */
 .employees-table-scroll {
   overflow-y: auto !important;
 }
 
-/* Training evaluation table — same inner scroll override */
+/* Training evaluation table ? same inner scroll override */
 .evaluation-table-scroll {
   overflow-y: auto !important;
 }
 
-/* Project overview tasks table — same inner scroll override */
+/* Project overview tasks table ? same inner scroll override */
 .project-tasks-table-scroll {
   overflow-y: auto !important;
 }
 
-/* ATS jobs/interviews table — keep body scrollable for sticky header/footer shells */
+/* ATS jobs/interviews table ? keep body scrollable for sticky header/footer shells */
 .jobs-table-scroll,
 .interviews-table-scroll,
 .applications-table-scroll {
@@ -587,6 +587,557 @@ html.swal2-shown {
   border-spacing: 0;
 }
 
+/* ATS jobs list ? responsive table/columns from content width (sidebar-aware). */
+.jobs-page-container {
+  container-type: inline-size;
+  container-name: jobs-page;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Jobs listing: outer gutters (override theme .main-content px-6 / layout pt-4). */
+.main-content:has(.jobs-page-shell) {
+  @apply px-4 sm:px-5 lg:px-6 pt-2 sm:pt-3;
+}
+
+/* Symmetric inset inside the Jobs white card (toolbar, table, footer). */
+.jobs-surface-x {
+  @apply px-5 sm:px-6;
+}
+
+/* Jobs list toolbar (title, search, actions) */
+.jobs-list-toolbar {
+  @apply border-b border-defaultborder/60 bg-white dark:border-white/10 dark:bg-bodybg;
+}
+
+.jobs-list-toolbar__title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  @apply text-gray-900 dark:text-white;
+}
+
+.jobs-list-toolbar__inner {
+  padding-top: 0.875rem;
+}
+
+.jobs-list-toolbar__command {
+  padding: 0.75rem 0.875rem 0.875rem;
+  border-radius: 0.75rem;
+  @apply border border-defaultborder/65 bg-light/45;
+}
+
+.jobs-list-toolbar__heading {
+  padding-inline: 0.125rem 0.25rem;
+}
+
+.dark .jobs-list-toolbar__command {
+  @apply border-white/10 bg-white/[0.03];
+}
+
+.jobs-list-toolbar__search .flex.h-8 {
+  min-height: 2.25rem;
+  height: 2.25rem;
+}
+
+.jobs-list-toolbar__actions-divider {
+  width: 1px;
+  align-self: stretch;
+  min-height: 1.75rem;
+  margin-left: 0.125rem;
+  margin-right: 0.125rem;
+  @apply bg-defaultborder/70;
+}
+
+.dark .jobs-list-toolbar__actions-divider {
+  @apply bg-white/15;
+}
+
+.jobs-list-toolbar__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  @apply border border-defaultborder/60 bg-light/50 text-defaulttextcolor/75;
+}
+
+.dark .jobs-list-toolbar__count {
+  @apply border-white/10 bg-white/[0.04] text-white/70;
+}
+
+.jobs-list-toolbar__actions .jobs-toolbar-btn {
+  align-items: center;
+}
+
+.jobs-list-toolbar__actions .jobs-toolbar-btn--danger:not(:disabled) {
+  @apply text-danger;
+}
+
+.jobs-list-toolbar__actions .jobs-toolbar-btn--danger:not(:disabled):hover {
+  @apply bg-danger/10 border-danger/25;
+}
+
+.jobs-toolbar-select {
+  min-height: 2rem;
+  padding-left: 0.625rem;
+  padding-right: 1.75rem;
+}
+
+/* Fill viewport below app chrome; tighter than shared 8rem ATS shell (reduces bottom gap). */
+.jobs-page-shell {
+  height: calc(100dvh - 5.75rem);
+  max-height: calc(100dvh - 5.75rem);
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  overflow-x: clip;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+@media (min-width: 640px) {
+  .jobs-page-shell {
+    height: calc(100dvh - 6.25rem);
+    max-height: calc(100dvh - 6.25rem);
+  }
+}
+
+.jobs-page-shell .box.custom-box {
+  @apply mb-0;
+}
+
+.jobs-list-container {
+  container-type: inline-size;
+  container-name: jobs-list;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.jobs-list-cards {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.jobs-list-table {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.jobs-table-scroll {
+  scrollbar-gutter: stable;
+}
+
+/* Hidden logical columns ? col + cells stay in sync (colgroup matches react-table columns). */
+@mixin jobs-table-col-hidden {
+  display: none !important;
+  width: 0 !important;
+  max-width: 0 !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  overflow: hidden !important;
+}
+
+.jobs-table-scroll col.jobs-col-postingDate,
+.jobs-table-scroll .jobs-col-postingDate {
+  @include jobs-table-col-hidden;
+}
+
+.jobs-table-scroll col.jobs-col-vacancies,
+.jobs-table-scroll th.jobs-col-vacancies,
+.jobs-table-scroll td.jobs-col-vacancies {
+  @include jobs-table-col-hidden;
+}
+
+.jobs-table-scroll col.jobs-col-salary,
+.jobs-table-scroll th.jobs-col-salary,
+.jobs-table-scroll td.jobs-col-salary {
+  @include jobs-table-col-hidden;
+}
+
+.jobs-table-scroll col.jobs-col-hireForecast,
+.jobs-table-scroll th.jobs-col-hireForecast,
+.jobs-table-scroll td.jobs-col-hireForecast {
+  @include jobs-table-col-hidden;
+}
+
+.jobs-table-scroll col.jobs-col-jobOrigin,
+.jobs-table-scroll th.jobs-col-jobOrigin,
+.jobs-table-scroll td.jobs-col-jobOrigin {
+  @include jobs-table-col-hidden;
+}
+
+@mixin jobs-table-col-visible($width) {
+  width: $width !important;
+  max-width: $width !important;
+  min-width: $width !important;
+}
+
+@container jobs-list (min-width: 760px) {
+  .jobs-table-scroll col.jobs-col-vacancies {
+    @include jobs-table-col-visible(4.5rem);
+  }
+
+  .jobs-table-scroll th.jobs-col-vacancies,
+  .jobs-table-scroll td.jobs-col-vacancies {
+    display: table-cell !important;
+    @include jobs-table-col-visible(4.5rem);
+    overflow: hidden !important;
+  }
+}
+
+@container jobs-list (min-width: 840px) {
+  .jobs-table-scroll col.jobs-col-salary {
+    @include jobs-table-col-visible(9rem);
+  }
+
+  .jobs-table-scroll th.jobs-col-salary,
+  .jobs-table-scroll td.jobs-col-salary {
+    display: table-cell !important;
+    @include jobs-table-col-visible(9rem);
+    overflow: hidden !important;
+  }
+}
+
+@container jobs-list (min-width: 1000px) {
+  .jobs-table-scroll col.jobs-col-hireForecast {
+    @include jobs-table-col-visible(8.5rem);
+  }
+
+  .jobs-table-scroll th.jobs-col-hireForecast,
+  .jobs-table-scroll td.jobs-col-hireForecast {
+    display: table-cell !important;
+    @include jobs-table-col-visible(8.5rem);
+    overflow: hidden !important;
+  }
+}
+
+@container jobs-list (min-width: 1160px) {
+  .jobs-table-scroll col.jobs-col-jobOrigin {
+    @include jobs-table-col-visible(6.5rem);
+  }
+
+  .jobs-table-scroll th.jobs-col-jobOrigin,
+  .jobs-table-scroll td.jobs-col-jobOrigin {
+    display: table-cell !important;
+    @include jobs-table-col-visible(6.5rem);
+    overflow: hidden !important;
+  }
+}
+
+.jobs-data-table {
+  table-layout: fixed;
+  width: 100%;
+  max-width: 100%;
+}
+
+.jobs-data-table th,
+.jobs-data-table td {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.jobs-data-table col.jobs-col-checkbox,
+.jobs-data-table .jobs-col-checkbox {
+  width: 2.75rem;
+  min-width: 2.75rem;
+  max-width: 2.75rem;
+}
+
+.jobs-data-table col.jobs-col-jobTitle,
+.jobs-data-table .jobs-col-jobTitle {
+  width: 30%;
+  min-width: 8rem;
+}
+
+.jobs-data-table col.jobs-col-company,
+.jobs-data-table .jobs-col-company {
+  width: 7.5rem;
+  min-width: 5.5rem;
+  max-width: 8.5rem;
+}
+
+.jobs-data-table thead.jobs-table-thead {
+  @apply bg-gray-50/95 dark:bg-bodybg;
+}
+
+.jobs-data-table thead.jobs-table-thead tr {
+  @apply border-b border-defaultborder/70 dark:border-white/10;
+  box-shadow: 0 1px 0 rgb(var(--default-border) / 0.35);
+}
+
+.dark .jobs-data-table thead.jobs-table-thead tr {
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.06);
+}
+
+.jobs-data-table .jobs-table-th {
+  vertical-align: bottom;
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+}
+
+.jobs-data-table col.jobs-col-status,
+.jobs-data-table .jobs-col-status {
+  width: 6.5rem;
+  min-width: 6.5rem;
+  max-width: 7.5rem;
+}
+
+.jobs-data-table col.jobs-col-actions,
+.jobs-data-table .jobs-col-actions {
+  width: 11.5rem;
+  min-width: 11.5rem;
+  max-width: 11.5rem;
+}
+
+.jobs-data-table .jobs-cell-actions {
+  padding-left: 0.375rem;
+  padding-right: 0.375rem;
+  white-space: nowrap;
+}
+
+.jobs-list-footer {
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+  @apply border-t border-defaultborder/60 bg-gray-50/50;
+}
+
+.dark .jobs-list-footer {
+  @apply border-white/10 bg-black/10;
+}
+
+.jobs-list-footer__command {
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.75rem;
+  @apply border border-defaultborder/65 bg-light/45;
+}
+
+.dark .jobs-list-footer__command {
+  @apply border-white/10 bg-white/[0.03];
+}
+
+.jobs-list-pagination {
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-start !important;
+  row-gap: 0.625rem;
+  column-gap: 0.75rem;
+}
+
+.jobs-list-pagination .list-pagination__summary,
+.jobs-list-pagination .jobs-list-pagination__summary {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding-top: 0.125rem;
+  padding-bottom: 0.125rem;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  @apply text-gray-600 dark:text-white/65;
+}
+
+.jobs-list-pagination .list-pagination__pager-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem 0.625rem;
+  max-width: 100%;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.jobs-list-pagination .list-pagination__goto {
+  padding-left: 0.375rem;
+  margin-left: 0.125rem;
+  border-left: 1px solid rgb(var(--default-border) / 0.55);
+}
+
+.dark .jobs-list-pagination .list-pagination__goto {
+  border-left-color: rgb(255 255 255 / 0.12);
+}
+
+.jobs-list-pagination .pagination-style-4 .ti-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.jobs-list-pagination .pagination-style-4 .page-item {
+  margin: 0;
+}
+
+.jobs-list-pagination .pagination-style-4 .page-link {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  border-radius: 0.375rem !important;
+  border: 1px solid rgb(var(--default-border) / 0.65) !important;
+  @apply bg-white text-defaulttextcolor;
+  font-size: 0.8125rem !important;
+  font-weight: 500;
+  box-shadow: none !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.dark .jobs-list-pagination .pagination-style-4 .page-link {
+  @apply border-white/15 bg-bodybg;
+}
+
+.jobs-list-pagination .pagination-style-4 .page-item.active .page-link {
+  background-color: rgb(var(--primary-rgb)) !important;
+  border-color: rgb(var(--primary-rgb)) !important;
+  color: rgb(var(--custom-white)) !important;
+}
+
+.jobs-list-pagination .pagination-style-4 .page-item.disabled .page-link {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.jobs-list-pagination .pagination-style-4 .page-item:not(.active) .page-link:hover:not(:disabled) {
+  background-color: rgb(var(--primary-rgb) / 0.06) !important;
+  border-color: rgb(var(--primary-rgb) / 0.35) !important;
+}
+
+.jobs-list-pagination .list-pagination__goto {
+  flex-shrink: 0;
+  gap: 0.5rem;
+}
+
+.jobs-list-pagination .list-pagination__goto .ti-form-control {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.jobs-list-pagination .list-pagination__goto .ti-btn-primary {
+  min-width: 2.5rem;
+  font-size: 0.8125rem !important;
+  font-weight: 600;
+  background-color: rgb(var(--custom-white)) !important;
+  border: 1px solid rgb(var(--default-border) / 0.65) !important;
+  color: rgb(var(--primary-rgb)) !important;
+  box-shadow: none !important;
+}
+
+.dark .jobs-list-pagination .list-pagination__goto .ti-btn-primary {
+  background-color: rgb(var(--body-bg)) !important;
+  border-color: rgb(255 255 255 / 0.15) !important;
+}
+
+.jobs-list-pagination .list-pagination__goto .ti-btn-primary:hover:not(:disabled) {
+  background-color: rgb(var(--primary-rgb) / 0.06) !important;
+  border-color: rgb(var(--primary-rgb) / 0.35) !important;
+}
+
+.jobs-list-pagination .list-pagination__goto label {
+  @apply text-gray-600 dark:text-white/60;
+}
+
+.jobs-list-pagination .list-pagination__goto .ti-form-control {
+  @apply border-defaultborder/65 bg-white dark:border-white/15 dark:bg-bodybg;
+}
+
+@container jobs-page (max-width: 960px) {
+  .jobs-list-footer__command {
+    padding: 0.5rem 0.625rem;
+  }
+
+  .jobs-list-pagination {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.625rem;
+  }
+
+  .jobs-list-pagination .list-pagination__summary,
+  .jobs-list-pagination .jobs-list-pagination__summary {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
+  .jobs-list-pagination .ti-pagination .page-link {
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+    font-size: 0.75rem;
+  }
+
+  .jobs-list-pagination .list-pagination__pager-group {
+    width: 100%;
+    flex-basis: auto;
+    margin-left: 0;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .jobs-list-pagination .list-pagination__goto {
+    padding-left: 0;
+    margin-left: 0;
+    border-left: none;
+    padding-top: 0.25rem;
+    justify-content: center;
+    width: 100%;
+  }
+}
+
+@container jobs-page (max-width: 720px) {
+  .jobs-list-pagination .list-pagination__summary {
+    font-size: 0.75rem;
+    text-align: left;
+  }
+
+  .jobs-list-pagination .ti-pagination li.page-item:not(:first-child):not(:last-child):not(.active) {
+    display: none;
+  }
+
+  .jobs-list-pagination .list-pagination__pager-group {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.625rem;
+    padding: 0;
+  }
+
+  .jobs-list-pagination .pagination-style-4 {
+    width: 100%;
+  }
+
+  .jobs-list-pagination .pagination-style-4 .ti-pagination {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .jobs-list-pagination .list-pagination__goto {
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+}
+
 /*
  * Meetings list: fill viewport below main header (same offset as recordings page)
  * so box header stays at top, pagination footer at bottom, table body scrolls.
@@ -600,15 +1151,16 @@ html.swal2-shown {
 }
 
 /* ATS table pages: fixed viewport shell so header/footer remain pinned */
-.jobs-page-shell,
 .interviews-page-shell,
 .offers-page-shell,
 .onboarding-page-shell,
 .preboarding-page-shell {
   height: calc(100dvh - 8rem);
   max-height: calc(100dvh - 8rem);
-  min-height: 0;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
+  overflow-x: clip;
   grid-template-rows: minmax(0, 1fr);
 }
 
@@ -647,7 +1199,7 @@ html.swal2-shown {
    react-select controls in dark mode.
 
    Vendor style.css pins `.react-select__control` to `border-defaultborder !important`, but the
-   `.dark` token block never redefines `--default-border` — it stays `243 243 243`, so every
+   `.dark` token block never redefines `--default-border` ? it stays `243 243 243`, so every
    react-select control drew a near-white border on the dark surface. The `styles` prop from
    `usePmReactSelectStyles` sets an inline borderColor, which an `!important` rule outranks.
    Restate it here with higher specificity; light mode is untouched.
@@ -661,14 +1213,14 @@ html.swal2-shown {
 
 /*
    Attendance "Select people/group" fields: a wrapper div owns the rounded border, focus ring and
-   background, so the react-select control inside must be completely flat — otherwise its own
+   background, so the react-select control inside must be completely flat ? otherwise its own
    border and square 4px corners show through the wrapper's rounded corners.
 
    Each of these pages carried this as a styled-jsx block, which never applied: styled-jsx scopes
    only elements rendered by the component's own JSX, and the control is rendered inside
    react-select, so it never received the jsx- class.
 
-   Keep this block BELOW the `.dark .react-select__control` rule above — both are (0,2,0) with
+   Keep this block BELOW the `.dark .react-select__control` rule above ? both are (0,2,0) with
    `!important`, so source order is what makes `border: none` win in dark mode.
 */
 .assign-leave-select,
@@ -691,5 +1243,266 @@ html.swal2-shown {
   .react-select__placeholder,
   .react-select__input-container {
     color: inherit;
+  }
+}
+
+/* ATS job create / edit ? align with jobs list chrome */
+.main-content:has(.jobs-form-page-shell) {
+  @apply px-4 sm:px-5 lg:px-6 pt-2 sm:pt-3;
+}
+
+.jobs-form-header__command {
+  padding: 0.75rem 0.875rem 0.875rem;
+  border-radius: 0.75rem;
+  @apply border border-defaultborder/65 bg-light/45;
+}
+
+.dark .jobs-form-header__command {
+  @apply border-white/10 bg-white/[0.03];
+}
+
+.jobs-form-role-strip {
+  @apply border-b border-defaultborder/60 dark:border-white/10 bg-light/30 dark:bg-white/[0.02];
+  padding: 0.875rem 1.25rem 1rem;
+}
+
+@media (min-width: 640px) {
+  .jobs-form-role-strip {
+    padding-inline: 1.5rem;
+  }
+}
+
+.jobs-form-role-strip__eyebrow {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  @apply text-defaulttextcolor/55 dark:text-white/45 mb-1;
+}
+
+.jobs-form-role-strip__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.jobs-form-role-strip__title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  @apply text-gray-900 dark:text-white m-0;
+}
+
+.jobs-form-role-strip__meta {
+  font-size: 0.8125rem;
+  @apply text-defaulttextcolor/70 dark:text-white/60 m-0 mt-1 flex flex-wrap items-center gap-x-1.5;
+}
+
+.jobs-form-role-strip__dot {
+  opacity: 0.45;
+}
+
+.jobs-form-tab__chip {
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 0.15rem 0.45rem;
+  border-radius: 0.25rem;
+  @apply border;
+}
+
+.jobs-form-tab__chip--complete {
+  @apply border-emerald-500/35 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200;
+}
+
+.jobs-form-tab__chip--incomplete {
+  @apply border-primary/25 bg-primary/10 text-primary;
+}
+
+.jobs-form-tab__chip--optional {
+  @apply border-defaultborder/60 bg-light/50 text-defaulttextcolor/60 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/50;
+}
+
+.jobs-form-jumplink {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  margin-bottom: 0.25rem;
+  @apply border border-defaultborder/55 bg-light/35 dark:border-white/10 dark:bg-white/[0.03];
+}
+
+.jobs-form-jumplink__label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  @apply text-defaulttextcolor/55 dark:text-white/45;
+}
+
+.jobs-form-jumplink__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.jobs-form-jumplink__btn {
+  font-size: 0.75rem;
+  font-weight: 500;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  @apply text-primary hover:bg-primary/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40;
+}
+
+/* Card ends shortly after last field ? no tall empty area inside the box. */
+.jobs-form-box {
+  padding-bottom: 1.25rem;
+}
+
+.jobs-form-panel-scroll {
+  scroll-padding-bottom: 4rem;
+}
+
+.jobs-form-page-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Sticky command strip: tight under the card; sticks on scroll when the form is long. */
+.jobs-form-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 40;
+  margin: 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.jobs-form-footer__command {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+  border-radius: 0.75rem;
+  @apply border border-defaultborder/65 bg-light/45;
+}
+
+.dark .jobs-form-footer__command {
+  @apply border-white/10 bg-white/[0.03];
+}
+
+@media (min-width: 640px) {
+  .jobs-form-footer__command {
+    padding: 0.625rem 0.875rem;
+    gap: 0.625rem;
+  }
+}
+
+.jobs-form-footer__btn {
+  min-height: 2.5rem !important;
+  padding-inline: 1rem !important;
+  padding-block: 0.375rem !important;
+  font-size: 0.8125rem !important;
+  font-weight: 500;
+  border-radius: 0.5rem !important;
+}
+
+.jobs-form-footer__btn--primary {
+  min-width: 7.5rem;
+}
+
+.jobs-form-template-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.75rem 0.875rem;
+  border-radius: 0.625rem;
+  margin-bottom: 0.75rem;
+  @apply border border-defaultborder/60 bg-light/40 dark:border-white/10 dark:bg-white/[0.03];
+}
+
+@media (min-width: 768px) {
+  .jobs-form-template-bar {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.jobs-form-template-bar__title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  @apply text-gray-900 dark:text-white;
+}
+
+.jobs-form-template-bar__hint {
+  font-size: 0.75rem;
+  @apply text-defaulttextcolor/65 dark:text-white/50 mt-0.5;
+}
+
+.jobs-form-template-bar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.jobs-form-template-select {
+  min-width: 10rem;
+  max-width: 14rem;
+  font-size: 0.8125rem;
+  padding: 0.375rem 0.625rem;
+  border-radius: 0.375rem;
+}
+
+.jobs-list-save-flash {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-block: 0.625rem;
+  border-bottom: 1px solid transparent;
+  @apply border-defaultborder/50 bg-emerald-500/10 dark:border-white/10 dark:bg-emerald-500/10;
+}
+
+.jobs-list-save-flash__text {
+  font-size: 0.8125rem;
+  @apply text-gray-800 dark:text-white/90;
+}
+
+.jobs-list-save-flash__dismiss {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  @apply text-defaulttextcolor/60 hover:text-defaulttextcolor rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40;
+}
+
+@keyframes jobsFormPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jobs-form-panel {
+    animation: none !important;
   }
 }
