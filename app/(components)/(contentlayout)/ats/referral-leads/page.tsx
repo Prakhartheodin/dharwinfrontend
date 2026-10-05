@@ -226,7 +226,7 @@ export default function ReferralLeadsPage() {
   return (
     <React.Fragment>
       <Seo title="Referral leads" />
-      <div className="p-4 md:p-6 max-w-[1600px] mx-auto">
+      <div className="referral-leads-page-root container-fluid w-full min-w-0 max-w-[1600px] mx-auto overflow-x-hidden px-3 pt-4 pb-8 sm:px-4 md:px-6 sm:pt-6">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">

@@ -1,7 +1,8 @@
 "use client"
-import React, { useMemo, useRef, useLayoutEffect, useEffect, useState } from 'react'
+import React, { useMemo, useRef, useLayoutEffect, useEffect, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import type { AgentOption } from '@/shared/lib/api/candidates'
+import { FilterDrawerShell } from '../../jobs/_components/FilterDrawerShell'
 import {
   COMPENSATION_TYPE_OPTIONS,
   EMPLOYMENT_STATUS_OPTIONS,
@@ -36,6 +37,8 @@ interface CandidatesFilterPanelProps {
   onDownloadTemplate?: () => void
   exportLoading?: boolean
   exportError?: string | null
+  /** Focus target when the mobile filter drawer closes (jobs list pattern). */
+  restoreFocusRef?: RefObject<HTMLElement | null>
 }
 
 const COMPACT_INPUT_ICON = 'form-control !h-[34px] !py-[5px] !ps-7 !pe-3 !text-[0.8125rem] !rounded-md w-full'
@@ -124,9 +127,19 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
   onDownloadTemplate,
   exportLoading = false,
   exportError = null,
+  restoreFocusRef,
 }) => {
   const agentInputRef = useRef<HTMLInputElement>(null)
   const showExcelActions = canExport || canImport
+  const [isLgViewport, setIsLgViewport] = useState(false)
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)')
+    const sync = () => setIsLgViewport(mq.matches)
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [])
 
   const agentQueryTrimmed = searchAgent.trim()
   const showAgentSuggestions = agentQueryTrimmed.length > 0
@@ -137,36 +150,7 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
     setSearchAgent('')
   }
 
-  return (
-    <div
-      id="candidates-filter-panel"
-      role="region"
-      aria-hidden={!layoutOpen}
-      {...(!layoutOpen ? { inert: true } : {})}
-      tabIndex={-1}
-      className={
-        'w-full shrink-0 origin-top transform-gpu rounded-b-xl bg-white/98 shadow-[0_28px_60px_-28px_rgba(0,0,0,0.35)] transition-[max-height,opacity] duration-300 ease-out dark:bg-bodybg/98 z-[40] motion-reduce:transition-none ' +
-        (layoutOpen
-          ? 'pointer-events-auto max-h-[min(92vh,52rem)] overflow-hidden border-x border-b border-defaultborder/80 opacity-100'
-          : 'pointer-events-none max-h-0 overflow-hidden border-0 opacity-0')
-      }
-    >
-      <div className="flex items-center justify-between gap-2 border-b border-defaultborder/60 bg-gradient-to-r from-gray-50/95 to-transparent px-4 py-2 dark:from-black/25 dark:to-transparent">
-        <span className="text-[0.8125rem] font-semibold flex items-center gap-1.5 text-gray-800 dark:text-white">
-          <i className="ri-filter-3-line text-primary text-sm" aria-hidden />
-          Filters
-        </span>
-        <div className="flex items-center gap-1.5">
-          <button type="button" className="ti-btn !py-0.5 !px-2.5 !text-[0.75rem] ti-btn-light" onClick={handleResetFilters}>
-            <i className="ri-refresh-line me-1" aria-hidden />Reset
-          </button>
-          <button type="button" className="ti-btn !py-0.5 !px-2 !text-[0.75rem] ti-btn-light" onClick={onCloseLayout} aria-label="Close filters">
-            <i className="ri-close-line" aria-hidden />
-          </button>
-        </div>
-      </div>
-
-      <div className="max-h-[min(82vh,44rem)] overflow-y-auto px-4 py-3">
+  const filterFields = (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
 
           <div>
@@ -293,10 +277,10 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
             )}
           </div>
         </div>
-      </div>
+  )
 
-      {showExcelActions && (
-        <div className="flex flex-col gap-2 border-t border-defaultborder/60 bg-gray-50/70 px-4 py-3 dark:bg-black/20 sm:flex-row sm:items-center sm:justify-between">
+  const excelActions = showExcelActions ? (
+        <div className="flex flex-col gap-2 border-t border-defaultborder/60 bg-gray-50/70 px-0 py-3 dark:bg-black/20 sm:flex-row sm:items-center sm:justify-between lg:px-4">
           <div className="flex min-w-0 flex-col gap-1">
             <span className="inline-flex items-center gap-1.5 text-[0.7rem] font-medium text-gray-500 dark:text-gray-400">
               <i className="ri-file-excel-2-line text-emerald-600 dark:text-emerald-400" aria-hidden />
@@ -350,7 +334,77 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
             )}
           </div>
         </div>
-      )}
+  ) : null
+
+  if (!isLgViewport) {
+    return (
+      <FilterDrawerShell
+        open={layoutOpen}
+        onClose={onCloseLayout}
+        panelId="candidates-filter-panel"
+        title="Filters"
+        ariaLabel="Employee search and filter options"
+        restoreFocusRef={restoreFocusRef}
+        subtitle="Employment status, agents & more"
+        footer={
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="ti-btn ti-btn-light !text-[0.8125rem] !py-2 !px-3 !rounded-lg flex-1 min-h-11"
+            >
+              <i className="ri-refresh-line me-1.5" aria-hidden />Reset
+            </button>
+            <button
+              type="button"
+              onClick={onCloseLayout}
+              className="ti-btn ti-btn-primary !text-[0.8125rem] !py-2 !px-3 !rounded-lg flex-[1.4] min-h-11"
+            >
+              Done
+            </button>
+          </div>
+        }
+      >
+        {filterFields}
+        {excelActions}
+      </FilterDrawerShell>
+    )
+  }
+
+  return (
+    <div
+      id="candidates-filter-panel"
+      role="region"
+      aria-hidden={!layoutOpen}
+      {...(!layoutOpen ? { inert: true } : {})}
+      tabIndex={-1}
+      className={
+        'w-full shrink-0 origin-top transform-gpu rounded-b-xl bg-white/98 shadow-[0_28px_60px_-28px_rgba(0,0,0,0.35)] transition-[max-height,opacity] duration-300 ease-out dark:bg-bodybg/98 z-[40] motion-reduce:transition-none ' +
+        (layoutOpen
+          ? 'pointer-events-auto max-h-[min(92vh,52rem)] overflow-hidden border-x border-b border-defaultborder/80 opacity-100'
+          : 'pointer-events-none max-h-0 overflow-hidden border-0 opacity-0')
+      }
+    >
+      <div className="flex items-center justify-between gap-2 border-b border-defaultborder/60 bg-gradient-to-r from-gray-50/95 to-transparent px-4 py-2 dark:from-black/25 dark:to-transparent">
+        <span className="text-[0.8125rem] font-semibold flex items-center gap-1.5 text-gray-800 dark:text-white">
+          <i className="ri-filter-3-line text-primary text-sm" aria-hidden />
+          Filters
+        </span>
+        <div className="flex items-center gap-1.5">
+          <button type="button" className="ti-btn !py-0.5 !px-2.5 !text-[0.75rem] ti-btn-light" onClick={handleResetFilters}>
+            <i className="ri-refresh-line me-1" aria-hidden />Reset
+          </button>
+          <button type="button" className="ti-btn !py-0.5 !px-2 !text-[0.75rem] ti-btn-light" onClick={onCloseLayout} aria-label="Close filters">
+            <i className="ri-close-line" aria-hidden />
+          </button>
+        </div>
+      </div>
+
+      <div className="max-h-[min(82vh,44rem)] overflow-y-auto px-4 py-3">
+        {filterFields}
+      </div>
+
+      {excelActions}
     </div>
   )
 }

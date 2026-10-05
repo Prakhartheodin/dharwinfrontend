@@ -9,6 +9,9 @@ import { coalesceGet, invalidateCoalescePrefix } from '@/shared/lib/api/coalesce
 import { resolveEmployeeJobTitleLabel } from '@/shared/lib/employee-job-title'
 import CallNowButton from '@/shared/components/CallNowButton'
 import CandidatesFilterPanel from './_components/CandidatesFilterPanel'
+import { EmployeesCardList } from './_components/EmployeesCardList'
+import { employeesTableColumnClass } from './_components/employeesTableResponsive'
+import { useEmployeesListContainerLayout } from './_components/useEmployeesListContainerLayout'
 import EmployeePreviewPanel from './_components/EmployeePreviewPanel'
 import { setChatUiContext } from '@/shared/lib/chatUiContext'
 import type {
@@ -464,6 +467,12 @@ const Candidates = () => {
   /** Sort — React-controlled (Preline hs-dropdown + SPA can swallow clicks / skip init). Excel actions now live in the filter panel footer. */
   const [employeesToolbarMenu, setEmployeesToolbarMenu] = useState<'sort' | null>(null)
   const employeesSortDropdownRef = useRef<HTMLDivElement>(null)
+  const employeesFilterButtonRef = useRef<HTMLButtonElement>(null)
+  const {
+    containerRef: employeesListContainerRef,
+    showTable: showEmployeesTable,
+    showCards: showEmployeesCards,
+  } = useEmployeesListContainerLayout()
 
   /** Quick search — employee name or ID only (toolbar input, like ATS jobs). */
   const [employeeSearch, setEmployeeSearch] = useState('')
@@ -2387,7 +2396,7 @@ const Candidates = () => {
       <div className="employees-page-shell grid min-h-0 flex-1 grid-cols-12 gap-4 md:gap-6">
         <div className="col-span-12 flex h-full min-h-0 min-w-0 flex-col xl:col-span-12">
           <div className="box custom-box flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-defaultborder/70 bg-white/90 shadow-[0_20px_50px_-24px_rgba(0,0,0,0.35)] ring-1 ring-black/[0.04] backdrop-blur-[2px] dark:bg-bodybg/95 dark:ring-white/10">
-            <div className="box-header flex shrink-0 flex-col gap-3 overflow-visible border-b border-defaultborder/80 bg-gradient-to-br from-primary/[0.07] via-transparent to-amber-500/[0.03] px-4 py-4 dark:from-primary/12 dark:to-transparent sm:flex-row sm:items-start sm:justify-between sm:gap-4 sm:px-5 sm:py-6">
+            <div className="box-header flex shrink-0 flex-col gap-3 overflow-visible border-b border-defaultborder/80 bg-gradient-to-br from-primary/[0.07] via-transparent to-amber-500/[0.03] px-4 py-4 dark:from-primary/12 dark:to-transparent lg:flex-row lg:items-start lg:justify-between lg:gap-4 sm:px-5 sm:py-6">
               <div className="flex min-w-0 flex-1 items-start gap-3">
                 <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/12 text-primary shadow-inner ring-1 ring-primary/20 dark:bg-primary/20">
                   <i className="ri-team-line text-xl" aria-hidden />
@@ -2420,7 +2429,7 @@ const Candidates = () => {
                   </p>
                 </div>
               </div>
-              <div className="relative z-20 flex w-full min-w-0 flex-wrap items-center gap-x-2 gap-y-2 overflow-visible md:justify-end">
+              <div className="relative z-20 flex w-full min-w-0 flex-col gap-2.5 overflow-visible lg:flex-row lg:flex-wrap lg:items-center lg:justify-end lg:gap-x-2 lg:gap-y-2">
                 <select
                   id="candidates-page-size"
                   className="form-control select-show-page-size !w-auto !h-8 !py-1 !text-[0.75rem] !rounded-lg"
@@ -2510,7 +2519,7 @@ const Candidates = () => {
                     <i className="ri-add-line font-semibold align-middle"></i>Add employee
                   </Link>
                 ) : null}
-                <div className="relative flex-1 min-w-[10rem] sm:min-w-[12rem] sm:max-w-xs me-2">
+                <div className="relative order-first w-full min-w-0 lg:order-none lg:flex-1 lg:min-w-[10rem] lg:max-w-xs lg:me-2">
                   <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-defaulttextcolor/50 text-[0.875rem]" aria-hidden />
                   <input
                     type="search"
@@ -2525,6 +2534,7 @@ const Candidates = () => {
                   />
                 </div>
                 <button
+                  ref={employeesFilterButtonRef}
                   type="button"
                   className={`ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] me-2 whitespace-nowrap ${employeesFilterPanelOpen ? 'ring-2 ring-primary/30 bg-primary/[0.06]' : ''}`}
                   aria-expanded={employeesFilterPanelOpen}
@@ -2590,6 +2600,7 @@ const Candidates = () => {
               }}
               exportLoading={exportAllSubmitting}
               exportError={actionError}
+              restoreFocusRef={employeesFilterButtonRef}
             />
 
             <div className="box-body !p-0 flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -2618,16 +2629,58 @@ const Candidates = () => {
                   </span>
                 </span>
               </div>
-              <div className="flex min-h-0 flex-1 min-w-0 overflow-hidden" style={{ minHeight: 0 }}>
               <div
-                className="table-responsive employees-table-scroll w-full min-w-0 flex-1 overflow-x-hidden overflow-y-auto rounded-b-xl bg-slate-50/40 [-webkit-overflow-scrolling:touch] dark:bg-black/25 md:overflow-x-auto"
+                ref={employeesListContainerRef}
+                className="employees-list-container flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden"
+                style={{ minHeight: 0 }}
+              >
+                {showEmployeesCards && !candidatesLoading ? (
+                  <EmployeesCardList
+                    rows={page}
+                    prepareRow={prepareRow}
+                    emptyMessage="No employees on this page"
+                    canBulkSelect={canBulkSelectEmployees}
+                    selectedRows={selectedRows}
+                    onRowSelect={handleRowSelect}
+                    onOpenPreview={openCandidatePreview}
+                    onShare={handleShareClick}
+                    onAttendance={openAttendanceOverlay}
+                    buildEditHref={(id) => buildEmployeeEditHref(id, apiPage)}
+                    canUpdate={canUpdateEmployee}
+                    canCreate={canCreateEmployee}
+                    onClearFilters={hasActiveFilters ? handleResetFilters : undefined}
+                    isResigned={isCandidateResigned}
+                    resignLabel={resignDateLabel}
+                    renderAvatar={(c, className) => <CandidateAvatar candidate={c} className={className} />}
+                  />
+                ) : null}
+                {showEmployeesCards && candidatesLoading ? (
+                  <div className="employees-list-cards min-h-0 flex-1 p-3 space-y-3">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <div
+                        key={`emp-card-skel-${i}`}
+                        className="h-28 rounded-xl border border-defaultborder/50 bg-white/60 dark:bg-white/[0.03] motion-safe:animate-pulse"
+                      />
+                    ))}
+                  </div>
+                ) : null}
+                {showEmployeesTable || (candidatesLoading && !showEmployeesCards) ? (
+              <div
+                className="table-responsive employees-table-scroll employees-list-table w-full min-w-0 flex-1 overflow-x-hidden overflow-y-auto rounded-b-xl bg-slate-50/40 [-webkit-overflow-scrolling:touch] dark:bg-black/25 md:overflow-x-auto"
                 style={{ minHeight: 0 }}
               >
                 <table
                   {...getTableProps()}
-                  className="table w-full min-w-0 border-separate border-spacing-0 border-0 text-sm whitespace-normal md:min-w-full md:table-fixed md:whitespace-nowrap"
+                  className="employees-data-table table w-full min-w-0 border-separate border-spacing-0 border-0 text-sm whitespace-normal md:min-w-full md:table-fixed md:whitespace-nowrap"
                   aria-busy={candidatesLoading}
                 >
+                  {headerGroups[0]?.headers?.length ? (
+                    <colgroup>
+                      {headerGroups[0].headers.map((column: any) => (
+                        <col key={column.id} className={employeesTableColumnClass(column.id)} />
+                      ))}
+                    </colgroup>
+                  ) : null}
                   <thead>
                     {headerGroups.map((headerGroup: any, i: number) => (
                       <tr
@@ -2638,9 +2691,9 @@ const Candidates = () => {
                         {headerGroup.headers.map((column: any, i: number) => {
                           const headerProps = column.getHeaderProps()
                           const isCheckboxCol = column.id === 'checkbox'
-                          const isJoiningCol = column.id === 'joiningDate'
                           const headerSortEmployee = column.id === 'candidateInfo'
                           const headerSortJoining = column.id === 'joiningDate'
+                          const colTierClass = employeesTableColumnClass(column.id)
                           const clickableHeader = headerSortEmployee || headerSortJoining
 
                           let sortIcon: React.ReactNode = null
@@ -2665,8 +2718,8 @@ const Candidates = () => {
                             {...headerProps}
                             scope="col"
                             className={
-                              'sticky top-0 z-10 border-b border-defaultborder/80 bg-gray-50/95 text-start shadow-[0_1px_0_0_rgba(15,23,42,0.06)] backdrop-blur-sm first:rounded-tl-none dark:border-white/10 dark:bg-bodybg/95 dark:shadow-[0_1px_0_0_rgba(255,255,255,0.06)]' +
-                              (isJoiningCol ? ' hidden md:table-cell' : '') +
+                              'sticky top-0 z-10 border-b border-defaultborder/80 bg-gray-50/95 text-start shadow-[0_1px_0_0_rgba(15,23,42,0.06)] backdrop-blur-sm first:rounded-tl-none dark:border-white/10 dark:bg-bodybg/95 dark:shadow-[0_1px_0_0_rgba(255,255,255,0.06)] ' +
+                              colTierClass +
                               (clickableHeader ? ' cursor-pointer select-none' : '')
                             }
                             key={column.id || `col-${i}`}
@@ -2753,16 +2806,14 @@ const Candidates = () => {
                           >
                             {Array.from({ length: colCount }).map((__, colIdx) => {
                               const isCheckbox = headerGroups[0]?.headers?.[colIdx]?.id === 'checkbox'
-                              const hideJoinSkel =
-                                headerGroups[0]?.headers?.[colIdx]?.id === 'joiningDate'
+                              const joinColClass = employeesTableColumnClass(
+                                headerGroups[0]?.headers?.[colIdx]?.id ?? ''
+                              )
                               const wPct = isCheckbox ? 16 : [78, 52, 48, 40, 36, 32][colIdx % 6]
                               return (
                                 <td
                                   key={`candidates-skel-${skelRow}-${colIdx}`}
-                                  className={
-                                    'px-3 py-3.5 align-middle' +
-                                    (hideJoinSkel ? ' hidden md:table-cell' : '')
-                                  }
+                                  className={'px-3 py-3.5 align-middle ' + joinColClass}
                                   style={
                                     isCheckbox
                                       ? { width: 52, minWidth: 52, maxWidth: 52 }
@@ -2810,15 +2861,13 @@ const Candidates = () => {
                         >
                           {row.cells.map((cell: any, i: number) => {
                             const isCheckboxCol = cell.column.id === 'checkbox';
-                            const isJoiningCol = cell.column.id === 'joiningDate';
                             const cellProps = cell.getCellProps();
+                            const cellColClass = employeesTableColumnClass(cell.column.id);
                             return (
                               <td
                                 {...cellProps}
                                 key={cell.column.id || `cell-${i}`}
-                                className={
-                                  (cellProps.className || '') + (isJoiningCol ? ' hidden md:table-cell' : '')
-                                }
+                                className={(cellProps.className || '') + ' ' + cellColClass}
                                 style={{
                                   ...cellProps.style,
                                   ...(isCheckboxCol ? { width: 52, minWidth: 52, maxWidth: 52 } : {}),
@@ -2859,6 +2908,7 @@ const Candidates = () => {
                   </tbody>
                 </table>
               </div>
+                ) : null}
               </div>
             </div>
             <div className="box-footer shrink-0 border-t border-defaultborder/60 !bg-defaultbackground/60 px-4 py-3.5 dark:!bg-white/[0.03]">

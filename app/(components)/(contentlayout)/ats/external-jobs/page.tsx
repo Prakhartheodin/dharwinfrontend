@@ -197,7 +197,7 @@ function ListFooter({ pager, rowsPerPage }: { pager: ListPager; rowsPerPage: num
             type="button"
             onClick={() => pager.goto(pager.page - 1)}
             disabled={pager.page <= 1 || pager.busy}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-defaultborder/60 bg-white text-xs text-textmuted transition-all hover:border-primary/30 hover:bg-primary/[0.06] hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/40 dark:hover:border-primary/25 dark:hover:bg-primary/10 dark:hover:text-primary"
+            className="inline-flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-lg border border-defaultborder/60 bg-white text-xs text-textmuted transition-all hover:border-primary/30 hover:bg-primary/[0.06] hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/40 dark:hover:border-primary/25 dark:hover:bg-primary/10 dark:hover:text-primary"
             aria-label="Previous page"
           >
             <i className="ri-arrow-left-s-line" aria-hidden />
@@ -210,7 +210,7 @@ function ListFooter({ pager, rowsPerPage }: { pager: ListPager; rowsPerPage: num
                 type="button"
                 onClick={() => pager.goto(pageNum)}
                 disabled={pager.busy}
-                className={`inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded-lg px-1.5 text-xs font-semibold tabular-nums transition-all disabled:cursor-not-allowed ${
+                className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg px-2 text-xs font-semibold tabular-nums transition-all disabled:cursor-not-allowed ${
                   isActive
                     ? "bg-primary text-white shadow-sm shadow-primary/30"
                     : "border border-defaultborder/60 bg-white text-textmuted hover:border-primary/30 hover:bg-primary/[0.06] hover:text-primary dark:border-white/10 dark:bg-white/[0.04] dark:text-white/40 dark:hover:border-primary/25 dark:hover:bg-primary/10 dark:hover:text-primary"
@@ -226,7 +226,7 @@ function ListFooter({ pager, rowsPerPage }: { pager: ListPager; rowsPerPage: num
             type="button"
             onClick={() => pager.goto(pager.page + 1)}
             disabled={pager.page >= pager.totalPages || pager.busy}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-defaultborder/60 bg-white text-xs text-textmuted transition-all hover:border-primary/30 hover:bg-primary/[0.06] hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/40 dark:hover:border-primary/25 dark:hover:bg-primary/10 dark:hover:text-primary"
+            className="inline-flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-lg border border-defaultborder/60 bg-white text-xs text-textmuted transition-all hover:border-primary/30 hover:bg-primary/[0.06] hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/40 dark:hover:border-primary/25 dark:hover:bg-primary/10 dark:hover:text-primary"
             aria-label="Next page"
           >
             <i className="ri-arrow-right-s-line" aria-hidden />
@@ -364,6 +364,7 @@ export default function ExternalJobsPage() {
     return () => clearInterval(id);
   }, [mirrorFetchRun, loadAutoFetchStatus]);
 
+  const [searchFiltersExpanded, setSearchFiltersExpanded] = useState(false);
   const [filters, setFilters] = useState({
     job_title: "",
     job_location: "",
@@ -1004,7 +1005,7 @@ export default function ExternalJobsPage() {
     <Fragment>
       <Seo title="External Jobs" />
 
-      <div className="container-fluid pt-6 pb-8">
+      <div className="external-jobs-page-root container-fluid w-full min-w-0 max-w-full overflow-x-hidden pt-4 pb-8 sm:pt-6">
         {browseListedHint && (
           <div
             className="mb-4 flex flex-wrap items-start justify-between gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-defaulttextcolor dark:text-white/90"
@@ -1024,9 +1025,9 @@ export default function ExternalJobsPage() {
             </button>
           </div>
         )}
-        {/* Stats row — horizontal scroll snap on mobile, grid on lg+ */}
-        <div className="mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
-          <div className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-thin lg:grid lg:grid-cols-4 lg:gap-4 lg:overflow-visible lg:pb-0">
+        {/* Stats row — stack on phone, 2-up on sm/md, 4-up on lg+ */}
+        <div className="mb-6 min-w-0">
+          <div className="grid grid-cols-1 gap-3 min-w-0 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
             {[
               {
                 icon: "ri-search-line",
@@ -1059,10 +1060,7 @@ export default function ExternalJobsPage() {
                 bar: "bg-sky-500",
               },
             ].map((card) => (
-              <div
-                key={card.label}
-                className="snap-start shrink-0 basis-[15rem] lg:basis-auto lg:shrink"
-              >
+              <div key={card.label} className="min-w-0">
                 <div className="relative h-full overflow-hidden rounded-2xl border border-defaultborder/60 bg-white/95 p-4 shadow-sm transition-shadow hover:shadow-md dark:bg-bodybg/90">
                   <div className={`absolute inset-y-0 left-0 w-[3px] ${card.bar} rounded-r-full`} />
                   <div className="flex items-center gap-3 ps-1">
@@ -1070,7 +1068,7 @@ export default function ExternalJobsPage() {
                       <i className={`${card.icon} text-base`} aria-hidden />
                     </span>
                     <div className="min-w-0">
-                      <p className="mb-0 text-[0.68rem] font-semibold uppercase tracking-[0.13em] text-textmuted dark:text-white/40">{card.label}</p>
+                      <p className="mb-0 text-[0.68rem] font-semibold uppercase leading-snug tracking-[0.08em] text-textmuted dark:text-white/40 sm:tracking-[0.13em]">{card.label}</p>
                       <p className="mb-0 truncate text-[1.35rem] font-bold tabular-nums leading-tight text-defaulttextcolor dark:text-white">{card.value}</p>
                     </div>
                   </div>
@@ -1080,10 +1078,10 @@ export default function ExternalJobsPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-12 gap-6">
-          <div className="col-span-12 flex flex-col">
-            <div className="box custom-box flex min-h-[28rem] flex-col overflow-hidden rounded-2xl border border-defaultborder/70 bg-white/90 shadow-[0_20px_50px_-24px_rgba(0,0,0,0.35)] ring-1 ring-black/[0.04] backdrop-blur-[2px] dark:bg-bodybg/95 dark:ring-white/10 sm:h-[calc(100dvh-9rem)] lg:h-[calc(100dvh-8rem)]">
-              <div className="box-header flex flex-col gap-4 overflow-visible border-b border-defaultborder/80 bg-gradient-to-br from-primary/[0.07] via-transparent to-amber-500/[0.03] px-5 py-5 dark:from-primary/10 dark:to-transparent sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+        <div className="grid min-w-0 grid-cols-12 gap-6">
+          <div className="col-span-12 flex min-w-0 flex-col">
+            <div className="box custom-box flex min-h-[28rem] w-full min-w-0 max-w-full flex-col overflow-hidden rounded-2xl border border-defaultborder/70 bg-white/90 shadow-[0_20px_50px_-24px_rgba(0,0,0,0.35)] ring-1 ring-black/[0.04] backdrop-blur-[2px] dark:bg-bodybg/95 dark:ring-white/10 lg:h-[calc(100dvh-8rem)]">
+              <div className="box-header flex min-w-0 flex-col gap-4 overflow-visible border-b border-defaultborder/80 bg-gradient-to-br from-primary/[0.07] via-transparent to-amber-500/[0.03] px-4 py-5 dark:from-primary/10 dark:to-transparent sm:px-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
                 <div className="flex min-w-0 flex-1 items-start gap-3">
                   <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-inner ring-1 ring-primary/20 dark:bg-primary/20">
                     <i className="ri-global-line text-xl" aria-hidden />
@@ -1128,11 +1126,11 @@ export default function ExternalJobsPage() {
                     </p>
                   </div>
                 </div>
-                <div className="relative z-20 flex flex-wrap items-center gap-2 sm:justify-end">
+                <div className="relative z-20 flex min-w-0 w-full max-w-full flex-col gap-2 sm:w-auto sm:max-w-none sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
                   <button
                     type="button"
                     onClick={() => setAutoFetchModalOpen(true)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-defaultborder/70 bg-white px-3 py-1.5 text-[0.75rem] font-semibold text-defaulttextcolor shadow-sm hover:bg-black/[0.03] dark:border-white/15 dark:bg-transparent dark:text-white dark:hover:bg-white/5"
+                    className="inline-flex w-full shrink-0 items-center justify-center gap-1.5 rounded-lg border border-defaultborder/70 bg-white px-3 py-1.5 text-[0.75rem] font-semibold text-defaulttextcolor shadow-sm hover:bg-black/[0.03] sm:w-auto sm:justify-start dark:border-white/15 dark:bg-transparent dark:text-white dark:hover:bg-white/5"
                   >
                     <i className="ri-radar-line text-xs" aria-hidden />
                     Auto Fetch Jobs
@@ -1177,8 +1175,9 @@ export default function ExternalJobsPage() {
                       ))}
                     </select>
                   </div>
+                  <div className="external-jobs-tabs-scroll min-w-0 max-w-full sm:max-w-none">
                   <div
-                    className="inline-flex overflow-hidden rounded-xl border border-defaultborder/70 bg-gray-100/70 p-[3px] dark:border-white/10 dark:bg-white/[0.06]"
+                    className="inline-flex w-max max-w-none overflow-hidden rounded-xl border border-defaultborder/70 bg-gray-100/70 p-[3px] dark:border-white/10 dark:bg-white/[0.06] sm:w-auto"
                     role="tablist"
                     aria-label="External jobs view"
                   >
@@ -1243,12 +1242,30 @@ export default function ExternalJobsPage() {
                       )}
                     </button>
                   </div>
+                  </div>
                 </div>
               </div>
 
             {activeTab === "search" && (
               <div className="border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/90 via-white/50 to-transparent px-5 py-4 dark:from-white/[0.03] dark:via-transparent dark:to-transparent">
-                <div className="flex flex-wrap items-end gap-2.5">
+                <button
+                  type="button"
+                  className="lg:hidden flex items-center justify-between w-full rounded-md border border-defaultborder dark:border-defaultborder/10 px-3 py-2.5 min-h-[2.75rem] text-sm font-medium text-defaulttextcolor dark:text-white hover:bg-gray-50 dark:hover:bg-white/5 transition-colors mb-3"
+                  onClick={() => setSearchFiltersExpanded((open) => !open)}
+                  aria-expanded={searchFiltersExpanded}
+                  aria-controls="external-jobs-search-filters"
+                  aria-label="Search filters"
+                >
+                  <span className="inline-flex items-center gap-1.5 min-w-0">
+                    <i className="ri-filter-3-line text-base shrink-0" aria-hidden />
+                    Search filters
+                  </span>
+                  <i className={`ri-arrow-${searchFiltersExpanded ? "up" : "down"}-s-line text-lg shrink-0`} aria-hidden />
+                </button>
+                <div
+                  id="external-jobs-search-filters"
+                  className={`flex flex-wrap items-end gap-2.5 ${searchFiltersExpanded ? "flex" : "hidden lg:flex"}`}
+                >
                   {/* Title */}
                   <div className="min-w-[11rem] flex-1 sm:max-w-[15rem]">
                     <label className="mb-1 block text-[0.68rem] font-bold uppercase tracking-[0.11em] text-textmuted dark:text-white/40">Title</label>
@@ -1395,7 +1412,7 @@ export default function ExternalJobsPage() {
                 </div>
                 <button
                   type="button"
-                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-warning/60 transition-colors hover:bg-warning/10 hover:text-warning"
+                  className="inline-flex h-11 min-h-11 w-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-warning/60 transition-colors hover:bg-warning/10 hover:text-warning"
                   aria-label="Dismiss"
                   onClick={() => setBannerError(null)}
                 >
@@ -1775,7 +1792,7 @@ export default function ExternalJobsPage() {
                     </div>
                   )}
                   <div
-                    className="flex-1 overflow-y-auto rounded-b-xl bg-slate-50/40 dark:bg-black/25"
+                    className="flex-1 min-w-0 overflow-x-auto overflow-y-auto rounded-b-xl bg-slate-50/40 dark:bg-black/25"
                     style={{ minHeight: 0 }}
                   >
                     {/* Desktop / tablet: full table */}

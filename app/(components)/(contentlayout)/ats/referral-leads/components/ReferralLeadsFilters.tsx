@@ -65,8 +65,8 @@ export function ReferralLeadsFilters({
   const dateRangeError = getReferralLeadsDateRangeError(filters.customFrom, filters.customTo);
 
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bodybg2 p-4 mb-4 space-y-3">
-      <div className="flex flex-wrap items-end gap-3">
+    <div className="referral-leads-filters-card rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bodybg2 p-3 sm:p-4 mb-4 space-y-3 overflow-visible min-w-0">
+      <div className="flex flex-wrap items-end gap-3 min-w-0">
       <div className="flex-1 min-w-[200px]">
         <label className="form-label text-xs" htmlFor="referral-leads-search">
           Search
@@ -206,14 +206,15 @@ export function ReferralLeadsFilters({
 
       {featureEnabled && (
         <div
-          className="flex flex-col gap-2 border-t border-slate-100 pt-3 dark:border-white/5 sm:flex-row sm:items-center sm:gap-3"
+          className="flex flex-col gap-2 border-t border-slate-100 pt-3 dark:border-white/5 sm:flex-row sm:items-center sm:gap-3 min-w-0"
           role="group"
           aria-label="Quick filters"
         >
           <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 shrink-0">
             Quick filters
           </span>
-          <div className="flex flex-wrap gap-2">
+          <div className="referral-leads-quick-filters-scroll min-w-0 flex-1">
+          <div className="flex flex-wrap gap-2 pb-0.5">
             {(
               [
                 { value: "hiredOnly" as const, label: "Hired only" },
@@ -239,6 +240,7 @@ export function ReferralLeadsFilters({
                 </button>
               );
             })}
+          </div>
           </div>
         </div>
       )}

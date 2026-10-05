@@ -24,7 +24,7 @@ import { listRecruiterNotes, createRecruiterNote, deleteRecruiterNote, shareRecr
 import ListPagination from '@/shared/components/ListPagination'
 import PersonAvatar from '@/shared/components/PersonAvatar'
 import Swal from 'sweetalert2'
-import { closeHsOverlay, openHsOverlay } from '../../training/evaluation/_components/evaluation-overlay'
+import { FilterDrawerShell } from '../jobs/_components/FilterDrawerShell'
 
 // Recruiters data loaded from API in component – see recruitersData state below
 
@@ -94,6 +94,7 @@ const Recruiters = () => {
   const [shareSubmitting, setShareSubmitting] = useState(false)
   const [selectedSort, setSelectedSort] = useState<RecruiterSortOption>('')
   const [filterPanelOpen, setFilterPanelOpen] = useState(false)
+  const recruitersFilterButtonRef = useRef<HTMLButtonElement>(null)
   
   const [filters, setFilters] = useState<FilterState>({
     name: [],
@@ -913,22 +914,11 @@ const Recruiters = () => {
 
   const openFilterPanel = useCallback(() => {
     setFilterPanelOpen(true)
-    queueMicrotask(() => openHsOverlay('#recruiters-filter-panel'))
   }, [])
 
   const closeFilterPanel = useCallback(() => {
     setFilterPanelOpen(false)
-    closeHsOverlay('#recruiters-filter-panel')
   }, [])
-
-  useEffect(() => {
-    if (!filterPanelOpen) return
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeFilterPanel()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [filterPanelOpen, closeFilterPanel])
 
   const hasActiveFilters = 
     filters.name.length > 0 ||
@@ -996,9 +986,10 @@ const Recruiters = () => {
   return (
     <Fragment>
       <Seo title="Recruiters" />
-      <div className="mt-5 grid grid-cols-12 gap-6 h-[calc(100vh-8rem)] sm:mt-6">
-        <div className="xl:col-span-12 col-span-12 h-full flex flex-col">
-          <div className="box custom-box h-full flex flex-col">
+      <div className="recruiters-page-root container-fluid flex max-w-[100vw] flex-col px-3 pt-4 pb-0 sm:px-4 sm:pt-6">
+        <div className="recruiters-page-shell grid min-h-0 flex-1 grid-cols-12 gap-4 md:gap-6">
+        <div className="col-span-12 flex h-full min-h-0 min-w-0 flex-col xl:col-span-12">
+          <div className="box custom-box flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-defaultborder/70 bg-white/90 shadow-[0_20px_50px_-24px_rgba(0,0,0,0.35)] ring-1 ring-black/[0.04] backdrop-blur-[2px] dark:bg-bodybg/95 dark:ring-white/10">
             <div className="box-header flex items-center justify-between flex-wrap gap-4">
               <div className="box-title">
                 Recruiters
@@ -1188,6 +1179,7 @@ const Recruiters = () => {
                   className={`ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] me-2 ${filterPanelOpen ? 'ring-2 ring-primary/30 bg-primary/[0.06]' : ''}`}
                   aria-expanded={filterPanelOpen}
                   aria-controls="recruiters-filter-panel"
+                  ref={recruitersFilterButtonRef}
                   onClick={() => (filterPanelOpen ? closeFilterPanel() : openFilterPanel())}
                 >
                   <i className={`ri-${filtersLoading ? 'loader-4-line animate-spin' : 'search-line'} font-semibold align-middle me-1`} aria-hidden="true"></i>Search
@@ -1212,8 +1204,121 @@ const Recruiters = () => {
                 )}
               </div>
             </div>
-            <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden">
-              <div className="table-responsive flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
+            <div className="box-body !p-0 flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="recruiters-list-container flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden" style={{ minHeight: 0 }}>
+              <div className="recruiters-list-cards md:hidden min-h-0 flex-1 overflow-y-auto p-3 space-y-3">
+                {recruitersLoading ? (
+                  Array.from({ length: 4 }).map((_, i) => (
+                    <div
+                      key={`recruiter-card-skel-${i}`}
+                      className="h-28 rounded-xl border border-defaultborder/50 bg-white/60 dark:bg-white/[0.03] motion-safe:animate-pulse"
+                    />
+                  ))
+                ) : loadError ? (
+                  <div className="rounded-xl border border-danger/25 bg-danger/[0.07] p-6 text-center text-sm text-danger">{loadError}</div>
+                ) : displayData.length === 0 ? (
+                  <div className="rounded-xl border border-defaultborder/60 bg-white/80 p-8 text-center text-sm text-gray-600 dark:bg-bodybg/80 dark:text-gray-300">
+                    <i className="ri-inbox-line text-3xl text-gray-400 mb-2 block" aria-hidden />
+                    No recruiters found
+                  </div>
+                ) : (
+                  displayData.map((recruiter) => (
+                    <article
+                      key={recruiter.id}
+                      className="recruiters-list-card min-w-0 rounded-xl border border-defaultborder/70 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-bodybg/90"
+                    >
+                      <div className="flex items-start gap-3">
+                        {canManageRecruiters ? (
+                          <input
+                            className="form-check-input mt-1 h-5 w-5 shrink-0"
+                            type="checkbox"
+                            checked={selectedRows.has(recruiter.id)}
+                            onChange={() => handleRowSelect(recruiter.id)}
+                            aria-label={`Select ${recruiter.name}`}
+                          />
+                        ) : null}
+                        <PersonAvatar
+                          name={recruiter.name}
+                          email={recruiter.email}
+                          imageUrl={recruiter.displayPicture}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <button
+                            type="button"
+                            className="text-left font-semibold text-gray-900 dark:text-white hover:text-primary truncate w-full"
+                            onClick={() => {
+                              setPreviewRecruiter(recruiter)
+                              setTimeout(() => {
+                                ;(window as any).HSOverlay?.open(document.querySelector('#recruiter-preview-panel'))
+                              }, 100)
+                            }}
+                          >
+                            {recruiter.name}
+                          </button>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{recruiter.email}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{recruiter.phone}</p>
+                          {recruiter.location ? (
+                            <p className="mt-1 text-xs text-gray-600 dark:text-gray-300 flex items-center gap-1">
+                              <i className="ri-map-pin-line text-warning" aria-hidden />
+                              <span className="truncate">{recruiter.location}</span>
+                            </p>
+                          ) : null}
+                          {recruiter.domainTags?.length ? (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {recruiter.domainTags.slice(0, 3).map((tag: string) => (
+                                <span key={tag} className="badge bg-success/10 text-success border border-success/30 px-2 py-0.5 text-[0.65rem]">
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="recruiters-list-card__actions mt-3 border-t border-defaultborder/50 pt-3 dark:border-white/10">
+                        {canManageRecruiters ? (
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-icon !h-11 shrink-0 ti-btn-info"
+                            onClick={() => router.push(`/ats/recruiters/edit/${recruiter.id}`)}
+                            title="Edit recruiter"
+                            aria-label={`Edit ${recruiter.name}`}
+                          >
+                            <i className="ri-pencil-line" aria-hidden />
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="ti-btn ti-btn-icon !h-11 shrink-0 ti-btn-warning"
+                          onClick={() => handleAddNote(recruiter.id, recruiter)}
+                          title="Add note"
+                          aria-label={`Add note for ${recruiter.name}`}
+                        >
+                          <i className="ri-file-add-line" aria-hidden />
+                        </button>
+                        <button
+                          type="button"
+                          className="ti-btn ti-btn-icon !h-11 shrink-0 ti-btn-success"
+                          onClick={() => handleShareClick(recruiter)}
+                          title="Share public URL"
+                          aria-label={`Share ${recruiter.name}`}
+                        >
+                          <i className="ri-share-line" aria-hidden />
+                        </button>
+                        <button
+                          type="button"
+                          className="ti-btn ti-btn-icon !h-11 shrink-0 ti-btn-primary"
+                          onClick={() => handleDownloadProfile(recruiter)}
+                          title="Download profile"
+                          aria-label={`Download profile for ${recruiter.name}`}
+                        >
+                          <i className="ri-download-line" aria-hidden />
+                        </button>
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
+              <div className="table-responsive recruiters-list-table hidden md:block flex-1 overflow-x-auto overflow-y-auto" style={{ minHeight: 0 }}>
                 <table {...getTableProps()} className="table whitespace-nowrap min-w-full table-striped table-hover table-bordered border-gray-300 dark:border-gray-600">
                   <thead>
                     {headerGroups.map((headerGroup: any, i: number) => (
@@ -1316,8 +1421,9 @@ const Recruiters = () => {
                   </tbody>
                 </table>
               </div>
+              </div>
             </div>
-            <div className="box-footer !border-t-0">
+            <div className="box-footer shrink-0 !border-t border-defaultborder/60 dark:border-white/10">
               <ListPagination
                 page={currentPage}
                 totalPages={totalPages}
@@ -1330,364 +1436,354 @@ const Recruiters = () => {
             </div>
           </div>
         </div>
+        </div>
       </div>
 
-      {/* Filter Panel Offcanvas */}
-      <div id="recruiters-filter-panel" className="hs-overlay hidden ti-offcanvas ti-offcanvas-right !z-[105]" tabIndex={-1}>
-        <div className="flex h-full min-h-0 flex-col overflow-hidden">
-        <div className="ti-offcanvas-header bg-gray-50 dark:bg-black/20 !py-2.5 shrink-0">
-          <h6 className="ti-offcanvas-title text-base font-semibold flex items-center gap-2">
-            <i className="ri-search-line text-primary text-base"></i>
-            Search Recruiters
-          </h6>
-          <button 
-            type="button" 
-            className="ti-btn flex-shrink-0 p-0 transition-none text-gray-500 hover:text-gray-700 focus:ring-gray-400 focus:ring-offset-white dark:text-[#8c9097] dark:text-white/50 dark:hover:text-white/80 dark:focus:ring-white/10 dark:focus:ring-offset-white/10 hover:bg-gray-100 dark:hover:bg-black/40 rounded-md p-1" 
+      <FilterDrawerShell
+        open={filterPanelOpen}
+        onClose={closeFilterPanel}
+        panelId="recruiters-filter-panel"
+        title="Search recruiters"
+        subtitle={hasActiveFilters ? `${activeFilterCount} active filter${activeFilterCount === 1 ? '' : 's'}` : 'Refine the list'}
+        ariaLabel="Recruiter search filters"
+        restoreFocusRef={recruitersFilterButtonRef}
+        headerExtra={
+          <button
+            type="button"
+            className="ti-btn ti-btn-sm ti-btn-light !py-1 !px-2"
             onClick={handleResetFilters}
           >
-            
-                <i className="ri-refresh-line me-1.5"></i>Reset
-           
+            <i className="ri-refresh-line me-1" aria-hidden />
+            Reset
           </button>
-        </div>
-        <div
-          data-recruiter-filter-body
-          className="ti-offcanvas-body !h-auto !max-h-none min-h-0 flex-1 overflow-y-auto !px-4 !pt-4 !pb-4"
-        >
-          <div className="space-y-5 pb-2">
-            {/* Name Filter */}
-            <div className="pb-4 border-b border-gray-200 dark:border-defaultborder/10">
-              <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
-                <i className="ri-user-line text-primary text-base"></i>
-                Name
-                <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allNames.length})</span>
-              </label>
-              <div className="space-y-2">
-                <input
-                  type="text"
-                  className="form-control !py-1.5 !text-sm mb-1.5"
-                  placeholder="Search names..."
-                  value={searchName}
-                  onChange={(e) => setSearchName(e.target.value)}
-                />
-                <div className={FACET_LIST_BOX} onWheel={scrollRecruiterFilterBodyIfListEdge}>
-                  <div className="space-y-1">
-                    {filteredNames.length > 0 ? (
-                      filteredNames.map((name) => (
-                        <label
-                          key={name}
-                          className="flex items-center gap-2 cursor-pointer hover:bg-primary/5 dark:hover:bg-primary/10 p-1.5 rounded-md transition-colors"
-                        >
-                          <input
-                            type="checkbox"
-                            className="form-check-input !w-3.5 !h-3.5"
-                            checked={filters.name.includes(name)}
-                            onChange={() => handleMultiSelectChange('name', name)}
-                          />
-                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">{name}</span>
-                        </label>
-                      ))
-                    ) : (
-                      <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
-                        No names found
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {filters.name.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pt-1.5">
-                    {filters.name.map((name) => (
-                      <span
+        }
+        footer={
+          <div className="flex gap-2">
+            <button type="button" className="ti-btn ti-btn-primary flex-1 !py-2" onClick={closeFilterPanel}>
+              Apply
+            </button>
+            <button type="button" className="ti-btn ti-btn-light !py-2" onClick={closeFilterPanel}>
+              Close
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-5 pb-2">
+          {/* Name Filter */}
+          <div className="pb-4 border-b border-gray-200 dark:border-defaultborder/10">
+            <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
+              <i className="ri-user-line text-primary text-base"></i>
+              Name
+              <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allNames.length})</span>
+            </label>
+            <div className="space-y-2">
+              <input
+                type="text"
+                className="form-control !py-1.5 !text-sm mb-1.5"
+                placeholder="Search names..."
+                value={searchName}
+                onChange={(e) => setSearchName(e.target.value)}
+              />
+              <div className={FACET_LIST_BOX} onWheel={scrollRecruiterFilterBodyIfListEdge}>
+                <div className="space-y-1">
+                  {filteredNames.length > 0 ? (
+                    filteredNames.map((name) => (
+                      <label
                         key={name}
-                        className="badge bg-primary/10 text-primary border border-primary/30 px-2 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium shadow-sm"
+                        className="flex items-center gap-2 cursor-pointer hover:bg-primary/5 dark:hover:bg-primary/10 p-1.5 rounded-md transition-colors"
                       >
-                        {name}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveFilter('name', name)}
-                          className="hover:text-primary-hover hover:bg-primary/20 rounded-full p-0.5 transition-colors"
-                        >
-                          <i className="ri-close-line text-xs"></i>
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Domain Filter */}
-            <div className="pb-4 border-b border-gray-200 dark:border-defaultborder/10">
-              <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
-                <i className="ri-building-2-line text-success text-base"></i>
-                Domain
-                <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allDomains.length})</span>
-              </label>
-              <div className="space-y-2">
-                <input
-                  type="text"
-                  className="form-control !py-1.5 !text-sm mb-1.5"
-                  placeholder="Search domains..."
-                  value={searchDomain}
-                  onChange={(e) => setSearchDomain(e.target.value)}
-                />
-                <div className={FACET_LIST_BOX} onWheel={scrollRecruiterFilterBodyIfListEdge}>
-                  <div className="space-y-1">
-                    {filteredDomains.length > 0 ? (
-                      filteredDomains.map((domain) => (
-                        <label
-                          key={domain}
-                          className="flex items-center gap-2 cursor-pointer hover:bg-success/5 dark:hover:bg-success/10 p-1.5 rounded-md transition-colors"
-                        >
-                          <input
-                            type="checkbox"
-                            className="form-check-input !w-3.5 !h-3.5"
-                            checked={filters.domain.includes(domain)}
-                            onChange={() => handleMultiSelectChange('domain', domain)}
-                          />
-                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">{domain}</span>
-                        </label>
-                      ))
-                    ) : (
-                      <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
-                        No domains found
-                      </div>
-                    )}
-                  </div>
+                        <input
+                          type="checkbox"
+                          className="form-check-input !w-3.5 !h-3.5"
+                          checked={filters.name.includes(name)}
+                          onChange={() => handleMultiSelectChange('name', name)}
+                        />
+                        <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">{name}</span>
+                      </label>
+                    ))
+                  ) : (
+                    <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
+                      No names found
+                    </div>
+                  )}
                 </div>
-                {filters.domain.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pt-1.5">
-                    {filters.domain.map((domain) => (
-                      <span
-                        key={domain}
-                        className="badge bg-success/10 text-success border border-success/30 px-2 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium shadow-sm"
-                      >
-                        {domain}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveFilter('domain', domain)}
-                          className="hover:text-success-hover hover:bg-success/20 rounded-full p-0.5 transition-colors"
-                        >
-                          <i className="ri-close-line text-xs"></i>
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
               </div>
-            </div>
-
-            {/* Education Filter */}
-            <div className="pb-4 border-b border-gray-200 dark:border-defaultborder/10">
-              <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
-                <i className="ri-graduation-cap-line text-info text-base"></i>
-                Education
-                <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allEducation.length})</span>
-              </label>
-              <div className="space-y-2">
-                <input
-                  type="text"
-                  className="form-control !py-1.5 !text-sm mb-1.5"
-                  placeholder="Search education..."
-                  value={searchEducation}
-                  onChange={(e) => setSearchEducation(e.target.value)}
-                />
-                <div className={FACET_LIST_BOX} onWheel={scrollRecruiterFilterBodyIfListEdge}>
-                  <div className="space-y-1">
-                    {filteredEducation.length > 0 ? (
-                      filteredEducation.map((edu) => (
-                        <label
-                          key={edu}
-                          className="flex items-center gap-2 cursor-pointer hover:bg-info/5 dark:hover:bg-info/10 p-1.5 rounded-md transition-colors"
-                        >
-                          <input
-                            type="checkbox"
-                            className="form-check-input !w-3.5 !h-3.5"
-                            checked={filters.education.includes(edu)}
-                            onChange={() => handleMultiSelectChange('education', edu)}
-                          />
-                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">{edu}</span>
-                        </label>
-                      ))
-                    ) : (
-                      <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
-                        No education found
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {filters.education.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pt-1.5">
-                    {filters.education.map((edu) => (
-                      <span
-                        key={edu}
-                        className="badge bg-info/10 text-info border border-info/30 px-2 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium shadow-sm"
-                      >
-                        {edu}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveFilter('education', edu)}
-                          className="hover:text-info-hover hover:bg-info/20 rounded-full p-0.5 transition-colors"
-                        >
-                          <i className="ri-close-line text-xs"></i>
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Location Filter */}
-            <div className="pb-4 border-b border-gray-200 dark:border-defaultborder/10">
-              <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
-                <i className="ri-map-pin-line text-warning text-base"></i>
-                Location
-                <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allLocations.length})</span>
-              </label>
-              <div className="space-y-2">
-                <input
-                  type="text"
-                  className="form-control !py-1.5 !text-sm mb-1.5"
-                  placeholder="Search locations..."
-                  value={searchLocation}
-                  onChange={(e) => setSearchLocation(e.target.value)}
-                />
-                <div className={FACET_LIST_BOX} onWheel={scrollRecruiterFilterBodyIfListEdge}>
-                  <div className="space-y-1">
-                    {filteredLocations.length > 0 ? (
-                      filteredLocations.map((location) => (
-                        <label
-                          key={location}
-                          className="flex items-center gap-2 cursor-pointer hover:bg-warning/5 dark:hover:bg-warning/10 p-1.5 rounded-md transition-colors"
-                        >
-                          <input
-                            type="checkbox"
-                            className="form-check-input !w-3.5 !h-3.5"
-                            checked={filters.location.includes(location)}
-                            onChange={() => handleMultiSelectChange('location', location)}
-                          />
-                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">{location}</span>
-                        </label>
-                      ))
-                    ) : (
-                      <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
-                        No locations found
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {filters.location.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pt-1.5">
-                    {filters.location.map((location) => (
-                      <span
-                        key={location}
-                        className="badge bg-warning/10 text-warning border border-warning/30 px-2 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium shadow-sm"
-                      >
-                        {location}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveFilter('location', location)}
-                          className="hover:text-warning-hover hover:bg-warning/20 rounded-full p-0.5 transition-colors"
-                        >
-                          <i className="ri-close-line text-xs"></i>
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Email Filter */}
-            <div className="pb-4">
-              <label htmlFor="recruiter-filter-email-search" className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
-                <i className="ri-mail-line text-warning text-base"></i>
-                Email
-                <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allEmails.length})</span>
-              </label>
-              <div className="space-y-2">
-                <input
-                  id="recruiter-filter-email-search"
-                  type="search"
-                  className="form-control !py-1.5 !text-sm mb-1.5 min-h-11"
-                  placeholder="Search emails..."
-                  value={searchEmail}
-                  onChange={(e) => setSearchEmail(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && searchEmail.trim()) {
-                      setFilters((prev) => ({ ...prev, email: searchEmail.trim() }))
-                    }
-                  }}
-                  autoComplete="off"
-                  aria-label="Search emails"
-                />
-                <div className={FACET_LIST_BOX} onWheel={scrollRecruiterFilterBodyIfListEdge}>
-                  <div className="space-y-1">
-                    {filteredEmails.length > 0 ? (
-                      filteredEmails.map((email) => (
-                        <label
-                          key={email}
-                          className="flex items-center gap-2 cursor-pointer hover:bg-warning/5 dark:hover:bg-warning/10 min-h-11 p-1.5 rounded-md transition-colors"
-                        >
-                          <input
-                            type="checkbox"
-                            className="form-check-input !w-3.5 !h-3.5"
-                            checked={filters.email === email}
-                            onChange={() =>
-                              setFilters((prev) => ({
-                                ...prev,
-                                email: prev.email === email ? '' : email,
-                              }))
-                            }
-                          />
-                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium break-all">{email}</span>
-                        </label>
-                      ))
-                    ) : (
-                      <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
-                        No emails found
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {filters.email !== '' && (
-                  <div className="flex flex-wrap gap-1.5 pt-1.5">
-                    <span className="badge bg-warning/10 text-warning border border-warning/30 px-2 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium shadow-sm">
-                      {filters.email}
+              {filters.name.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1.5">
+                  {filters.name.map((name) => (
+                    <span
+                      key={name}
+                      className="badge bg-primary/10 text-primary border border-primary/30 px-2 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium shadow-sm"
+                    >
+                      {name}
                       <button
                         type="button"
-                        onClick={() => setFilters((prev) => ({ ...prev, email: '' }))}
-                        className="hover:bg-warning/20 rounded-full p-0.5 transition-colors"
-                        aria-label={`Remove email filter ${filters.email}`}
+                        onClick={() => handleRemoveFilter('name', name)}
+                        className="hover:text-primary-hover hover:bg-primary/20 rounded-full p-0.5 transition-colors"
                       >
                         <i className="ri-close-line text-xs"></i>
                       </button>
                     </span>
-                  </div>
-                )}
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Domain Filter */}
+          <div className="pb-4 border-b border-gray-200 dark:border-defaultborder/10">
+            <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
+              <i className="ri-building-2-line text-success text-base"></i>
+              Domain
+              <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allDomains.length})</span>
+            </label>
+            <div className="space-y-2">
+              <input
+                type="text"
+                className="form-control !py-1.5 !text-sm mb-1.5"
+                placeholder="Search domains..."
+                value={searchDomain}
+                onChange={(e) => setSearchDomain(e.target.value)}
+              />
+              <div className={FACET_LIST_BOX} onWheel={scrollRecruiterFilterBodyIfListEdge}>
+                <div className="space-y-1">
+                  {filteredDomains.length > 0 ? (
+                    filteredDomains.map((domain) => (
+                      <label
+                        key={domain}
+                        className="flex items-center gap-2 cursor-pointer hover:bg-success/5 dark:hover:bg-success/10 p-1.5 rounded-md transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          className="form-check-input !w-3.5 !h-3.5"
+                          checked={filters.domain.includes(domain)}
+                          onChange={() => handleMultiSelectChange('domain', domain)}
+                        />
+                        <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">{domain}</span>
+                      </label>
+                    ))
+                  ) : (
+                    <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
+                      No domains found
+                    </div>
+                  )}
+                </div>
               </div>
+              {filters.domain.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1.5">
+                  {filters.domain.map((domain) => (
+                    <span
+                      key={domain}
+                      className="badge bg-success/10 text-success border border-success/30 px-2 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium shadow-sm"
+                    >
+                      {domain}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveFilter('domain', domain)}
+                        className="hover:text-success-hover hover:bg-success/20 rounded-full p-0.5 transition-colors"
+                      >
+                        <i className="ri-close-line text-xs"></i>
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Education Filter */}
+          <div className="pb-4 border-b border-gray-200 dark:border-defaultborder/10">
+            <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
+              <i className="ri-graduation-cap-line text-info text-base"></i>
+              Education
+              <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allEducation.length})</span>
+            </label>
+            <div className="space-y-2">
+              <input
+                type="text"
+                className="form-control !py-1.5 !text-sm mb-1.5"
+                placeholder="Search education..."
+                value={searchEducation}
+                onChange={(e) => setSearchEducation(e.target.value)}
+              />
+              <div className={FACET_LIST_BOX} onWheel={scrollRecruiterFilterBodyIfListEdge}>
+                <div className="space-y-1">
+                  {filteredEducation.length > 0 ? (
+                    filteredEducation.map((edu) => (
+                      <label
+                        key={edu}
+                        className="flex items-center gap-2 cursor-pointer hover:bg-info/5 dark:hover:bg-info/10 p-1.5 rounded-md transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          className="form-check-input !w-3.5 !h-3.5"
+                          checked={filters.education.includes(edu)}
+                          onChange={() => handleMultiSelectChange('education', edu)}
+                        />
+                        <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">{edu}</span>
+                      </label>
+                    ))
+                  ) : (
+                    <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
+                      No education found
+                    </div>
+                  )}
+                </div>
+              </div>
+              {filters.education.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1.5">
+                  {filters.education.map((edu) => (
+                    <span
+                      key={edu}
+                      className="badge bg-info/10 text-info border border-info/30 px-2 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium shadow-sm"
+                    >
+                      {edu}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveFilter('education', edu)}
+                        className="hover:text-info-hover hover:bg-info/20 rounded-full p-0.5 transition-colors"
+                      >
+                        <i className="ri-close-line text-xs"></i>
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Location Filter */}
+          <div className="pb-4 border-b border-gray-200 dark:border-defaultborder/10">
+            <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
+              <i className="ri-map-pin-line text-warning text-base"></i>
+              Location
+              <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allLocations.length})</span>
+            </label>
+            <div className="space-y-2">
+              <input
+                type="text"
+                className="form-control !py-1.5 !text-sm mb-1.5"
+                placeholder="Search locations..."
+                value={searchLocation}
+                onChange={(e) => setSearchLocation(e.target.value)}
+              />
+              <div className={FACET_LIST_BOX} onWheel={scrollRecruiterFilterBodyIfListEdge}>
+                <div className="space-y-1">
+                  {filteredLocations.length > 0 ? (
+                    filteredLocations.map((location) => (
+                      <label
+                        key={location}
+                        className="flex items-center gap-2 cursor-pointer hover:bg-warning/5 dark:hover:bg-warning/10 p-1.5 rounded-md transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          className="form-check-input !w-3.5 !h-3.5"
+                          checked={filters.location.includes(location)}
+                          onChange={() => handleMultiSelectChange('location', location)}
+                        />
+                        <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">{location}</span>
+                      </label>
+                    ))
+                  ) : (
+                    <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
+                      No locations found
+                    </div>
+                  )}
+                </div>
+              </div>
+              {filters.location.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1.5">
+                  {filters.location.map((location) => (
+                    <span
+                      key={location}
+                      className="badge bg-warning/10 text-warning border border-warning/30 px-2 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium shadow-sm"
+                    >
+                      {location}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveFilter('location', location)}
+                        className="hover:text-warning-hover hover:bg-warning/20 rounded-full p-0.5 transition-colors"
+                      >
+                        <i className="ri-close-line text-xs"></i>
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Email Filter */}
+          <div className="pb-4">
+            <label htmlFor="recruiter-filter-email-search" className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
+              <i className="ri-mail-line text-warning text-base"></i>
+              Email
+              <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allEmails.length})</span>
+            </label>
+            <div className="space-y-2">
+              <input
+                id="recruiter-filter-email-search"
+                type="search"
+                className="form-control !py-1.5 !text-sm mb-1.5 min-h-11"
+                placeholder="Search emails..."
+                value={searchEmail}
+                onChange={(e) => setSearchEmail(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && searchEmail.trim()) {
+                    setFilters((prev) => ({ ...prev, email: searchEmail.trim() }))
+                  }
+                }}
+                autoComplete="off"
+                aria-label="Search emails"
+              />
+              <div className={FACET_LIST_BOX} onWheel={scrollRecruiterFilterBodyIfListEdge}>
+                <div className="space-y-1">
+                  {filteredEmails.length > 0 ? (
+                    filteredEmails.map((email) => (
+                      <label
+                        key={email}
+                        className="flex items-center gap-2 cursor-pointer hover:bg-warning/5 dark:hover:bg-warning/10 min-h-11 p-1.5 rounded-md transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          className="form-check-input !w-3.5 !h-3.5"
+                          checked={filters.email === email}
+                          onChange={() =>
+                            setFilters((prev) => ({
+                              ...prev,
+                              email: prev.email === email ? '' : email,
+                            }))
+                          }
+                        />
+                        <span className="text-xs text-gray-700 dark:text-gray-300 font-medium break-all">{email}</span>
+                      </label>
+                    ))
+                  ) : (
+                    <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
+                      No emails found
+                    </div>
+                  )}
+                </div>
+              </div>
+              {filters.email !== '' && (
+                <div className="flex flex-wrap gap-1.5 pt-1.5">
+                  <span className="badge bg-warning/10 text-warning border border-warning/30 px-2 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium shadow-sm">
+                    {filters.email}
+                    <button
+                      type="button"
+                      onClick={() => setFilters((prev) => ({ ...prev, email: '' }))}
+                      className="hover:bg-warning/20 rounded-full p-0.5 transition-colors"
+                      aria-label={`Remove email filter ${filters.email}`}
+                    >
+                      <i className="ri-close-line text-xs"></i>
+                    </button>
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </div>
-        <div className="ti-offcanvas-footer !relative !bottom-auto shrink-0 px-4 py-3 flex gap-2">
-            <button
-              type="button"
-              className="ti-btn ti-btn-primary flex-1 font-medium shadow-sm hover:shadow-md transition-shadow !py-1.5 !text-sm min-h-11"
-              onClick={handleResetFilters}
-            >
-              <i className="ri-refresh-line me-1.5"></i>Reset
-            </button>
-            <button
-              type="button"
-              className="ti-btn ti-btn-light font-medium shadow-sm hover:shadow-md transition-shadow !py-1.5 !text-sm min-h-11"
-              onClick={closeFilterPanel}
-            >
-              <i className="ri-close-line me-1.5"></i>Close
-            </button>
-        </div>
-        </div>
-      </div>
+      </FilterDrawerShell>
 
       {/* Recruiter Preview Panel (Offcanvas) */}
       <div 
