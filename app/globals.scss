@@ -1,28 +1,8 @@
 @use "../public/assets/css/style.css" as *;
 
-// Packages css
-@use "react-datepicker/dist/react-datepicker.css" as *; // (datepicker)
-
-@use "@simonwep/pickr/dist/themes/classic.min.css" as *;
-@use "@simonwep/pickr/dist/themes/monolith.min.css" as *;
-@use "@simonwep/pickr/dist/themes/nano.min.css" as *;
+// react-datepicker base CSS: imported from YmdFilterDateInput / DateTimeOverlay / other datepicker entry components (not global).
 
 @use "simplebar-react/dist/simplebar.min.css" as *;
-
-@use "swiper/css" as *;
-@use "swiper/css/pagination" as *;
-@use "swiper/css/navigation" as *;
-@use "swiper/css/effect-coverflow" as *;
-@use "swiper/css/thumbs" as *;
-@use "swiper/css/effect-flip" as *;
-@use "swiper/css/effect-fade" as *;
-@use "swiper/css/effect-cube" as *;
-@use "swiper/css/effect-cards" as *; // swiper effect-cards
-@use "swiper/css/zoom" as *; // Swiper Zoom css
-@use "swiper/css/scrollbar" as *;
-@use "swiper/css/free-mode" as *;
-
-@use "react-color-palette/css" as *;
 
 /* Root-level @media (do not indent ? nested @media can confuse the SCSS parser and break line 37). */
 @media (max-width: 991.98px) {
@@ -560,19 +540,16 @@ html.swal2-shown {
 }
 
 /*
- * Applications table header pins to the top of its own scrollport. These th cells
- * carry no background of their own (theme `.table` paints the row), so an opaque
- * one is required or rows show through as they scroll under it.
+ * Jobs / applications table headers pin to the top of their scrollport. `th` cells
+ * carry no opaque background of their own (theme `.table` paints the row), so rows
+ * show through sticky headers unless each cell is painted solid in light and dark.
  */
+.jobs-table-scroll thead th,
 .applications-table-scroll thead th {
   position: sticky;
   top: 0;
   z-index: 10;
-  background-color: rgb(249 250 251);
-}
-
-.dark .applications-table-scroll thead th {
-  background-color: rgb(var(--body-bg));
+  @apply bg-gray-50 dark:bg-bodybg;
 }
 
 /*
@@ -585,6 +562,268 @@ html.swal2-shown {
 .applications-table-scroll table {
   border-collapse: separate;
   border-spacing: 0;
+}
+
+.applications-table-scroll {
+  overflow-x: clip !important;
+  scrollbar-gutter: stable;
+}
+
+/*
+ * `.table-responsive` is `display:block`; without this, a strut line box adds a hairline gap
+ * above the table before the sticky thead (toolbar ? header seam on Applications).
+ */
+.applications-table-scroll.table-responsive {
+  line-height: 0;
+}
+
+.applications-table-scroll.table-responsive > .applications-data-table {
+  line-height: normal;
+}
+
+.applications-list-container {
+  container-type: inline-size;
+  container-name: applications-list;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.applications-list-cards {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+
+  @media (max-width: 639px) {
+    padding: 0.75rem;
+    gap: 0.75rem;
+  }
+}
+
+@mixin applications-table-col-hidden {
+  display: none !important;
+  width: 0 !important;
+  max-width: 0 !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  overflow: hidden !important;
+}
+
+.applications-table-scroll col.applications-col-department,
+.applications-table-scroll th.applications-col-department,
+.applications-table-scroll td.applications-col-department {
+  @include applications-table-col-hidden;
+}
+
+.applications-table-scroll col.applications-col-culture,
+.applications-table-scroll th.applications-col-culture,
+.applications-table-scroll td.applications-col-culture {
+  @include applications-table-col-hidden;
+}
+
+.applications-table-scroll col.applications-col-applied,
+.applications-table-scroll th.applications-col-applied,
+.applications-table-scroll td.applications-col-applied {
+  @include applications-table-col-hidden;
+}
+
+.applications-table-scroll col.applications-col-documents,
+.applications-table-scroll th.applications-col-documents,
+.applications-table-scroll td.applications-col-documents {
+  @include applications-table-col-hidden;
+}
+
+@mixin applications-table-col-visible($width: auto) {
+  display: table-cell !important;
+  width: $width !important;
+  max-width: $width !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  padding: inherit !important;
+  border: inherit !important;
+}
+
+.applications-data-table {
+  table-layout: fixed;
+  width: 100%;
+  max-width: 100%;
+  font-size: 0.8125rem;
+}
+
+.applications-data-table th,
+.applications-data-table td {
+  min-width: 0;
+  overflow: hidden;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  vertical-align: middle;
+}
+
+.applications-data-table thead th {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.applications-applicant-applied-meta {
+  display: block;
+}
+
+@container applications-list (max-width: 1119px) {
+  .applications-job-org-meta {
+    display: none;
+  }
+}
+
+.applications-data-table col.applications-col-applicant,
+.applications-data-table .applications-col-applicant {
+  width: 28%;
+}
+
+.applications-data-table col.applications-col-job,
+.applications-data-table .applications-col-job {
+  width: 24%;
+}
+
+.applications-data-table col.applications-col-status,
+.applications-data-table .applications-col-status {
+  width: 11%;
+  min-width: 0;
+}
+
+.applications-data-table .applications-col-status {
+  overflow: visible;
+}
+
+.applications-data-table .applications-col-status .application-status-select {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.applications-data-table .applications-col-status .application-status-select__control {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@container applications-list (max-width: 1119px) {
+  .applications-data-table col.applications-col-applicant,
+  .applications-data-table .applications-col-applicant {
+    width: 26%;
+  }
+
+  .applications-data-table col.applications-col-job,
+  .applications-data-table .applications-col-job {
+    width: 21%;
+  }
+
+  .applications-data-table col.applications-col-status {
+    width: 6.75rem;
+  }
+
+  .applications-data-table .applications-col-status {
+    width: 6.75rem;
+    min-width: 6.75rem;
+    max-width: 7.5rem;
+  }
+}
+
+.applications-data-table col.applications-col-success,
+.applications-data-table .applications-col-success {
+  width: 4.25rem;
+}
+
+.applications-data-table col.applications-col-culture,
+.applications-data-table .applications-col-culture {
+  width: 5.5rem;
+}
+
+.applications-data-table col.applications-col-actions,
+.applications-data-table .applications-col-actions {
+  width: 6.75rem;
+  min-width: 0;
+  max-width: 6.75rem;
+}
+
+.applications-data-table .applications-col-actions {
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
+  overflow: visible;
+}
+
+@container applications-list (min-width: 1040px) {
+  .applications-applicant-applied-meta {
+    display: none;
+  }
+
+  .applications-table-scroll col.applications-col-applied {
+    width: 6.25rem;
+  }
+
+  .applications-table-scroll th.applications-col-applied,
+  .applications-table-scroll td.applications-col-applied {
+    @include applications-table-col-visible(6.25rem);
+  }
+}
+
+@container applications-list (min-width: 1120px) {
+  .applications-data-table col.applications-col-applicant,
+  .applications-data-table .applications-col-applicant {
+    width: 24%;
+  }
+
+  .applications-data-table col.applications-col-job,
+  .applications-data-table .applications-col-job {
+    width: 20%;
+  }
+
+  .applications-table-scroll col.applications-col-department {
+    width: 9%;
+  }
+
+  .applications-table-scroll th.applications-col-department,
+  .applications-table-scroll td.applications-col-department {
+    @include applications-table-col-visible(9%);
+  }
+}
+
+@container applications-list (min-width: 1160px) {
+  .applications-table-scroll col.applications-col-culture {
+    width: 5.5rem;
+  }
+
+  .applications-table-scroll th.applications-col-culture,
+  .applications-table-scroll td.applications-col-culture {
+    @include applications-table-col-visible(5.5rem);
+  }
+}
+
+@container applications-list (min-width: 1280px) {
+  .applications-data-table col.applications-col-applicant,
+  .applications-data-table .applications-col-applicant {
+    width: 22%;
+  }
+
+  .applications-data-table col.applications-col-job,
+  .applications-data-table .applications-col-job {
+    width: 18%;
+  }
+
+  .applications-table-scroll col.applications-col-documents {
+    width: 6.5rem;
+  }
+
+  .applications-table-scroll th.applications-col-documents,
+  .applications-table-scroll td.applications-col-documents {
+    @include applications-table-col-visible(6.5rem);
+  }
 }
 
 /* ATS jobs list ? responsive table/columns from content width (sidebar-aware). */
@@ -608,7 +847,9 @@ html.swal2-shown {
 
 /* Jobs list toolbar (title, search, actions) */
 .jobs-list-toolbar {
-  @apply border-b border-defaultborder/60 bg-white dark:border-white/10 dark:bg-bodybg;
+  @apply bg-white dark:bg-bodybg;
+  /* Divider sits on the table thead row so the command strip meets the header with no dead band. */
+  border-bottom: 0;
 }
 
 .jobs-list-toolbar__title {
@@ -621,6 +862,7 @@ html.swal2-shown {
 
 .jobs-list-toolbar__inner {
   padding-top: 0.875rem;
+  padding-bottom: 0;
 }
 
 .jobs-list-toolbar__command {
@@ -728,6 +970,19 @@ html.swal2-shown {
   min-height: 0;
   min-width: 0;
   overflow-y: auto;
+
+  @media (max-width: 639px) {
+    padding: 0.75rem;
+    gap: 0.75rem;
+  }
+}
+
+
+/* List scrollport flush to toolbar / filter chrome (no stripe above thead). */
+.jobs-page-shell .jobs-list-container > .jobs-list-table,
+.applications-page-root .applications-list-container > .applications-table-scroll {
+  margin-top: 0;
+  padding-top: 0;
 }
 
 .jobs-list-table {
@@ -873,16 +1128,11 @@ html.swal2-shown {
 }
 
 .jobs-data-table thead.jobs-table-thead {
-  @apply bg-gray-50/95 dark:bg-bodybg;
+  @apply bg-gray-50 dark:bg-bodybg;
 }
 
 .jobs-data-table thead.jobs-table-thead tr {
   @apply border-b border-defaultborder/70 dark:border-white/10;
-  box-shadow: 0 1px 0 rgb(var(--default-border) / 0.35);
-}
-
-.dark .jobs-data-table thead.jobs-table-thead tr {
-  box-shadow: 0 1px 0 rgb(255 255 255 / 0.06);
 }
 
 .jobs-data-table .jobs-table-th {
@@ -1187,7 +1437,221 @@ html.swal2-shown {
   height: calc(100dvh - 5.75rem);
   max-height: calc(100dvh - 5.75rem);
   min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+  /* hidden: contain layout without clip, which breaks nested horizontal scrollports */
+  overflow-x: hidden;
   padding-bottom: 0 !important;
+}
+
+.applications-page-root > .box {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Pipeline stage chips: horizontal scroll on narrow viewports */
+.applications-pipeline-scroll {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: 0.5rem;
+  scrollbar-width: thin;
+
+  @media (max-width: 639px) {
+    /* Full-bleed scroll within padded box-body */
+    margin-inline: -0.25rem;
+    padding-inline: 0.25rem;
+    padding-bottom: 0;
+    border: none;
+    box-shadow: none;
+    /* Hide scrollbar track (gray bar under pills); touch scroll still works */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+      width: 0;
+      height: 0;
+    }
+  }
+}
+
+/* Phone: document scroll ? footer after cards, not pinned in viewport shell */
+@media (max-width: 639px) {
+  .jobs-page-shell {
+    height: auto;
+    max-height: none;
+  }
+
+  .jobs-page-shell .box.custom-box {
+    flex: 0 1 auto !important;
+    min-height: auto !important;
+  }
+
+  .jobs-page-shell .box-body {
+    overflow: visible !important;
+  }
+
+  .jobs-page-shell .jobs-list-container {
+    overflow: visible !important;
+    flex: 0 1 auto !important;
+    min-height: auto !important;
+  }
+
+  .jobs-list-cards {
+    overflow-y: visible !important;
+    flex: 0 1 auto !important;
+    min-height: auto !important;
+  }
+
+  .jobs-list-footer {
+    position: static;
+  }
+
+  .applications-page-root {
+    height: auto;
+    max-height: none;
+  }
+
+  .applications-page-root > .box.flex-1 {
+    flex: 0 1 auto !important;
+    min-height: auto !important;
+  }
+
+  .applications-page-root > .box.flex-1 > .box-body {
+    overflow: visible !important;
+  }
+
+  .applications-page-root .applications-list-container {
+    overflow: visible !important;
+    flex: 0 1 auto !important;
+    min-height: auto !important;
+  }
+
+  .applications-list-cards {
+    overflow-y: visible !important;
+    flex: 0 1 auto !important;
+    min-height: auto !important;
+  }
+
+  .applications-list-footer {
+    position: static;
+  }
+}
+
+/* Applications list footer ? same stacked pager behavior as jobs-list-pagination */
+.applications-list-pagination {
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between !important;
+  row-gap: 0.625rem;
+  column-gap: 0.75rem;
+}
+
+.applications-list-pagination .list-pagination__summary .bi-arrow-right {
+  display: none;
+}
+
+.applications-list-pagination .list-pagination__summary {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  @apply text-gray-600 dark:text-white/65;
+}
+
+.applications-list-pagination .list-pagination__pager-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-left: auto;
+  gap: 0.5rem 1rem;
+}
+
+@media (max-width: 960px) {
+  .applications-list-footer {
+    padding: 0.5rem 0.625rem;
+  }
+
+  .applications-list-pagination {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.625rem;
+  }
+
+  .applications-list-pagination .list-pagination__summary {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
+  .applications-list-pagination .ti-pagination .page-link {
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+    font-size: 0.75rem;
+  }
+
+  .applications-list-pagination .list-pagination__pager-group {
+    width: 100%;
+    flex-basis: auto;
+    margin-left: 0;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .applications-list-pagination .list-pagination__goto {
+    padding-left: 0;
+    margin-left: 0;
+    border-left: none;
+    padding-top: 0.25rem;
+    justify-content: center;
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .applications-list-pagination .list-pagination__summary {
+    font-size: 0.75rem;
+    text-align: left;
+  }
+
+  .applications-list-pagination .ti-pagination li.page-item:not(:first-child):not(:last-child):not(.active) {
+    display: none;
+  }
+
+  .applications-list-pagination .list-pagination__pager-group {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.625rem;
+    padding: 0;
+  }
+
+  .applications-list-pagination .pagination-style-4 {
+    width: 100%;
+  }
+
+  .applications-list-pagination .pagination-style-4 .ti-pagination {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .applications-list-pagination .list-pagination__goto {
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 390px) {
+  .applications-list-pagination .list-pagination__goto {
+    display: none;
+  }
 }
 
 @media (min-width: 640px) {
@@ -1545,4 +2009,13 @@ html.swal2-shown {
   .jobs-form-panel {
     animation: none !important;
   }
+}
+
+/* ponytail: sidebar module labels ? .slide__category opacity-50 fails WCAG on #111c43 */
+.app-sidebar .slide__category.nav-module-section {
+  opacity: 1;
+}
+.app-sidebar .slide__category.nav-module-section .category-name,
+.app-sidebar .slide__category.nav-module-section .category-name span {
+  color: #b8c5e0;
 }

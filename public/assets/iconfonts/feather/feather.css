@@ -2,6 +2,7 @@
 
 @font-face {
 	font-family: "feather";
+	font-display: swap;
 	src: url("fonts/feather/feather-webfont.eot?t=1501841394106");
 	/* IE9*/
 	src: url("fonts/feather/feather-webfont.eot?t=1501841394106") format("embedded-opentype"),

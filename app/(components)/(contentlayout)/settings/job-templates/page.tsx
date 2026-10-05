@@ -5,13 +5,6 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import Seo from "@/shared/layout-components/seo/seo";
-
-// Match the create/edit pages: both react-select entry points dynamic + ssr:false
-// to keep the chunk graph consistent (Turbopack is sensitive to mixed boundaries).
-const Select = dynamic(() => import("react-select"), { ssr: false });
-const CreatableSelect = dynamic(() => import("react-select/creatable"), { ssr: false });
-
-type SelectOption = { value: string; label: string };
 import { ROUTES } from "@/shared/lib/constants";
 import {
   hasJobsManageAccess,
@@ -35,6 +28,13 @@ import { normalizeTipTapHtmlFromApi } from "@/shared/lib/tiptapHtml";
 import { usePmReactSelectStyles } from "@/shared/hooks/usePmReactSelectStyles";
 import { AxiosError } from "axios";
 import Swal from "sweetalert2";
+
+// Match the create/edit pages: both react-select entry points dynamic + ssr:false
+// to keep the chunk graph consistent (Turbopack is sensitive to mixed boundaries).
+const Select = dynamic(() => import("react-select"), { ssr: false });
+const CreatableSelect = dynamic(() => import("react-select/creatable"), { ssr: false });
+
+type SelectOption = { value: string; label: string };
 
 function formatTs(iso: string | undefined | null): string {
   if (!iso) return "—";

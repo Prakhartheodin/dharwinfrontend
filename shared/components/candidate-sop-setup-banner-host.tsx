@@ -1,9 +1,15 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useMemo } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import CandidateNextActionsStrip from "@/app/(components)/(contentlayout)/ats/employees/_components/CandidateNextActionsStrip";
 import { candidateIdFromUrl } from "./candidate-sop-url";
+
+const CandidateNextActionsStrip = dynamic(
+  () =>
+    import("@/app/(components)/(contentlayout)/ats/employees/_components/CandidateNextActionsStrip"),
+  { ssr: false, loading: () => null },
+);
 
 export { candidateIdFromUrl } from "./candidate-sop-url";
 

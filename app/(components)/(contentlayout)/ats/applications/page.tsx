@@ -3,7 +3,16 @@
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import React, { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import React, { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import { createPortal } from "react-dom";
+import { SimpleModal } from "@/shared/components/ui/SimpleModal";
+import { useConfirm } from "@/shared/components/ui/useConfirm";
+import {
+  DEFAULT_APPLICATION_SORT,
+  readApplicationsFromQuery,
+  writeApplicationsToQuery,
+} from "@/shared/lib/ats/application-list-filters";
 import ListPagination from "@/shared/components/ListPagination";
 import { useAuth } from "@/shared/contexts/auth-context";
 import {
@@ -14,7 +23,6 @@ import {
 } from "@/shared/lib/api/jobApplications";
 import { getJobFilterOptions, type JobFilterOptionItem } from "@/shared/lib/api/jobs";
 import {
-  isPublicEmail,
   isInternalRelayEmail,
   pickPublicEmail,
   resolveApplicantEmail,
@@ -30,7 +38,6 @@ import { getApiErrorMessage } from "@/shared/lib/api/client";
 import { YmdFilterDateInput } from "@/shared/components/filters/YmdFilterDateInput";
 import { getReferralLeadsDateRangeError, getYmdDateRangeIncompleteError } from "@/shared/lib/ymd-filter-date-input.util";
 import { alertYmdDateRangeIncomplete } from "@/shared/lib/ymd-filter-date-range-alert";
-import RoundHistoryPanel from "@/shared/components/interview/RoundHistoryPanel";
 import {
   ApplicantFitChips,
   CulturalFitCell,
@@ -39,21 +46,33 @@ import {
 } from "./_components/ApplicantFitCells";
 import {
   ApplicantFitColumnHeader,
-  ApplicantFitInfoDrawer,
 } from "./_components/ApplicantFitInfoDrawer";
+import { APPLICATIONS_TABLE_COLUMN_CLASS } from "./_components/applicationsTableResponsive";
+import { useApplicationsListContainerLayout } from "./_components/useApplicationsListContainerLayout";
 
+const RoundHistoryPanel = dynamic(
+  () => import("@/shared/components/interview/RoundHistoryPanel"),
+  { ssr: false, loading: () => <div className="py-8 text-center text-sm text-defaulttextcolor/60">Loading rounds…</div> },
+);
+
+const ApplicantFitInfoDrawer = dynamic(
+  () => import("./_components/ApplicantFitInfoDrawer").then((m) => m.ApplicantFitInfoDrawer),
+  { ssr: false },
+);
+
+const APP_COL = APPLICATIONS_TABLE_COLUMN_CLASS;
+
+const APPLIED_FROM_INPUT_ID = "applications-applied-from";
 const APPLIED_TO_INPUT_ID = "applications-applied-to";
+const SEARCH_INPUT_ID = "applications-search";
+
+const SKELETON_PULSE = "bg-gray-100 dark:bg-white/5 rounded motion-safe:animate-pulse motion-reduce:animate-none";
 
 /** Same default as Onboarding / Jobs / Students / Recruiters. */
 const LIST_PAGE_SIZE = 10;
 
-function parseListPage(raw: string | null | undefined): number {
-  const n = Number.parseInt(String(raw ?? ""), 10);
-  return Number.isInteger(n) && n >= 1 ? n : 1;
-}
-
 const FILTER_LABEL =
-  "form-label text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50 mb-1 block";
+  "form-label text-[0.6875rem] uppercase tracking-wide text-defaulttextcolor/50 dark:text-white/50 mb-1 block";
 const FILTER_CONTROL_HEIGHT = "!h-[2.75rem] sm:!h-9";
 // ti-form-select ships py-3; inside a fixed 2.75rem/9 height that clips text vertically and
 // can make short labels look like ellipsis. Match ReferralLeads: form-select + zero vertical
@@ -65,6 +84,18 @@ const FILTER_INPUT = `ti-form-control form-control-sm w-full min-w-0 ${FILTER_CO
 const FILTER_DATE_INPUT = `ti-form-control form-control-sm w-full min-w-0 ${FILTER_CONTROL_HEIGHT} ${FILTER_CONTROL_TYPO} !rounded-xl`;
 const FILTER_DATE_WRAPPER =
   "min-w-0 w-full [&_.react-datepicker-wrapper]:w-full [&_.react-datepicker__input-container]:w-full [&_.react-datepicker__input-container_input]:!h-[2.75rem] sm:[&_.react-datepicker__input-container_input]:!h-9 [&_.react-datepicker__input-container_input]:!py-0 [&_.react-datepicker__input-container_input]:!leading-[2.75rem] sm:[&_.react-datepicker__input-container_input]:!leading-9";
+
+function useNarrowViewport(maxWidthPx: number): boolean {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${maxWidthPx}px)`);
+    const onChange = () => setNarrow(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [maxWidthPx]);
+  return narrow;
+}
 
 function formatDate(s?: string | null): string {
   if (!s) return "—";
@@ -150,7 +181,17 @@ type ApplicationRowMeta = {
   jobId: string;
   appliedAt?: string | null;
   isEmployee: boolean;
+  profilePhotoUrl?: string | null;
 };
+
+
+function jobOrganisationSubtitle(jobTitle: string, orgName?: string | null): string | null {
+  const title = jobTitle.trim();
+  const org = orgName?.trim();
+  if (!org || org === "—") return null;
+  if (title && org.toLowerCase() === title.toLowerCase()) return null;
+  return org;
+}
 
 function getApplicationRowMeta(app: ApplicationWithDocs): ApplicationRowMeta {
   const id = String(app._id ?? app.id ?? "");
@@ -195,18 +236,55 @@ function getApplicationRowMeta(app: ApplicationWithDocs): ApplicationRowMeta {
     isEmployee:
       Boolean(c.employeeId && String(c.employeeId).trim()) ||
       ["employee", "joined", "resigned"].includes(String(c.referralPipelineStatus ?? "")),
+    profilePhotoUrl: c.profilePicture?.url?.trim() || null,
   };
 }
 
 // Employee = applicant is already staff (permanent DBS employeeId / converted in pipeline)
 // applying internally; Candidate = not yet an employee.
-function ApplicantTypeBadge({ isEmployee }: { isEmployee: boolean }) {
+function ApplicationApplicantAvatar({
+  name,
+  photoUrl,
+}: {
+  name: string;
+  photoUrl?: string | null;
+}) {
+  const [photoFailed, setPhotoFailed] = useState(false);
+  const showPhoto = Boolean(photoUrl?.trim()) && !photoFailed;
+  const avatarClass =
+    "avatar avatar-sm bg-primary/10 text-[#724bb7] dark:text-purple-300 rounded-md flex items-center justify-center text-xs font-semibold shrink-0 !h-8 !w-8";
+  if (showPhoto) {
+    return (
+      <img
+        src={photoUrl!}
+        alt=""
+        width={32}
+        height={32}
+        sizes="32px"
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        className={`${avatarClass} object-cover !p-0 bg-transparent text-[0.6875rem]`}
+        onError={() => setPhotoFailed(true)}
+      />
+    );
+  }
+  return <span className={`${avatarClass} text-[0.6875rem]`}>{getInitials(name)}</span>;
+}
+
+function ApplicantTypeBadge({
+  isEmployee,
+  inline = false,
+}: {
+  isEmployee: boolean;
+  inline?: boolean;
+}) {
   return (
     <span
-      className={`mt-0.5 inline-block text-[0.625rem] font-semibold px-1.5 py-0.5 rounded-full ${
+      className={`${inline ? "" : "mt-0.5"} inline-block shrink-0 text-[0.625rem] font-semibold px-1.5 py-0.5 rounded-full ${
         isEmployee
-          ? "bg-primary/10 text-primary"
-          : "bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60"
+          ? "bg-primary/10 text-primary dark:text-purple-300"
+          : "bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/70"
       }`}
     >
       {isEmployee ? "Employee" : "Candidate"}
@@ -229,7 +307,7 @@ function ApplicationDocLinks({
   compact?: boolean;
 }) {
   const linkClass =
-    "inline-flex items-center gap-1 text-primary hover:underline text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded";
+    "inline-flex items-center gap-1 text-primary dark:text-purple-300 dark:hover:text-purple-200 hover:underline text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded";
   return (
     <div className="flex flex-col items-start gap-1">
       {resume ? (
@@ -244,11 +322,11 @@ function ApplicationDocLinks({
           {/* Says in words, not colour alone, that this is the live profile file rather than the
               one that was sent — otherwise an old application looks identical to a current one. */}
           {resume.isSubmitted ? null : (
-            <span className="text-[0.625rem] font-normal text-[#8c9097] dark:text-white/50">(profile)</span>
+            <span className="text-[0.625rem] font-normal text-defaulttextcolor/50 dark:text-white/50">(profile)</span>
           )}
         </a>
       ) : (
-        <span className="text-[#8c9097]/60 text-xs">{compact ? "—" : "No resume"}</span>
+        <span className="text-defaulttextcolor/60 dark:text-white/60 text-xs">{compact ? "—" : "No resume"}</span>
       )}
       {coverLetter ? (
         <a
@@ -265,10 +343,23 @@ function ApplicationDocLinks({
   );
 }
 
-function ApplicationRowActions({
+const APPLICATIONS_TABLE_ACTION_BTN =
+  "ti-btn ti-btn-icon ti-btn-sm ti-btn-light !h-8 !w-8 !min-h-8 !min-w-8 !p-0 !text-defaulttextcolor/70 hover:!bg-primary/10 hover:!text-primary disabled:!opacity-40";
+
+/** Overrides ti-dropdown-item hover:text-primary (unreadable on dark:bg-bodybg when disabled + hovered). */
+const APPLICATIONS_ROW_MORE_MENU_ITEM =
+  "ti-dropdown-item !py-2 !px-3 !text-[0.8125rem] w-full text-left inline-flex items-center gap-2 text-defaulttextcolor dark:text-white hover:!bg-primary/[0.05] hover:!text-defaulttextcolor dark:hover:!bg-primary/5 dark:hover:!text-white disabled:cursor-not-allowed disabled:!text-gray-400 disabled:hover:!text-gray-400 dark:disabled:!text-gray-500 dark:disabled:hover:!text-gray-500";
+
+const APPLICATIONS_ROW_MORE_MENU_ITEM_DANGER =
+  `${APPLICATIONS_ROW_MORE_MENU_ITEM} !text-rose-600 dark:!text-rose-400 hover:!text-rose-600 dark:hover:!text-rose-400 disabled:!text-gray-400 disabled:hover:!text-gray-400 dark:disabled:!text-gray-500 dark:disabled:hover:!text-gray-500`;
+
+/** Portal menu — Preline hs-dropdown is not re-inited after list fetch and is clipped by overflow-x on the table scrollport. */
+function ApplicationTableRowMoreMenu({
   meta,
   appStatus,
   isUpdating,
+  scheduleBlocked,
+  scheduleTitle,
   onReject,
   onSchedule,
   onRounds,
@@ -276,19 +367,214 @@ function ApplicationRowActions({
   meta: ApplicationRowMeta;
   appStatus: JobApplicationStatus;
   isUpdating: boolean;
+  scheduleBlocked: boolean;
+  scheduleTitle: string;
   onReject: () => void;
   onSchedule: () => void;
   onRounds: () => void;
 }) {
-  const scheduleBlocked = isInterviewSchedulingBlocked(appStatus);
-  const scheduleBlockMessage = getInterviewSchedulingBlockReason(appStatus);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const menuRootRef = useRef<HTMLDivElement>(null);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLUListElement>(null);
+
+  const updateMenuPos = useCallback(() => {
+    const btn = menuBtnRef.current;
+    const menu = menuRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const menuWidth = Math.max(176, menu?.offsetWidth ?? 176);
+    const menuHeight = menu?.offsetHeight ?? 160;
+    const pad = 8;
+
+    let left = rect.right - menuWidth;
+    left = Math.max(pad, Math.min(left, window.innerWidth - menuWidth - pad));
+
+    let top = rect.bottom + 4;
+    if (top + menuHeight > window.innerHeight - pad) {
+      top = Math.max(pad, rect.top - menuHeight - 4);
+    }
+
+    setMenuPos({ top, left });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!menuOpen) return;
+    updateMenuPos();
+    const id = requestAnimationFrame(() => updateMenuPos());
+    return () => cancelAnimationFrame(id);
+  }, [menuOpen, updateMenuPos]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleOutside = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
+      if (!menuRootRef.current?.contains(target) && !menuRef.current?.contains(target)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutside);
+    document.addEventListener("touchstart", handleOutside);
+    window.addEventListener("resize", updateMenuPos);
+    window.addEventListener("scroll", updateMenuPos, true);
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+      document.removeEventListener("touchstart", handleOutside);
+      window.removeEventListener("resize", updateMenuPos);
+      window.removeEventListener("scroll", updateMenuPos, true);
+    };
+  }, [menuOpen, updateMenuPos]);
+
+  const closeAnd = (fn: () => void) => {
+    setMenuOpen(false);
+    fn();
+  };
+
   return (
-    <div className="inline-flex flex-wrap items-center gap-1 justify-start">
+    <div className="applications-table-row-actions flex items-center justify-center gap-0.5">
       <Link
         href={meta.profileHref}
         title="View candidate"
         aria-label="View candidate"
-        className="inline-flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 rounded-md text-[#8c9097] hover:bg-primary/10 hover:text-primary"
+        className={APPLICATIONS_TABLE_ACTION_BTN}
+      >
+        <i className="ri-user-3-line text-[0.8125rem]" aria-hidden />
+      </Link>
+      <a
+        href={meta.emailForMailto ? `mailto:${meta.emailForMailto}` : "#"}
+        title={meta.emailForMailto ? "Send message" : "No public email on file"}
+        aria-label="Send message"
+        onClick={(e) => {
+          if (!meta.emailForMailto) e.preventDefault();
+        }}
+        className={`${APPLICATIONS_TABLE_ACTION_BTN} ${meta.emailForMailto ? "" : "!opacity-40 pointer-events-none"}`}
+      >
+        <i className="ri-mail-line text-[0.8125rem]" aria-hidden />
+      </a>
+      <div ref={menuRootRef} className="relative">
+        <button
+          ref={menuBtnRef}
+          type="button"
+          className={APPLICATIONS_TABLE_ACTION_BTN}
+          aria-label="More actions"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          disabled={isUpdating}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setMenuOpen((open) => !open);
+          }}
+        >
+          <i className="ri-more-2-fill text-[0.8125rem]" aria-hidden />
+        </button>
+        {menuOpen && typeof document !== "undefined"
+          ? createPortal(
+              <ul
+                ref={menuRef}
+                className="fixed z-[12050] min-w-[11rem] max-w-[calc(100vw-1rem)] rounded-lg border border-defaultborder bg-white py-1 shadow-lg dark:border-defaultborder/20 dark:bg-bodybg"
+                style={
+                  menuPos
+                    ? { top: menuPos.top, left: menuPos.left }
+                    : { top: -9999, left: -9999, visibility: "hidden" }
+                }
+                role="menu"
+              >
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={APPLICATIONS_ROW_MORE_MENU_ITEM}
+                    disabled={isUpdating}
+                    onClick={() => closeAnd(onRounds)}
+                  >
+                    <i className="ri-stack-line" aria-hidden />
+                    Interview rounds
+                  </button>
+                </li>
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={APPLICATIONS_ROW_MORE_MENU_ITEM}
+                    disabled={isUpdating || scheduleBlocked}
+                    title={scheduleTitle}
+                    onClick={() => closeAnd(onSchedule)}
+                  >
+                    <i className="ri-calendar-event-line" aria-hidden />
+                    Schedule interview
+                  </button>
+                </li>
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={APPLICATIONS_ROW_MORE_MENU_ITEM_DANGER}
+                    disabled={isUpdating || appStatus === "Rejected"}
+                    onClick={() => closeAnd(onReject)}
+                  >
+                    <i className="ri-close-circle-line" aria-hidden />
+                    Reject
+                  </button>
+                </li>
+              </ul>,
+              document.body,
+            )
+          : null}
+      </div>
+    </div>
+  );
+}
+
+function ApplicationRowActions({
+  meta,
+  appStatus,
+  isUpdating,
+  onReject,
+  onSchedule,
+  onRounds,
+  layout = "card",
+}: {
+  meta: ApplicationRowMeta;
+  appStatus: JobApplicationStatus;
+  isUpdating: boolean;
+  onReject: () => void;
+  onSchedule: () => void;
+  onRounds: () => void;
+  layout?: "card" | "table";
+}) {
+  const scheduleBlocked = isInterviewSchedulingBlocked(appStatus);
+  const scheduleBlockMessage = getInterviewSchedulingBlockReason(appStatus);
+
+  const cardIconClass =
+    "inline-flex items-center justify-center min-w-[2.75rem] min-h-[2.75rem] w-11 h-11 sm:min-w-0 sm:min-h-0 sm:w-8 sm:h-8 rounded-md text-defaulttextcolor/50 hover:bg-primary/10 hover:text-primary";
+
+  if (layout === "table") {
+    const scheduleTitle = scheduleBlocked
+      ? scheduleBlockMessage ?? "Schedule interview unavailable"
+      : "Schedule interview";
+    return (
+      <ApplicationTableRowMoreMenu
+        meta={meta}
+        appStatus={appStatus}
+        isUpdating={isUpdating}
+        scheduleBlocked={scheduleBlocked}
+        scheduleTitle={scheduleTitle}
+        onReject={onReject}
+        onSchedule={onSchedule}
+        onRounds={onRounds}
+      />
+    );
+  }
+
+  return (
+    <div className="applications-card-actions flex flex-wrap items-center gap-1 justify-between sm:justify-start w-full sm:w-auto">
+      <Link
+        href={meta.profileHref}
+        title="View candidate"
+        aria-label="View candidate"
+        className={cardIconClass}
       >
         <i className="ri-user-3-line text-[0.875rem]" />
       </Link>
@@ -299,7 +585,7 @@ function ApplicationRowActions({
         onClick={(e) => {
           if (!meta.emailForMailto) e.preventDefault();
         }}
-        className={`inline-flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 rounded-md text-[#8c9097] hover:bg-primary/10 hover:text-primary ${meta.emailForMailto ? "" : "opacity-40 pointer-events-none"}`}
+        className={`${cardIconClass} ${meta.emailForMailto ? "" : "opacity-40 pointer-events-none"}`}
       >
         <i className="ri-mail-line text-[0.875rem]" />
       </a>
@@ -309,7 +595,7 @@ function ApplicationRowActions({
         aria-label="Interview rounds"
         disabled={isUpdating}
         onClick={onRounds}
-        className="inline-flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 rounded-md text-[#8c9097] hover:bg-primary/10 hover:text-primary disabled:opacity-40"
+        className={`${cardIconClass} disabled:opacity-40`}
       >
         <i className="ri-stack-line text-[0.875rem]" />
       </button>
@@ -319,7 +605,7 @@ function ApplicationRowActions({
         aria-label="Schedule interview"
         disabled={isUpdating || scheduleBlocked}
         onClick={onSchedule}
-        className="inline-flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 rounded-md text-[#8c9097] hover:bg-primary/10 hover:text-primary disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[#8c9097] disabled:cursor-not-allowed"
+        className={`${cardIconClass} disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-defaulttextcolor/50 disabled:cursor-not-allowed`}
       >
         <i className="ri-calendar-event-line text-[0.875rem]" />
       </button>
@@ -329,7 +615,7 @@ function ApplicationRowActions({
         aria-label="Reject"
         disabled={isUpdating || appStatus === "Rejected"}
         onClick={onReject}
-        className="inline-flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 rounded-md text-[#8c9097] hover:bg-rose-500/10 hover:text-rose-600 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[#8c9097]"
+        className={`${cardIconClass} hover:bg-rose-500/10 hover:text-rose-600 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-defaulttextcolor/50`}
       >
         <i className="ri-close-circle-line text-[0.875rem]" />
       </button>
@@ -338,32 +624,44 @@ function ApplicationRowActions({
 }
 
 export default function ApplicationsPage() {
+  const {
+    containerRef: applicationsListContainerRef,
+    showTable: showApplicationsTable,
+    showCards: showApplicationsCards,
+  } = useApplicationsListContainerLayout();
   const { user } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { confirm, confirmDialog } = useConfirm();
+  const roundsCloseRef = useRef<HTMLButtonElement>(null);
+
+  const initialFromUrl = readApplicationsFromQuery(searchParams);
 
   const [rows, setRows] = useState<ApplicationWithDocs[]>([]);
   const [totalResults, setTotalResults] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [confirmReject, setConfirmReject] = useState<ApplicationWithDocs | null>(null);
   const [roundsPanelMeta, setRoundsPanelMeta] = useState<ApplicationRowMeta | null>(null);
 
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [statusFilters, setStatusFilters] = useState<JobApplicationStatus[]>([]);
-  const [jobFilter, setJobFilter] = useState("");
-  const [departmentFilter, setDepartmentFilter] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [sortBy, setSortBy] = useState("createdAt:desc");
+  const [search, setSearch] = useState(initialFromUrl.q);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialFromUrl.q);
+  const [statusFilters, setStatusFilters] = useState<JobApplicationStatus[]>(initialFromUrl.stages);
+  const [jobFilter, setJobFilter] = useState(initialFromUrl.jobId);
+  const [departmentFilter, setDepartmentFilter] = useState(initialFromUrl.department);
+  const [debouncedDepartment, setDebouncedDepartment] = useState(initialFromUrl.department);
+  const [dateFrom, setDateFrom] = useState(initialFromUrl.dateFrom);
+  const [dateTo, setDateTo] = useState(initialFromUrl.dateTo);
+  const [sortBy, setSortBy] = useState(initialFromUrl.sortBy || DEFAULT_APPLICATION_SORT);
 
-  const [page, setPage] = useState(() => parseListPage(searchParams.get("page")));
+  const [page, setPage] = useState(initialFromUrl.page);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const fetchGenerationRef = useRef(0);
   const prevDebouncedSearchRef = useRef(debouncedSearch);
+  const prevDebouncedDepartmentRef = useRef(debouncedDepartment);
   const didFitRefetchRef = useRef(false);
 
   const [jobOptions, setJobOptions] = useState<JobFilterOptionItem[]>([]);
@@ -371,30 +669,55 @@ export default function ApplicationsPage() {
   const jobOptionsLoadedRef = useRef(false);
 
   useEffect(() => {
-    const fromUrl = parseListPage(searchParams.get("page"));
-    setPage((prev) => (prev === fromUrl ? prev : fromUrl));
-  }, [searchParams]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(searchParams.toString());
-    const urlPage = parseListPage(params.get("page"));
-    if (urlPage === page) return;
-    if (page <= 1) params.delete("page");
-    else params.set("page", String(page));
-    const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [page, pathname, router, searchParams]);
-
-  useEffect(() => {
     const t = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
     return () => window.clearTimeout(t);
   }, [search]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedDepartment(departmentFilter.trim()), 300);
+    return () => window.clearTimeout(t);
+  }, [departmentFilter]);
 
   useEffect(() => {
     if (prevDebouncedSearchRef.current === debouncedSearch) return;
     prevDebouncedSearchRef.current = debouncedSearch;
     setPage(1);
   }, [debouncedSearch]);
+
+  useEffect(() => {
+    if (prevDebouncedDepartmentRef.current === debouncedDepartment) return;
+    prevDebouncedDepartmentRef.current = debouncedDepartment;
+    setPage(1);
+  }, [debouncedDepartment]);
+
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams.toString());
+    writeApplicationsToQuery(next, {
+      page,
+      q: search,
+      stages: statusFilters,
+      jobId: jobFilter,
+      department: debouncedDepartment,
+      dateFrom,
+      dateTo,
+      sortBy,
+    });
+    const qs = next.toString();
+    if (qs === searchParams.toString()) return;
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [
+    page,
+    search,
+    statusFilters,
+    jobFilter,
+    debouncedDepartment,
+    dateFrom,
+    dateTo,
+    sortBy,
+    pathname,
+    router,
+    searchParams,
+  ]);
 
   const loadJobOptions = useCallback(async () => {
     if (jobOptionsLoadedRef.current) return;
@@ -411,14 +734,28 @@ export default function ApplicationsPage() {
     }
   }, []);
 
+  const dateRangeIncompleteError = getYmdDateRangeIncompleteError(
+    "Applied from",
+    "Applied to",
+    dateFrom,
+    dateTo
+  );
+
   const fetchApplications = useCallback((opts?: { silent?: boolean }) => {
     const generation = ++fetchGenerationRef.current;
     const incompleteMsg = getYmdDateRangeIncompleteError("Applied from", "Applied to", dateFrom, dateTo);
     if (incompleteMsg) {
-      setLoading(false);
+      setListError(null);
+      setRows([]);
+      setTotalResults(0);
+      setTotalPages(0);
+      if (!opts?.silent) setLoading(false);
       return;
     }
-    if (!opts?.silent) setLoading(true);
+    if (!opts?.silent) {
+      setLoading(true);
+      setListError(null);
+    }
     const params: Parameters<typeof listJobApplications>[0] = {
       limit: LIST_PAGE_SIZE,
       page,
@@ -430,7 +767,7 @@ export default function ApplicationsPage() {
     if (debouncedSearch) params.q = debouncedSearch;
     if (statusFilters.length) params.statuses = statusFilters;
     if (jobFilter) params.jobId = jobFilter;
-    if (departmentFilter.trim()) params.department = departmentFilter.trim();
+    if (debouncedDepartment) params.department = debouncedDepartment;
     if (dateFrom) params.dateFrom = new Date(dateFrom).toISOString();
     if (dateTo) {
       const to = new Date(dateTo);
@@ -445,11 +782,10 @@ export default function ApplicationsPage() {
         setRows((res.results ?? []) as ApplicationWithDocs[]);
         setTotalResults(res.totalResults ?? 0);
         setTotalPages(res.totalPages ?? 0);
+        setListError(null);
       })
       .catch((err) => {
         if (generation !== fetchGenerationRef.current) return;
-        // Surface failure so empty-state ≠ silent backend rejection.
-        // Prior bug: excludeInternal missing from Joi validator → 400 → blank page.
         console.error("[applications:list] request failed", {
           params,
           status: err?.response?.status,
@@ -458,11 +794,12 @@ export default function ApplicationsPage() {
         setRows([]);
         setTotalResults(0);
         setTotalPages(0);
+        setListError(getApiErrorMessage(err, "Could not load applications. Check your connection and try again."));
       })
       .finally(() => {
         if (generation === fetchGenerationRef.current && !opts?.silent) setLoading(false);
       });
-  }, [page, sortBy, debouncedSearch, statusFilters, jobFilter, departmentFilter, dateFrom, dateTo]);
+  }, [page, sortBy, debouncedSearch, statusFilters, jobFilter, debouncedDepartment, dateFrom, dateTo]);
 
   useEffect(() => {
     if (!user) {
@@ -472,9 +809,34 @@ export default function ApplicationsPage() {
     fetchApplications();
   }, [user, fetchApplications]);
 
+  /** Preline only binds dropdown toggles that exist during autoInit; table rows mount after fetch. */
+  useEffect(() => {
+    if (loading || !showApplicationsTable || rows.length === 0) return;
+    const run = () => {
+      try {
+        (window as unknown as { HSStaticMethods?: { autoInit?: () => void } }).HSStaticMethods?.autoInit?.();
+      } catch {
+        /* ignore */
+      }
+    };
+    const stableRun = () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(run);
+      });
+    };
+    if (
+      typeof window !== "undefined" &&
+      (window as unknown as { HSStaticMethods?: { autoInit?: () => void } }).HSStaticMethods?.autoInit
+    ) {
+      stableRun();
+      return;
+    }
+    void import("preline/preline").then(stableRun);
+  }, [loading, showApplicationsTable, rows.length, page]);
+
   useEffect(() => {
     didFitRefetchRef.current = false;
-  }, [page, sortBy, debouncedSearch, statusFilters, jobFilter, departmentFilter, dateFrom, dateTo]);
+  }, [page, sortBy, debouncedSearch, statusFilters, jobFilter, debouncedDepartment, dateFrom, dateTo]);
 
   useEffect(() => {
     if (loading || didFitRefetchRef.current) return;
@@ -491,6 +853,7 @@ export default function ApplicationsPage() {
     const id = String(app._id ?? app.id ?? "");
     if (!id || app.status === next) return;
     setUpdatingId(id);
+    setStatusError(null);
     try {
       const updated = await updateJobApplicationStatus(id, { status: next });
       setRows((prev) =>
@@ -499,10 +862,27 @@ export default function ApplicationsPage() {
         ),
       );
     } catch (err) {
-      alert(getApiErrorMessage(err, "Failed to update application status"));
+      setStatusError(getApiErrorMessage(err, "Failed to update application status"));
     } finally {
       setUpdatingId(null);
     }
+  };
+
+  const handleRejectApplication = async (app: ApplicationWithDocs) => {
+    const meta = getApplicationRowMeta(app);
+    const ok = await confirm({
+      title: "Reject application?",
+      message: (
+        <>
+          {meta.name} will be moved to <strong>Rejected</strong>. They can be reopened to Applied,
+          Screening, or Shortlisted later.
+        </>
+      ),
+      tone: "danger",
+      confirmLabel: "Reject",
+    });
+    if (!ok) return;
+    await handleStatusChange(app, "Rejected");
   };
 
   const handleScheduleInterview = useCallback(
@@ -553,6 +933,19 @@ export default function ApplicationsPage() {
     (dateFrom ? 1 : 0) +
     (dateTo ? 1 : 0);
 
+  const panelFilterCount =
+    (search ? 1 : 0) +
+    (jobFilter ? 1 : 0) +
+    (departmentFilter ? 1 : 0) +
+    (dateFrom ? 1 : 0) +
+    (dateTo ? 1 : 0);
+
+  const paginationTouchFriendly = useNarrowViewport(640);
+  const narrowMobileFilters = useNarrowViewport(639);
+  const searchPlaceholder = narrowMobileFilters
+    ? "Search name, email, or job"
+    : "Search by candidate name, email, or job title";
+
   if (!user) {
     return (
       <>
@@ -581,24 +974,26 @@ export default function ApplicationsPage() {
                 {loading ? "…" : totalResults}
               </span>
             </h1>
-            <p className="text-[0.8125rem] sm:text-[0.75rem] text-[#8c9097] dark:text-white/50 mt-1">
+            <p className="text-[0.8125rem] sm:text-[0.75rem] text-defaulttextcolor/50 dark:text-white/50 mt-1">
               All candidate applications across every job in your ATS pipeline.
             </p>
           </div>
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto shrink-0">
+          <div className="grid grid-cols-2 sm:flex sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto shrink-0 min-w-0">
             <Link
               href="/ats/jobs"
-              className="ti-btn ti-btn-light !py-2.5 sm:!py-1.5 !px-3 !text-xs !m-0 !font-medium justify-center"
+              className="ti-btn ti-btn-light !py-2.5 sm:!py-1.5 !px-3 !text-xs !m-0 !font-medium justify-center min-h-[2.75rem] sm:min-h-0"
               aria-label="Back to jobs"
             >
-              <i className="ri-briefcase-line align-middle me-1" /> Jobs
+              <i className="ri-briefcase-line align-middle sm:me-1" aria-hidden />
+              <span className="hidden sm:inline">Jobs</span>
             </Link>
             <Link
               href="/ats/analytics"
-              className="ti-btn ti-btn-primary !py-2.5 sm:!py-1.5 !px-3 !text-xs !m-0 !font-medium justify-center"
+              className="ti-btn ti-btn-primary !py-2.5 sm:!py-1.5 !px-3 !text-xs !m-0 !font-medium justify-center min-h-[2.75rem] sm:min-h-0"
               aria-label="View analytics"
             >
-              <i className="ri-line-chart-line align-middle me-1" /> Analytics
+              <i className="ri-line-chart-line align-middle sm:me-1" aria-hidden />
+              <span className="hidden sm:inline">Analytics</span>
             </Link>
           </div>
         </div>
@@ -606,18 +1001,26 @@ export default function ApplicationsPage() {
         {/* Status pipeline strip */}
         <div className="box shrink-0">
           <div className="box-body !py-3 !px-3 sm:!px-4">
-            <p className="text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50 mb-2 sm:sr-only">
+            <p
+              id="applications-pipeline-label"
+              className="text-[0.6875rem] uppercase tracking-wide text-defaulttextcolor/50 dark:text-white/50 mb-2 sm:sr-only"
+            >
               Pipeline stage
             </p>
-            <div className="overflow-x-auto -mx-1 px-1 pb-0.5 sm:overflow-visible sm:mx-0 sm:px-0 [scrollbar-width:thin]">
-              <div className="flex flex-nowrap sm:flex-wrap gap-2 min-w-max sm:min-w-0">
+            <div className="applications-pipeline-scroll sm:overflow-visible sm:mx-0 sm:px-0">
+              <div
+                className="flex flex-nowrap sm:flex-wrap gap-2 w-max max-w-none sm:w-full sm:min-w-0"
+                role="group"
+                aria-labelledby="applications-pipeline-label"
+              >
               <button
                 type="button"
                 onClick={clearStatusFilters}
+                aria-pressed={statusFilters.length === 0}
                 className={`shrink-0 text-xs px-3 py-2 sm:py-1.5 min-h-[2.5rem] sm:min-h-0 rounded-full border transition-colors ${
                   statusFilters.length === 0
-                    ? "bg-primary/10 border-primary/30 text-primary font-semibold"
-                    : "bg-transparent border-gray-200 dark:border-white/10 text-[#8c9097] dark:text-white/60 hover:bg-gray-50 dark:hover:bg-white/5"
+                    ? "bg-primary/10 border-primary/30 text-primary dark:text-purple-300 font-semibold"
+                    : "bg-transparent border-gray-200 dark:border-white/10 text-defaulttextcolor/50 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5"
                 }`}
               >
                 All stages
@@ -627,10 +1030,11 @@ export default function ApplicationsPage() {
                   key={s}
                   type="button"
                   onClick={() => toggleStatusFilter(s)}
+                  aria-pressed={statusFilters.includes(s)}
                   className={`shrink-0 text-xs px-3 py-2 sm:py-1.5 min-h-[2.5rem] sm:min-h-0 rounded-full transition-colors ${
                     statusFilters.includes(s)
                       ? `${STATUS_STYLE[s]} font-semibold`
-                      : "border border-gray-200 dark:border-white/10 text-[#8c9097] dark:text-white/60 hover:bg-gray-50 dark:hover:bg-white/5"
+                      : "border border-gray-200 dark:border-white/10 text-defaulttextcolor/50 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5"
                   }`}
                 >
                   {s}
@@ -640,7 +1044,7 @@ export default function ApplicationsPage() {
                 <button
                   type="button"
                   onClick={clearStatusFilters}
-                  className="shrink-0 text-xs px-3 py-2 sm:py-1.5 min-h-[2.5rem] sm:min-h-0 rounded-full border border-gray-200 dark:border-white/10 text-primary hover:bg-primary/5"
+                  className="shrink-0 text-xs px-3 py-2 sm:py-1.5 min-h-[2.5rem] sm:min-h-0 rounded-full border border-gray-200 dark:border-white/10 text-primary dark:text-purple-300 hover:bg-primary/5 dark:hover:bg-primary/10"
                 >
                   Clear stages
                 </button>
@@ -654,7 +1058,10 @@ export default function ApplicationsPage() {
         <div className="box shrink-0">
           <div className="box-body !p-3 sm:!p-4 space-y-3">
             <div>
-              <label className="text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50 mb-1 block">
+              <label
+                htmlFor={SEARCH_INPUT_ID}
+                className="text-[0.6875rem] uppercase tracking-wide text-defaulttextcolor/50 dark:text-white/50 mb-1 block"
+              >
                 Search
               </label>
               <div className="flex items-center w-full rounded-sm border border-defaultborder dark:border-defaultborder/10 bg-white dark:bg-bodybg focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20 transition-colors min-h-[2.75rem] sm:min-h-[2.125rem]">
@@ -663,12 +1070,14 @@ export default function ApplicationsPage() {
                   className="ri-search-line shrink-0 ms-3 me-2 text-[0.875rem] text-slate-400 dark:text-white/40"
                 />
                 <input
+                  id={SEARCH_INPUT_ID}
+                  name="q"
                   type="search"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search by candidate name, email, or job title"
+                  placeholder={searchPlaceholder}
                   aria-label="Search applications"
-                  className="flex-1 min-w-0 h-full bg-transparent border-0 outline-none focus:outline-none focus:ring-0 text-[0.875rem] sm:text-[0.8125rem] text-defaulttextcolor dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/40 pe-3"
+                  className="flex-1 min-w-0 h-full bg-transparent border-0 outline-none focus:outline-none focus:ring-0 text-xs sm:text-[0.8125rem] text-defaulttextcolor dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/40 pe-3"
                 />
               </div>
             </div>
@@ -679,16 +1088,18 @@ export default function ApplicationsPage() {
               onClick={() => setFiltersExpanded((open) => !open)}
               aria-expanded={filtersExpanded}
               aria-controls="applications-advanced-filters"
+              aria-label="Filters, job and date options"
             >
-              <span>
-                More filters
-                {activeFilterCount > 0 && (
-                  <span className="ms-2 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-[0.6875rem] font-semibold bg-primary/10 text-primary">
-                    {activeFilterCount}
+              <span className="inline-flex items-center gap-1.5 min-w-0">
+                <i className="ri-filter-3-line text-base shrink-0" aria-hidden />
+                Filters
+                {panelFilterCount > 0 && (
+                  <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-[0.6875rem] font-semibold bg-primary/10 text-primary">
+                    {panelFilterCount}
                   </span>
                 )}
               </span>
-              <i className={`ri-arrow-${filtersExpanded ? "up" : "down"}-s-line text-lg`} aria-hidden />
+              <i className={`ri-arrow-${filtersExpanded ? "up" : "down"}-s-line text-lg shrink-0`} aria-hidden />
             </button>
 
             <div
@@ -701,6 +1112,7 @@ export default function ApplicationsPage() {
                 </label>
                 <select
                   id="applications-job-filter"
+                  name="jobId"
                   value={jobFilter}
                   onFocus={() => {
                     void loadJobOptions();
@@ -730,17 +1142,10 @@ export default function ApplicationsPage() {
                 </label>
                 <input
                   id="applications-department-filter"
+                  name="department"
                   type="text"
                   value={departmentFilter}
                   onChange={(e) => setDepartmentFilter(e.target.value)}
-                  onBlur={() => setPage(1)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      setPage(1);
-                      fetchApplications();
-                    }
-                  }}
                   placeholder="e.g. Engineering"
                   aria-label="Filter by department"
                   className={FILTER_INPUT}
@@ -749,6 +1154,7 @@ export default function ApplicationsPage() {
 
               <YmdFilterDateInput
                 label="Applied from"
+                inputId={APPLIED_FROM_INPUT_ID}
                 labelClassName={FILTER_LABEL}
                 value={dateFrom}
                 maxDate={dateTo || undefined}
@@ -788,6 +1194,7 @@ export default function ApplicationsPage() {
                 </label>
                 <select
                   id="applications-sort-filter"
+                  name="sortBy"
                   value={sortBy}
                   onChange={(e) => {
                     setSortBy(e.target.value);
@@ -806,7 +1213,7 @@ export default function ApplicationsPage() {
 
             {activeFilterCount > 0 && (
               <div className="flex flex-wrap items-center gap-2 text-xs pt-1 border-t border-defaultborder/60 dark:border-white/10 xl:border-0 xl:pt-0">
-                <span className="text-[#8c9097] dark:text-white/50">
+                <span className="text-defaulttextcolor/50 dark:text-white/50">
                   {activeFilterCount} filter{activeFilterCount === 1 ? "" : "s"} active
                 </span>
                 <button
@@ -818,36 +1225,99 @@ export default function ApplicationsPage() {
                 </button>
               </div>
             )}
+
+            {dateRangeIncompleteError ? (
+              <p className="text-sm text-danger m-0 pt-1" role="alert">
+                {dateRangeIncompleteError}
+              </p>
+            ) : null}
           </div>
         </div>
 
+        {statusError ? (
+          <div
+            className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger flex flex-wrap items-center justify-between gap-2"
+            role="alert"
+          >
+            <span>{statusError}</span>
+            <button
+              type="button"
+              className="text-xs font-medium underline"
+              onClick={() => setStatusError(null)}
+            >
+              Dismiss
+            </button>
+          </div>
+        ) : null}
+
         {/* Applications list */}
         <div className="box mb-0 flex min-h-0 flex-1 flex-col">
-          <div className="box-body !p-0 flex min-h-0 flex-1 flex-col overflow-hidden">
+          <p className="sr-only" aria-live="polite" aria-atomic="true">
+            {!loading && !listError && !dateRangeIncompleteError
+              ? `${totalResults} application${totalResults === 1 ? "" : "s"}`
+              : ""}
+          </p>
+          <div
+            className="box-body !p-0 flex min-h-0 flex-1 flex-col overflow-hidden"
+            aria-busy={loading}
+            aria-label="Applications list"
+          >
             {loading ? (
-              <>
-                <div className="xl:hidden min-h-0 flex-1 overflow-y-auto divide-y divide-gray-200 dark:divide-white/10">
-                  {[...Array(4)].map((_, i) => (
-                    <div key={`m-sk-${i}`} className="p-4">
-                      <div className="h-5 w-2/3 bg-gray-100 dark:bg-white/5 rounded animate-pulse mb-2" />
-                      <div className="h-4 w-1/2 bg-gray-100 dark:bg-white/5 rounded animate-pulse" />
-                    </div>
-                  ))}
+              <div
+                ref={applicationsListContainerRef}
+                className="applications-list-container flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden"
+              >
+                {showApplicationsCards ? (
+                  <div className="applications-list-cards min-h-0 flex-1 divide-y-0 sm:divide-y divide-gray-200 dark:divide-white/10">
+                    {[...Array(4)].map((_, i) => (
+                      <div key={`m-sk-${i}`} className="p-4">
+                        <div className={`h-5 w-2/3 mb-2 ${SKELETON_PULSE}`} />
+                        <div className={`h-4 w-1/2 ${SKELETON_PULSE}`} />
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {showApplicationsTable ? (
+                  <div className="applications-table-scroll table-responsive min-h-0 flex-1 overflow-y-auto">
+                    <table className="applications-data-table table table-hover table-bordered w-full text-sm">
+                      <tbody>
+                        {[...Array(6)].map((_, i) => (
+                          <tr key={`s-${i}`} className="border border-inherit border-solid dark:border-defaultborder/10">
+                            <td colSpan={9} className="!py-3">
+                              <div className={`h-5 w-full ${SKELETON_PULSE}`} />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+              </div>
+            ) : listError ? (
+              <div className="!text-center !py-12 px-4" role="alert">
+                <div className="flex flex-col items-center gap-3">
+                  <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-danger/10 text-danger">
+                    <i className="ri-error-warning-line text-[1.25rem]" aria-hidden />
+                  </span>
+                  <p className="font-semibold text-defaulttextcolor dark:text-white">Could not load applications</p>
+                  <p className="text-[0.75rem] text-defaulttextcolor/60 dark:text-white/50 max-w-md">{listError}</p>
+                  <button
+                    type="button"
+                    onClick={() => fetchApplications()}
+                    className="ti-btn ti-btn-primary !text-xs !py-2 !px-4 !m-0 inline-flex min-h-[2.75rem] items-center gap-1.5"
+                  >
+                    <i className="ri-refresh-line" aria-hidden />
+                    Retry
+                  </button>
                 </div>
-                <div className="applications-table-scroll hidden xl:block table-responsive min-h-0 flex-1 overflow-x-auto overflow-y-auto">
-                  <table className="table table-hover table-bordered min-w-[72rem] text-sm">
-                    <tbody>
-                      {[...Array(6)].map((_, i) => (
-                        <tr key={`s-${i}`} className="border border-inherit border-solid dark:border-defaultborder/10">
-                          <td colSpan={8} className="!py-3">
-                            <div className="h-5 w-full bg-gray-100 dark:bg-white/5 rounded animate-pulse" />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
+              </div>
+            ) : dateRangeIncompleteError ? (
+              <div className="!text-center !py-12 px-4" role="alert">
+                <p className="font-semibold text-defaulttextcolor dark:text-white">Complete the date range</p>
+                <p className="text-[0.75rem] text-defaulttextcolor/60 dark:text-white/50 mt-1 max-w-md mx-auto">
+                  {dateRangeIncompleteError}
+                </p>
+              </div>
             ) : rows.length === 0 ? (
               <div className="!text-center !py-12 px-4">
                 <div className="flex flex-col items-center gap-2">
@@ -855,7 +1325,7 @@ export default function ApplicationsPage() {
                     <i className="ri-file-search-line text-[1.25rem]" />
                   </span>
                   <p className="font-semibold text-defaulttextcolor dark:text-white">No applications found</p>
-                  <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50">
+                  <p className="text-[0.75rem] text-defaulttextcolor/50 dark:text-white/50">
                     {activeFilterCount > 0 ? "Try adjusting your filters." : "New candidate applications will appear here."}
                   </p>
                   {activeFilterCount > 0 && (
@@ -866,98 +1336,124 @@ export default function ApplicationsPage() {
                 </div>
               </div>
             ) : (
-              <>
-                <div className="xl:hidden min-h-0 flex-1 overflow-y-auto divide-y divide-gray-200 dark:divide-white/10">
+              <div
+                ref={applicationsListContainerRef}
+                className="applications-list-container flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden"
+              >
+                {showApplicationsCards ? (
+                <div className="applications-list-cards min-h-0 flex-1 divide-y-0 sm:divide-y divide-gray-200 dark:divide-white/10">
                   {rows.map((app) => {
                     const meta = getApplicationRowMeta(app);
                     const isUpdating = updatingId === meta.id;
                     return (
-                      <article key={meta.id} className="p-3 sm:p-4 space-y-3">
+                      <article
+                        key={meta.id}
+                        className="applications-list-card p-3.5 sm:p-4 space-y-2.5 min-w-0 rounded-xl border border-defaultborder/70 dark:border-white/10 bg-white dark:bg-bodybg shadow-sm sm:rounded-none sm:border-0 sm:bg-transparent sm:shadow-none"
+                      >
                         <div className="flex items-start gap-3 min-w-0">
-                          <span className="avatar avatar-sm bg-primary/10 text-primary rounded-md flex items-center justify-center text-xs font-semibold shrink-0">
-                            {getInitials(meta.name)}
-                          </span>
+                          <ApplicationApplicantAvatar name={meta.name} photoUrl={meta.profilePhotoUrl} />
                           <div className="min-w-0 flex-1">
-                            <Link
-                              href={meta.profileHref}
-                              className="font-semibold text-defaulttextcolor dark:text-white hover:text-primary block truncate"
-                            >
-                              {meta.name}
-                            </Link>
-                            <span className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 block truncate">
-                              {meta.emailDisplay}
-                            </span>
-                            <ApplicantTypeBadge isEmployee={meta.isEmployee} />
+                            <div className="flex items-start gap-2 min-w-0">
+                              <div className="min-w-0 flex-1">
+                                <Link
+                                  href={meta.profileHref}
+                                  className="font-semibold text-sm text-defaulttextcolor dark:text-white hover:text-primary block truncate leading-snug"
+                                >
+                                  {meta.name}
+                                </Link>
+                                <span className="text-[0.6875rem] text-defaulttextcolor/60 dark:text-white/60 block truncate">
+                                  {meta.emailDisplay}
+                                </span>
+                                <ApplicantTypeBadge isEmployee={meta.isEmployee} />
+                              </div>
+                              <div className="shrink-0 w-[min(100%,9.5rem)] max-w-[45%] sm:max-w-none">
+                                <ApplicationStatusSelect
+                                  controlId={`application-status-${meta.id}`}
+                                  value={app.status}
+                                  applicantName={meta.name}
+                                  disabled={isUpdating}
+                                  onChange={(next) => handleStatusChange(app, next)}
+                                  compact
+                                />
+                              </div>
+                            </div>
                           </div>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                          <div className="min-w-0">
-                            <span className="text-[#8c9097] dark:text-white/50 block">Job</span>
-                            <span className="font-medium text-defaulttextcolor dark:text-white truncate block" title={meta.jobTitle}>
-                              {meta.jobTitle}
-                            </span>
-                            {meta.orgName && (
-                              <span className="text-[#8c9097] dark:text-white/50 truncate block">{meta.orgName}</span>
-                            )}
-                          </div>
-                          <div>
-                            <span className="text-[#8c9097] dark:text-white/50 block">Department</span>
-                            <span className="text-defaulttextcolor dark:text-white/80">{meta.dept}</span>
-                          </div>
-                          <div>
-                            <span className="text-[#8c9097] dark:text-white/50 block">Applied</span>
-                            <span className="text-defaulttextcolor dark:text-white/80">{formatDate(meta.appliedAt)}</span>
-                          </div>
-                        </div>
-                        <div>
-                          <span className="text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50 mb-1.5 block">
-                            Status
+                        <div className="min-w-0 text-xs">
+                          <span className="font-medium text-defaulttextcolor dark:text-white block break-words [overflow-wrap:anywhere]" title={meta.jobTitle}>
+                            {meta.jobTitle}
                           </span>
-                          <ApplicationStatusSelect
-                            value={app.status}
-                            applicantName={meta.name}
-                            disabled={isUpdating}
-                            onChange={(next) => handleStatusChange(app, next)}
-                            fullWidth
-                          />
+                          {(() => {
+                            const orgLine = jobOrganisationSubtitle(meta.jobTitle, meta.orgName);
+                            return orgLine ? (
+                              <span className="text-[0.6875rem] text-defaulttextcolor/60 dark:text-white/60 block truncate" title={orgLine}>
+                                {orgLine}
+                              </span>
+                            ) : null;
+                          })()}
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[0.6875rem] text-defaulttextcolor/65 dark:text-white/60">
+                            <span>
+                              <span className="text-defaulttextcolor/55 dark:text-white/70">Applied </span>
+                              {formatDate(meta.appliedAt)}
+                            </span>
+                            {meta.dept && meta.dept !== "—" ? (
+                              <span className="min-w-0 truncate" title={meta.dept}>
+                                <span className="text-defaulttextcolor/55 dark:text-white/70">Dept </span>
+                                {meta.dept}
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
                         <ApplicantFitChips fit={app.applicantFit} />
-                        <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-defaultborder/40 dark:border-white/10">
-                          <ApplicationDocLinks
-                            resume={meta.resumeLink}
-                            coverLetter={meta.coverLetterLink}
-                          />
+                        <div className="space-y-2 pt-2 border-t border-defaultborder/40 dark:border-white/10">
                           <ApplicationRowActions
                             meta={meta}
                             appStatus={app.status}
                             isUpdating={isUpdating}
-                            onReject={() => setConfirmReject(app)}
+                            onReject={() => void handleRejectApplication(app)}
                             onSchedule={() => handleScheduleInterview(meta)}
                             onRounds={() => setRoundsPanelMeta(meta)}
+                          />
+                          <ApplicationDocLinks
+                            resume={meta.resumeLink}
+                            coverLetter={meta.coverLetterLink}
                           />
                         </div>
                       </article>
                     );
                   })}
                 </div>
+                ) : null}
 
-                <div className="applications-table-scroll hidden xl:block table-responsive min-h-0 flex-1 overflow-x-auto overflow-y-auto">
-                  <table className="table table-hover table-bordered min-w-[80rem] w-full text-sm">
+                {showApplicationsTable ? (
+                <div className="applications-table-scroll table-responsive min-h-0 flex-1 overflow-y-auto">
+                  <table className="applications-data-table table table-hover table-bordered w-full">
+                    <colgroup>
+                      <col className={APP_COL.applicant} />
+                      <col className={APP_COL.job} />
+                      <col className={APP_COL.department} />
+                      <col className={APP_COL.status} />
+                      <col className={APP_COL.success} />
+                      <col className={APP_COL.culture} />
+                      <col className={APP_COL.applied} />
+                      <col className={APP_COL.documents} />
+                      <col className={APP_COL.actions} />
+                    </colgroup>
                     <thead>
                       <tr>
-                        <th scope="col" className="!text-start min-w-[14rem]">Applicant</th>
-                        <th scope="col" className="!text-start min-w-[14rem] max-w-[20rem]">Applied Job</th>
-                        <th scope="col" className="!text-start min-w-[8rem]">Department</th>
-                        <th scope="col" className="!text-start min-w-[11rem]">Status</th>
-                        <th scope="col" className="!text-start whitespace-nowrap">
+                        <th scope="col" className={`!text-start ${APP_COL.applicant}`}>Applicant</th>
+                        <th scope="col" className={`!text-start ${APP_COL.job}`}>Applied Job</th>
+                        <th scope="col" className={`!text-start ${APP_COL.department}`}>Department</th>
+                        <th scope="col" className={`!text-start ${APP_COL.status}`}>Status</th>
+                        <th scope="col" className={`!text-start whitespace-nowrap ${APP_COL.success}`}>
                           <ApplicantFitColumnHeader kind="success" />
                         </th>
-                        <th scope="col" className="!text-start whitespace-nowrap">
+                        <th scope="col" className={`!text-start whitespace-nowrap ${APP_COL.culture}`}>
                           <ApplicantFitColumnHeader kind="culture" />
                         </th>
-                        <th scope="col" className="!text-start whitespace-nowrap">Applied Date</th>
-                        <th scope="col" className="!text-start whitespace-nowrap">Documents</th>
-                        <th scope="col" className="!text-start min-w-[11rem]">Actions</th>
+                        <th scope="col" className={`!text-start whitespace-nowrap ${APP_COL.applied}`}>Applied Date</th>
+                        <th scope="col" className={`!text-start whitespace-nowrap ${APP_COL.documents}`}>Documents</th>
+                        <th scope="col" className={`!text-center ${APP_COL.actions}`}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -969,71 +1465,92 @@ export default function ApplicationsPage() {
                             key={meta.id}
                             className="border border-inherit border-solid hover:bg-gray-50 dark:hover:bg-white/5 dark:border-defaultborder/10"
                           >
-                            <td className="align-middle whitespace-nowrap">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <span className="avatar avatar-sm bg-primary/10 text-primary rounded-md flex items-center justify-center text-xs font-semibold shrink-0">
-                                  {getInitials(meta.name)}
-                                </span>
-                                <div className="min-w-0">
-                                  <Link
-                                    href={meta.profileHref}
-                                    className="font-semibold text-defaulttextcolor dark:text-white hover:text-primary truncate block max-w-[14rem]"
+                            <td className={`align-middle ${APP_COL.applicant}`}>
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <ApplicationApplicantAvatar name={meta.name} photoUrl={meta.profilePhotoUrl} />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <Link
+                                      href={meta.profileHref}
+                                      className="font-semibold text-defaulttextcolor dark:text-white hover:text-primary truncate min-w-0"
+                                      title={meta.name}
+                                    >
+                                      {meta.name}
+                                    </Link>
+                                    <ApplicantTypeBadge isEmployee={meta.isEmployee} inline />
+                                  </div>
+                                  <span
+                                    className="text-[0.6875rem] text-defaulttextcolor/60 dark:text-white/60 truncate block"
+                                    title={meta.emailDisplay}
                                   >
-                                    {meta.name}
-                                  </Link>
-                                  <span className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 truncate block max-w-[14rem]">
                                     {meta.emailDisplay}
                                   </span>
-                                  <ApplicantTypeBadge isEmployee={meta.isEmployee} />
+                                  <span
+                                    className="applications-applicant-applied-meta text-[0.6875rem] text-defaulttextcolor/60 dark:text-white/70 truncate block"
+                                    title={meta.appliedAt ?? ""}
+                                  >
+                                    Applied {formatDate(meta.appliedAt)}
+                                  </span>
                                 </div>
                               </div>
                             </td>
-                            <td className="align-middle min-w-0 max-w-[20rem]">
-                              <span className="block truncate min-w-0" title={meta.jobTitle}>
+                            <td className={`align-middle min-w-0 ${APP_COL.job}`}>
+                              <span
+                                className="block truncate min-w-0 font-medium text-defaulttextcolor dark:text-white/90"
+                                title={meta.jobTitle}
+                              >
                                 {meta.jobTitle}
                               </span>
-                              {meta.orgName && (
-                                <span
-                                  className="block text-[0.6875rem] text-[#8c9097] dark:text-white/50 truncate min-w-0"
-                                  title={meta.orgName}
-                                >
-                                  {meta.orgName}
-                                </span>
-                              )}
+                              {(() => {
+                                const orgLine = jobOrganisationSubtitle(meta.jobTitle, meta.orgName);
+                                return orgLine ? (
+                                  <span
+                                    className="applications-job-org-meta block text-[0.6875rem] text-defaulttextcolor/60 dark:text-white/60 truncate min-w-0"
+                                    title={orgLine}
+                                  >
+                                    {orgLine}
+                                  </span>
+                                ) : null;
+                              })()}
                             </td>
-                            <td className="align-middle whitespace-nowrap">
-                              <span className="text-[#8c9097] dark:text-white/70">{meta.dept}</span>
+                            <td className={`align-middle truncate ${APP_COL.department}`}>
+                              <span className="text-defaulttextcolor/60 dark:text-white/70" title={meta.dept}>
+                                {meta.dept}
+                              </span>
                             </td>
-                            <td className="align-middle !whitespace-normal min-w-[11rem]">
+                            <td className={`align-middle !whitespace-normal ${APP_COL.status}`}>
                               <ApplicationStatusSelect
+                                controlId={`application-status-${meta.id}`}
                                 value={app.status}
                                 applicantName={meta.name}
                                 disabled={isUpdating}
                                 onChange={(next) => handleStatusChange(app, next)}
+                                compact
                               />
                             </td>
-                            <td className="align-middle whitespace-nowrap">
-                              <SuccessProbabilityCell fit={app.applicantFit} />
+                            <td className={`align-middle whitespace-nowrap ${APP_COL.success}`}>
+                              <SuccessProbabilityCell fit={app.applicantFit} dense />
                             </td>
-                            <td className="align-middle whitespace-nowrap">
-                              <CulturalFitCell fit={app.applicantFit} />
+                            <td className={`align-middle whitespace-nowrap ${APP_COL.culture}`}>
+                              <CulturalFitCell fit={app.applicantFit} dense />
                             </td>
-                            <td className="align-middle whitespace-nowrap">
+                            <td className={`align-middle whitespace-nowrap ${APP_COL.applied}`}>
                               <span title={meta.appliedAt ?? ""}>{formatDate(meta.appliedAt)}</span>
                             </td>
-                            <td className="align-middle whitespace-nowrap">
+                            <td className={`align-middle whitespace-nowrap ${APP_COL.documents}`}>
                               <ApplicationDocLinks
                                 resume={meta.resumeLink}
                                 coverLetter={meta.coverLetterLink}
                                 compact
                               />
                             </td>
-                            <td className="!text-start align-middle whitespace-nowrap">
+                            <td className={`!text-center align-middle whitespace-nowrap ${APP_COL.actions}`}>
                               <ApplicationRowActions
+                                layout="table"
                                 meta={meta}
                                 appStatus={app.status}
                                 isUpdating={isUpdating}
-                                onReject={() => setConfirmReject(app)}
+                                onReject={() => void handleRejectApplication(app)}
                                 onSchedule={() => handleScheduleInterview(meta)}
                                 onRounds={() => setRoundsPanelMeta(meta)}
                               />
@@ -1044,11 +1561,12 @@ export default function ApplicationsPage() {
                     </tbody>
                   </table>
                 </div>
-              </>
+                ) : null}
+              </div>
             )}
           </div>
-          {loading ? null : (
-            <div className="box-footer shrink-0 !px-3 sm:!px-4">
+          {loading || listError || dateRangeIncompleteError ? null : (
+            <div className="box-footer applications-list-footer shrink-0 !px-3 sm:!px-4 min-w-0">
               <ListPagination
                 page={page}
                 totalPages={totalPages}
@@ -1058,29 +1576,30 @@ export default function ApplicationsPage() {
                 ariaLabel="Applications page navigation"
                 gotoInputId="applications-goto-page"
                 hideWhenSinglePage
+                touchFriendly={paginationTouchFriendly}
+                showPageSize={false}
+                className="applications-list-pagination"
               />
             </div>
           )}
         </div>
       </div>
 
-      {roundsPanelMeta && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Interview rounds"
-          onClick={() => setRoundsPanelMeta(null)}
-        >
-          <div
-            className="bg-white dark:bg-bodybg rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
+      <SimpleModal
+        open={Boolean(roundsPanelMeta)}
+        onClose={() => setRoundsPanelMeta(null)}
+        ariaLabel="Interview rounds"
+        panelClassName="bg-white dark:bg-bodybg rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col"
+        initialFocusRef={roundsCloseRef}
+      >
+        {roundsPanelMeta ? (
+          <>
             <div className="flex items-center justify-between border-b border-gray-200 dark:border-white/10 px-4 py-3 shrink-0">
               <h3 className="text-base font-semibold text-gray-900 dark:text-white">Interview rounds</h3>
               <button
+                ref={roundsCloseRef}
                 type="button"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md text-[#8c9097] hover:bg-gray-100 dark:hover:bg-white/10"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md text-defaulttextcolor/50 hover:bg-gray-100 dark:hover:bg-white/10"
                 aria-label="Close"
                 onClick={() => setRoundsPanelMeta(null)}
               >
@@ -1094,55 +1613,11 @@ export default function ApplicationsPage() {
                 jobTitle={roundsPanelMeta.jobTitle}
               />
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        ) : null}
+      </SimpleModal>
 
-      {/* Reject confirmation modal */}
-      {confirmReject && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Confirm reject"
-          onClick={() => setConfirmReject(null)}
-        >
-          <div
-            className="bg-white dark:bg-bodybg rounded-lg shadow-xl max-w-sm w-full overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-4 border-b border-gray-200 dark:border-white/10">
-              <h3 className="text-base font-semibold text-gray-900 dark:text-white">Reject application?</h3>
-            </div>
-            <div className="p-4">
-              <p className="text-sm text-[#8c9097] dark:text-white/70">
-                {confirmReject.candidate?.fullName ?? (isPublicEmail(confirmReject.candidate?.email) ? confirmReject.candidate?.email : "This candidate")} will be moved to{" "}
-                <strong>Rejected</strong>. They can be reopened to Applied, Screening, or Shortlisted later.
-              </p>
-            </div>
-            <div className="p-4 border-t border-gray-200 dark:border-white/10 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirmReject(null)}
-                className="ti-btn ti-btn-light !text-xs !py-1.5 !px-3 !m-0"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  const target = confirmReject;
-                  setConfirmReject(null);
-                  await handleStatusChange(target, "Rejected");
-                }}
-                className="ti-btn !bg-rose-600 !text-white !text-xs !py-1.5 !px-3 !m-0"
-              >
-                Reject
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {confirmDialog}
       <ApplicantFitInfoDrawer />
     </Fragment>
   );

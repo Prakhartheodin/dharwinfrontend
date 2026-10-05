@@ -938,6 +938,8 @@ const Jobs = () => {
         disableSortBy: true,
         Cell: ({ row }: any) => (
           <input
+            id={`jobs-row-select-${row.original.id}`}
+            name="selectedJobIds"
             className="form-check-input"
             type="checkbox"
             checked={selectedRows.has(row.original.id)}
@@ -1369,9 +1371,12 @@ const Jobs = () => {
             />
             <input
               ref={excelInputRef}
+              id="jobs-excel-import"
+              name="excelImport"
               type="file"
               accept=".xlsx,.xls"
               className="hidden"
+              aria-label="Import jobs from Excel file"
               onChange={onExcelFileChange}
             />
             <JobsFilterPanel
@@ -1737,7 +1742,12 @@ const Jobs = () => {
                   Add Note
                 </h6>
                 <div className="space-y-3">
+                  <label className="sr-only" htmlFor="jobs-bookmark-note">
+                    Note text
+                  </label>
                   <textarea
+                    id="jobs-bookmark-note"
+                    name="bookmarkNote"
                     className="form-control"
                     rows={4}
                     placeholder="Write your note here..."

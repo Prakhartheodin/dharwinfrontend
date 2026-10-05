@@ -36,15 +36,22 @@ function fitTitle(fit: ApplicantFit): string {
  * Success-probability badge for the applications table.
  * @param props.fit Server overlay; missing renders an em dash
  */
-export function SuccessProbabilityCell({ fit }: { fit?: ApplicantFit | null }) {
+export function SuccessProbabilityCell({
+  fit,
+  dense,
+}: {
+  fit?: ApplicantFit | null;
+  dense?: boolean;
+}) {
   if (!fit) {
     return <span className="text-gray-400 dark:text-gray-500">—</span>;
   }
   const cls = SUCCESS_CLASS[fit.successLabel] || SUCCESS_CLASS.Poor;
   const title = fitTitle(fit);
+  const sizeCls = dense ? "!px-1.5 !py-0.5 !text-[0.6875rem]" : "!px-2 !py-1 text-xs";
   return (
     <span
-      className={`badge border !rounded-md !px-2 !py-1 text-xs font-medium ${cls}`}
+      className={`badge border !rounded-md font-medium ${sizeCls} ${cls}`}
       title={title}
       aria-label={`Success probability ${fit.successProbability} percent, ${fit.successLabel}. ${title}`}
     >
@@ -57,15 +64,22 @@ export function SuccessProbabilityCell({ fit }: { fit?: ApplicantFit | null }) {
  * Cultural-fit badge. Heuristic "unclear" stays an em dash until the LLM overlay lands.
  * @param props.fit Server overlay
  */
-export function CulturalFitCell({ fit }: { fit?: ApplicantFit | null }) {
+export function CulturalFitCell({
+  fit,
+  dense,
+}: {
+  fit?: ApplicantFit | null;
+  dense?: boolean;
+}) {
   if (!fit || (fit.culturalFit === "unclear" && fit.source === "heuristic")) {
     return <span className="text-gray-400 dark:text-gray-500">—</span>;
   }
   const cls = CULTURE_CLASS[fit.culturalFit] || CULTURE_CLASS.unclear;
   const title = fitTitle(fit);
+  const sizeCls = dense ? "!px-1.5 !py-0.5 !text-[0.6875rem]" : "!px-2 !py-1 text-xs";
   return (
     <span
-      className={`badge border !rounded-md !px-2 !py-1 text-xs font-medium ${cls}`}
+      className={`badge border !rounded-md font-medium ${sizeCls} ${cls}`}
       title={title}
       aria-label={`Cultural fit: ${fit.culturalLabel}. ${title}`}
     >
@@ -81,17 +95,17 @@ export function CulturalFitCell({ fit }: { fit?: ApplicantFit | null }) {
 export function ApplicantFitChips({ fit }: { fit?: ApplicantFit | null }) {
   if (!fit) return null;
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="inline-flex items-center rounded border border-primary/30 bg-primary/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-primary">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md border border-defaultborder/50 dark:border-white/10 bg-light/30 dark:bg-white/[0.02] px-2.5 py-2">
+      <span className="inline-flex items-center rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wide text-primary dark:text-purple-300">
         AI
       </span>
-      <span className="text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50">Success</span>
+      <span className="text-[0.6875rem] uppercase tracking-wide text-defaulttextcolor/50 dark:text-white/50">Success</span>
       <SuccessProbabilityCell fit={fit} />
-      <span className="text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50">Culture</span>
+      <span className="text-[0.6875rem] uppercase tracking-wide text-defaulttextcolor/50 dark:text-white/50">Culture</span>
       <CulturalFitCell fit={fit} />
       <button
         type="button"
-        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        className="inline-flex min-h-[2.75rem] min-w-[2.75rem] sm:min-h-0 sm:min-w-0 h-9 w-9 sm:h-5 sm:w-5 shrink-0 items-center justify-center rounded-full text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
         aria-label="How Success and Culture are calculated with AI"
         title="How AI calculates Success and Culture"
         onClick={openApplicantFitInfo}

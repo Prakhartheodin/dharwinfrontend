@@ -1,5 +1,8 @@
 /** Container-width breakpoints for the jobs list (inline-size of `.jobs-list-container`). */
-export const JOBS_LIST_TABLE_MIN_WIDTH = 700
+export const JOBS_LIST_TABLE_MIN_WIDTH = 640
+
+/** Viewport width at or below this always uses cards (matches Tailwind `sm` and phone layouts). */
+export const JOBS_LIST_MOBILE_VIEWPORT_MAX_WIDTH = 639
 
 /** Progressive column reveal (container inline-size, px). Hide before squeeze, widest last. */
 export const JOBS_LIST_COL_VACANCIES_MIN = 760
@@ -21,7 +24,7 @@ export type JobsTableColumnId =
   | 'jobOrigin'
   | 'id'
 
-/** Maps react-table column id ? CSS class toggled by container queries in globals.scss. */
+/** Maps react-table column id → CSS class toggled by container queries in globals.scss. */
 export const JOBS_TABLE_COLUMN_CLASS: Record<JobsTableColumnId, string> = {
   checkbox: 'jobs-col-checkbox',
   jobTitle: 'jobs-col-jobTitle',
@@ -61,6 +64,15 @@ export function jobsTableColumnClasses(
 
 export function getJobsListLayout(containerWidth: number): JobsListLayout {
   return containerWidth >= JOBS_LIST_TABLE_MIN_WIDTH ? 'table' : 'cards'
+}
+
+/** Phone viewports always use cards; otherwise use jobs-list container inline-size. */
+export function resolveJobsListLayout(
+  containerWidth: number,
+  viewportWidth: number
+): JobsListLayout {
+  if (viewportWidth <= JOBS_LIST_MOBILE_VIEWPORT_MAX_WIDTH) return 'cards'
+  return getJobsListLayout(containerWidth)
 }
 
 /** Mirrors container-query column rules for unit tests. */

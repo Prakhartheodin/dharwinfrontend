@@ -1,5 +1,6 @@
 "use client"
 
+import "@/shared/styles/react-datepicker.css"
 import React, { useEffect, useState } from "react"
 import dynamic from "next/dynamic"
 import Link from "next/link"

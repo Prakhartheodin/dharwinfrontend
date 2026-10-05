@@ -10,10 +10,10 @@
 // Now: data-* / dir / className / CSS-var theming is hoisted to the live
 // DOM by ThemeAttrsApplier (subscribes to Redux post-hydration); document
 // shell + iconfont stylesheets + dragula <script> live in app/layout.tsx.
-// This file only kicks off the LocalStorageBackup theme bootstrap and
-// gates first paint behind `theme.pageloading`.
+// This file kicks off the LocalStorageBackup theme bootstrap; route children
+// always render (see comment below — do not gate on `theme.pageloading`).
 
-import React, { useContext, useEffect } from "react";
+import React, { Suspense, useContext, useEffect } from "react";
 import { useDispatch } from "react-redux";
 import * as switcherdata from "../../shared/data/switcherdata/switcherdata";
 import { ThemeChanger } from "@/shared/redux/action";
@@ -23,20 +23,23 @@ import ThemeAttrsApplier from "./ThemeAttrsApplier";
 export default function Layout({ children }: { children: React.ReactNode }) {
   const theme: any = useContext(Initialload);
   const dispatch = useDispatch();
+  const pageReady = Boolean(theme?.pageloading);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && !theme.pageloading) {
-      switcherdata.LocalStorageBackup(
-        (payload: any) => dispatch(ThemeChanger(payload) as any),
-        theme.setpageloading,
-      );
-    }
-  }, []);
+    if (typeof window === "undefined" || pageReady || !theme?.setpageloading) return;
+    switcherdata.LocalStorageBackup(
+      (payload: any) => dispatch(ThemeChanger(payload) as any),
+      theme.setpageloading,
+    );
+  }, [pageReady, dispatch, theme?.setpageloading]);
 
+  // Always render route `children`. Gating them behind `pageloading` left the App
+  // Router page slot empty after the flag flipped in production builds (shell
+  // chrome hydrated, main content stayed blank).
   return (
     <>
       <ThemeAttrsApplier />
-      {theme.pageloading && children}
+      <Suspense fallback={null}>{children}</Suspense>
     </>
   );
 }

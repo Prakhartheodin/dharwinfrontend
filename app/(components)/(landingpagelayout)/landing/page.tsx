@@ -209,7 +209,7 @@ const Landing = ({ local_varaiable, ThemeChanger }: any) => {
                         <div className="header-content-left">
                             <div className="header-element">
                                 <div className="horizontal-logo">
-                                    <Link href="/dashboards/crm/" className="header-logo">
+                                    <Link href="/dashboards/crm/" className="header-logo" aria-label="Dharwin Home">
                                     <img src="../assets/images/brand-logos/toggle-logo.png" alt="logo" className="toggle-logo" />
                                         <img src="../assets/images/brand-logos/toggle-dark.png" alt="logo" className="toggle-dark" /> 
                                     </Link>
@@ -237,9 +237,9 @@ const Landing = ({ local_varaiable, ThemeChanger }: any) => {
                             <nav className="main-menu-container nav nav-pills flex-column sub-open">
                                 <div className="landing-logo-container my-auto hidden lg:block">
                                     <div className="responsive-logo">
-                                        <Link className="responsive-logo-light" href="/dashboards/crm/" aria-label="Brand"><img
+                                        <Link className="responsive-logo-light" href="/dashboards/crm/" aria-label="Dharwin Home"><img
                                             src="../assets/images/brand-logos/desktop-logo.png" alt="logo" className="mx-auto" /></Link>
-                                        <Link className="responsive-logo-dark" href="/dashboards/crm/" aria-label="Brand"><img
+                                        <Link className="responsive-logo-dark" href="/dashboards/crm/" aria-label="Dharwin Home"><img
                                             src="../assets/images/brand-logos/desktop-white.png" alt="logo" className="mx-auto" /></Link>
                                     </div>
                                 </div>

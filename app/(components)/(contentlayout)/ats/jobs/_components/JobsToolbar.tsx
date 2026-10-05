@@ -81,7 +81,7 @@ export function JobsToolbar({
 }: JobsToolbarProps): React.JSX.Element {
   return (
     <header className="jobs-list-toolbar shrink-0 w-full max-w-full min-w-0 overflow-visible">
-      <div className="jobs-surface-x jobs-list-toolbar__inner pb-3 pt-3 w-full min-w-0 max-w-full">
+      <div className="jobs-surface-x jobs-list-toolbar__inner pb-0 pt-3 w-full min-w-0 max-w-full">
         <div className="jobs-list-toolbar__command flex flex-col gap-2.5">
           <div className="jobs-list-toolbar__heading flex flex-wrap items-baseline gap-2.5 sm:gap-3">
             <h1 className="jobs-list-toolbar__title m-0 pe-1 sm:pe-2">Jobs</h1>
@@ -124,7 +124,12 @@ export function JobsToolbar({
             ) : null}
           </button>
 
+          <label htmlFor="jobs-toolbar-page-size" className="sr-only">
+            Jobs per page
+          </label>
           <select
+            id="jobs-toolbar-page-size"
+            name="limit"
             className="jobs-toolbar-select form-control select-show-page-size !w-auto !h-8 !py-1 !text-[0.8125rem] !rounded-lg"
             value={pageSize}
             onChange={(e) => onPageSizeChange(Number(e.target.value))}

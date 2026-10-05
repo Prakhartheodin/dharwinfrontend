@@ -690,6 +690,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                                   className="form-check-input"
                                   checked={selectedCandidates.size === uniqueApplications.length && uniqueApplications.length > 0}
                                   onChange={handleSelectAllCandidates}
+                                  aria-label="Select all applicants on this job"
                                 />
                               </th>
                               <th className="!py-2 !px-3">Applicant</th>
@@ -713,6 +714,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                                       checked={selectedCandidates.has(candidateId)}
                                       onChange={() => handleSelectCandidate(candidateId)}
                                       disabled={!cand?.phoneNumber || isSynthetic}
+                                      aria-label={`Select ${cand?.fullName || 'applicant'}`}
                                       title={isSynthetic ? 'Internal offer-letter placeholder — not a real applicant' : (!cand?.phoneNumber ? 'No phone number available' : '')}
                                     />
                                   </td>
@@ -731,6 +733,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                                   </td>
                                   <td className="!py-2 !px-3">
                                     <ApplicationStatusSelect
+                                      controlId={`job-preview-application-status-${appId}`}
                                       value={app.status as JobApplicationStatus}
                                       applicantName={
                                         isSynthetic

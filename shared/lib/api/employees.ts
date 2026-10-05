@@ -1,6 +1,7 @@
 "use client";
 
 import { apiClient, resolveDownloadUrlForBrowser } from "@/shared/lib/api/client";
+import { coalesceGet } from "@/shared/lib/api/coalesceGet";
 import { getOrFetchMatchingJobs, matchingJobsCacheKey } from "@/shared/lib/ats/matching-jobs-cache";
 
 export interface CandidateListItem {
@@ -265,10 +266,14 @@ export async function getStudentAgentAssignments(): Promise<{
   return data;
 }
 
+const EMPLOYEES_AGENTS_KEY = "employees:agents";
+
 /** All Agent-role users for ATS filter checklist — requires `candidates.read`. */
 export async function getCandidateFilterAgents(): Promise<{ agents: AgentOption[] }> {
-  const { data } = await apiClient.get<{ agents: AgentOption[] }>("/employees/agents");
-  return data;
+  return coalesceGet(EMPLOYEES_AGENTS_KEY, async () => {
+    const { data } = await apiClient.get<{ agents: AgentOption[] }>("/employees/agents");
+    return data;
+  }, 60_000);
 }
 
 export async function assignAgentToStudent(candidateId: string, agentId: string | null): Promise<unknown> {

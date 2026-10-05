@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import "@/shared/styles/react-datepicker.css";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import FocusLock from "react-focus-lock";

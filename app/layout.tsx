@@ -22,14 +22,21 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import Providers from "./providers";
 import PrelineScript from "./PrelineScript";
+import DeferredStylesheets from "./DeferredStylesheets";
+import IconStylesheetLinks from "./IconStylesheetLinks";
+import LcpLogoHint from "./LcpLogoHint";
+import { inter, montserrat } from "./fonts";
 
-const ICON_STYLESHEETS = [
-  "/assets/iconfonts/RemixIcons/fonts/remixicon.css",
-  "/assets/iconfonts/tabler-icons/iconfont/tabler-icons.css",
-  "/assets/iconfonts/feather/feather.css",
-  "/assets/iconfonts/bootstrap-icons/icons/font/bootstrap-icons.css",
-  "/assets/iconfonts/line-awesome/1.3.0/css/line-awesome.css",
-  "/assets/iconfonts/boxicons/css/boxicons.css",
+/** Sidebar/header bx/fe deferred via DeferredStylesheets; ri/ti blocking in IconStylesheetLinks. */
+const CRITICAL_ICON_FONT_PRELOADS = [
+  {
+    href: "/assets/iconfonts/tabler-icons/iconfont/fonts/tabler-icons.woff2",
+    type: "font/woff2",
+  },
+  {
+    href: "/assets/iconfonts/RemixIcons/fonts/remixicon.woff2",
+    type: "font/woff2",
+  },
 ] as const;
 
 export const metadata: Metadata = {
@@ -55,21 +62,35 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${inter.variable} ${montserrat.variable}`}>
       <head>
-        {ICON_STYLESHEETS.map((path) => (
-          <link key={path} rel="stylesheet" href={path} />
-        ))}
         <link
-          rel="stylesheet"
-          href="https://cdn.jsdelivr.net/npm/dragula@3.7.3/dist/dragula.min.css"
+          rel="preload"
+          as="image"
+          href="/assets/images/logo-140.webp"
+          type="image/webp"
+          fetchPriority="high"
         />
+        {CRITICAL_ICON_FONT_PRELOADS.map(({ href, type }) => (
+          <link
+            key={href}
+            rel="preload"
+            href={href}
+            as="font"
+            type={type}
+            crossOrigin="anonymous"
+          />
+        ))}
+        <IconStylesheetLinks />
+        {/* Fonts/API are same-origin (next/font self-host; /api/v1 rewrite). No preconnect candidates for employees LCP. */}
       </head>
       {/* Browser extensions (e.g. Grammarly: data-gr-ext-installed) mutate
           <body> before React hydrates; suppressHydrationWarning here keeps
           the warning scoped to the body node only. */}
-      <body suppressHydrationWarning>
+      <body suppressHydrationWarning className={inter.className}>
+        <LcpLogoHint />
         <Providers>{children}</Providers>
+        <DeferredStylesheets />
         <PrelineScript />
         <Script
           src="https://cdn.jsdelivr.net/npm/dragula@3.7.3/dist/dragula.min.js"

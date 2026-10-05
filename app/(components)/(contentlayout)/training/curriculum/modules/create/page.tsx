@@ -22,6 +22,10 @@ import {
   normalizedSearchIncludes,
 } from '@/shared/lib/training/normalize-search-term'
 import PlaylistItemMetaFields from '../_components/PlaylistItemMetaFields'
+import OnDemandStylesheet from '@/shared/components/OnDemandStylesheet'
+import { DRAGULA_STYLESHEET } from '@/shared/lib/iconStylesheetPaths'
+
+const DRAGULA_ON_DEMAND = [DRAGULA_STYLESHEET] as const
 
 const Select = dynamic(() => import('react-select'), { ssr: false })
 
@@ -1845,6 +1849,7 @@ const CreateModule = () => {
 
   return (
     <Fragment>
+      <OnDemandStylesheet hrefs={DRAGULA_ON_DEMAND} />
       <Seo title={isEditMode ? 'Edit Training Module' : 'Create Training Module'} />
       <div className="grid grid-cols-12 gap-6">
         <div className="xl:col-span-12 col-span-12">

@@ -118,7 +118,7 @@ export function JobsTable({
             ))}
           </colgroup>
         ) : null}
-        <thead className="jobs-table-thead sticky top-0 z-[3]">
+        <thead className="jobs-table-thead">
           {headerGroups.map((headerGroup: any, i: number) => (
             <tr
               {...headerGroup.getHeaderGroupProps()}
@@ -168,6 +168,8 @@ export function JobsTable({
                   >
                     {isCheckboxCol ? (
                       <input
+                        id="jobs-select-all-page"
+                        name="selectAll"
                         className="form-check-input"
                         type="checkbox"
                         checked={isAllSelected}

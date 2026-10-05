@@ -28,6 +28,56 @@ export function ensurePrelineCollections() {
   window.$hsOverlayCollection = window.$hsOverlayCollection || [];
 }
 
+/**
+ * HSTabs.autoInit scans every `[role="tablist"]`. React-controlled tabs (no `[data-hs-tab]`
+ * toggles) still match; HSTabs' constructor then calls getAttribute on a missing `.active`
+ * toggle and throws. Preline skips lists with class `--prevent-on-load-init`.
+ */
+export function markNonPrelineTablists() {
+  if (typeof document === "undefined") return;
+  document
+    .querySelectorAll('[role="tablist"]:not(.--prevent-on-load-init)')
+    .forEach((el) => {
+      if (!el.querySelector("[data-hs-tab]")) {
+        el.classList.add("--prevent-on-load-init");
+      }
+    });
+}
+
+type PrelinePluginClass = { autoInit?: () => void };
+
+/** Wrap plugin autoInit so load listeners and HSStaticMethods share the same guards. */
+export function patchPrelineSafeAutoInit() {
+  if (typeof window === "undefined") return;
+
+  const w = window as Window & { HSTabs?: PrelinePluginClass };
+
+  if (w.HSTabs?.autoInit) {
+    const tabsOrig = w.HSTabs.autoInit.bind(w.HSTabs);
+    w.HSTabs.autoInit = () => {
+      markNonPrelineTablists();
+      try {
+        tabsOrig();
+      } catch (e) {
+        console.warn("[Preline] HSTabs.autoInit failed:", e);
+      }
+    };
+  }
+
+  const methods = window.HSStaticMethods;
+  if (!methods?.autoInit) return;
+
+  const staticOrig = methods.autoInit.bind(methods);
+  methods.autoInit = (collection?: string | string[]) => {
+    markNonPrelineTablists();
+    try {
+      staticOrig(collection);
+    } catch (e) {
+      console.warn("[Preline] autoInit failed:", e);
+    }
+  };
+}
+
 /** Run after layout paint so Preline’s DOM queries don’t see transient/undefined nodes (avoids getAttribute on undefined). */
 function runWhenDomStable(fn: () => void) {
   requestAnimationFrame(() => {
@@ -46,16 +96,14 @@ export default function PrelineScript() {
         // Must run BEFORE the import — preline registers the resize listener
         // synchronously during module evaluation.
         ensurePrelineCollections();
+        markNonPrelineTablists();
         await import("preline/preline");
         if (cancelled || typeof document === "undefined") return;
+        patchPrelineSafeAutoInit();
 
         runWhenDomStable(() => {
           if (cancelled) return;
-          try {
-            window.HSStaticMethods?.autoInit?.();
-          } catch (e) {
-            console.warn("[Preline] autoInit failed:", e);
-          }
+          window.HSStaticMethods?.autoInit?.();
         });
       } catch (e) {
         console.warn("[Preline] load failed:", e);

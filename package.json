@@ -2,11 +2,17 @@
   "name": "dharwin-business-solutions",
   "version": "0.1.0",
   "private": true,
+  "browserslist": [
+    "chrome >= 87",
+    "edge >= 88",
+    "firefox >= 78",
+    "safari >= 14"
+  ],
   "scripts": {
     "dev": "next dev -p 3001",
     "build": "next build --webpack",
     "build:turbo": "next build",
-    "start": "next start",
+    "start": "next start -p 3001",
     "lint": "eslint .",
     "audit:ci": "npm audit --audit-level=high",
     "postcss": "sass ./public/assets/scss/style.scss ./public/assets/css/style.css && postcss ./public/assets/css/style.css -o ./public/assets/css/style.css",

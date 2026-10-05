@@ -689,7 +689,7 @@ export default function CandidateActionModals(props: CandidateActionModalsProps)
               <AsyncSelect
                 classNamePrefix="Select2"
                 cacheOptions
-                defaultOptions
+                defaultOptions={!!assignRecruiterCandidate}
                 loadOptions={loadRecruiterOptions}
                 placeholder="Search or pick recruiter"
                 value={assignRecruiterOption}

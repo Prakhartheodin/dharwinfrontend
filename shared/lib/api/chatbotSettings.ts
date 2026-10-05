@@ -1,15 +1,20 @@
 "use client";
 
 import { apiClient } from "@/shared/lib/api/client";
+import { coalesceGet } from "@/shared/lib/api/coalesceGet";
 
 export interface ChatbotConfig {
   isGloballyEnabled: boolean;
   enabledPages: string[]; // empty = all pages enabled
 }
 
+const CHATBOT_SETTINGS_KEY = "chat-assistant:settings";
+
 export async function fetchChatbotSettings(): Promise<ChatbotConfig> {
-  const res = await apiClient.get("/chat-assistant/settings");
-  return res.data.data;
+  return coalesceGet(CHATBOT_SETTINGS_KEY, async () => {
+    const res = await apiClient.get("/chat-assistant/settings");
+    return res.data.data;
+  }, 30_000);
 }
 
 export async function saveChatbotSettings(config: ChatbotConfig): Promise<ChatbotConfig> {

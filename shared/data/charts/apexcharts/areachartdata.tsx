@@ -1,7 +1,8 @@
-import { Component } from 'react';
-const ReactApexChart = dynamic(() => import("react-apexcharts"), { ssr: false });;
 import dynamic from 'next/dynamic';
+import { Component } from 'react';
 import { ApexOptions } from 'apexcharts';
+
+const ReactApexChart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
 interface spark3 {
     options?: ApexOptions,

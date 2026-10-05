@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { IBM_Plex_Sans } from "next/font/google";
 import {
   getCandidateSopStatus,
   type CandidateSopStatus,
@@ -13,12 +12,6 @@ import {
   saveSopStripPrefs,
   SOP_STRIP_REFRESH_EVENT,
 } from "@/shared/lib/sop-strip-preferences";
-
-const headline = IBM_Plex_Sans({
-  weight: ["600"],
-  subsets: ["latin"],
-  display: "swap",
-});
 
 type Props = {
   candidateId: string;
@@ -167,7 +160,7 @@ export default function CandidateNextActionsStrip({ candidateId, refreshKey = 0 
         <div className="min-w-0 flex-1">
           <h2
             id="sop-next-heading"
-            className={`${headline.className} text-lg font-semibold tracking-tight text-gray-900 dark:text-white`}
+            className="text-lg font-semibold tracking-tight text-gray-900 dark:text-white"
           >
             Next step
           </h2>

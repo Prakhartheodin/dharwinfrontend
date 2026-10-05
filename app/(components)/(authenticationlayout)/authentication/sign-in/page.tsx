@@ -3,7 +3,7 @@
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import React, { Fragment, useEffect, useState } from "react";
+import React, { Fragment, Suspense, useEffect, useState } from "react";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { ROUTES } from "@/shared/lib/constants";
 import { AxiosError } from "axios";
@@ -28,7 +28,7 @@ function isCandidateResignedResponse(err: unknown): boolean {
   return false;
 }
 
-export default function SignInPage() {
+function SignInPageContent() {
   const searchParams = useSearchParams();
   const postLoginPath = getSafePostLoginPath(searchParams.get("next"));
   const registeredMessage =
@@ -354,5 +354,13 @@ export default function SignInPage() {
         </AuthFormCard>
       </AuthPageLayout>
     </Fragment>
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignInPageContent />
+    </Suspense>
   );
 }

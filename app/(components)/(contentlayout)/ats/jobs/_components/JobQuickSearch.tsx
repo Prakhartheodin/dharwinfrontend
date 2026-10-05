@@ -28,6 +28,8 @@ const SUGGESTION_DEBOUNCE_MS = 200
 const SUGGESTION_CACHE_LIMIT = 50
 const MAX_PER_GROUP = 5
 
+export const JOBS_QUICK_SEARCH_INPUT_ID = 'jobs-quick-search'
+
 const GROUP_META: Record<FacetGroup, { header: string; icon: string }> = {
   title: { header: 'Job titles', icon: 'ri-briefcase-line' },
   company: { header: 'Companies', icon: 'ri-building-line' },
@@ -444,6 +446,9 @@ export default function JobQuickSearch({
 
   return (
     <div className="relative w-full min-w-0 flex-1">
+      <label htmlFor={JOBS_QUICK_SEARCH_INPUT_ID} className="sr-only">
+        Search jobs
+      </label>
       {/* Flex row, not absolutely positioned adornments: the text field shrinks to leave room
           for the scope tag / spinner / clear button, so long values ellipsize instead of
           running underneath them. */}
@@ -462,7 +467,9 @@ export default function JobQuickSearch({
       <div className="relative min-w-0 flex-1 self-stretch">
       <input
         ref={inputRef}
-        type="text"
+        id={JOBS_QUICK_SEARCH_INPUT_ID}
+        name="q"
+        type="search"
         role="combobox"
         aria-expanded={showDropdown}
         aria-haspopup="listbox"

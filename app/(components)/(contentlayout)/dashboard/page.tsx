@@ -1,6 +1,10 @@
 "use client";
 
 import Seo from "@/shared/layout-components/seo/seo";
+import OnDemandStylesheet from "@/shared/components/OnDemandStylesheet";
+import { BOOTSTRAP_ICONS_STYLESHEET } from "@/shared/lib/iconStylesheetPaths";
+
+const BOOTSTRAP_ICONS_ON_DEMAND = [BOOTSTRAP_ICONS_STYLESHEET] as const;
 import Link from "next/link";
 import React, { Fragment, useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
@@ -1319,6 +1323,7 @@ export default function DashboardPage() {
   /** Employee role and other internal users use the HRMS dashboard (tasks, attendance, ATS panels by permission). */
   return (
     <Fragment>
+      <OnDemandStylesheet hrefs={BOOTSTRAP_ICONS_ON_DEMAND} />
       <Seo title="Dashboard" />
 
       {unauthorized && (

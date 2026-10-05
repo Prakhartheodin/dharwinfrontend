@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from "vitest";
-import { ensurePrelineCollections } from "./PrelineScript";
+import { ensurePrelineCollections, markNonPrelineTablists } from "./PrelineScript";
 
 /**
  * Regression: preline 2.7.0's HSOverlay resize listener reads
@@ -25,5 +25,19 @@ describe("ensurePrelineCollections", () => {
     window.$hsOverlayCollection = existing;
     ensurePrelineCollections();
     expect(window.$hsOverlayCollection).toBe(existing);
+  });
+});
+
+describe("markNonPrelineTablists", () => {
+  it("marks React tablists that lack data-hs-tab toggles", () => {
+    document.body.innerHTML = `
+      <div id="react-tabs" role="tablist"><button role="tab">Overview</button></div>
+      <nav id="preline-tabs" role="tablist">
+        <button type="button" class="active" data-hs-tab="#panel-a">A</button>
+      </nav>
+    `;
+    markNonPrelineTablists();
+    expect(document.getElementById("react-tabs")?.classList.contains("--prevent-on-load-init")).toBe(true);
+    expect(document.getElementById("preline-tabs")?.classList.contains("--prevent-on-load-init")).toBe(false);
   });
 });

@@ -78,6 +78,7 @@ export default function ListPagination({
       {showPageSizeControl ? (
         <select
           id={rowsSelectId}
+          name="pageSize"
           className="form-control select-show-page-size !w-auto !h-8 !py-1 !text-[0.75rem] !rounded-lg"
           value={pageSize}
           onChange={(e) => onPageSizeChange(Number(e.target.value))}
@@ -93,7 +94,7 @@ export default function ListPagination({
       {showSummary ? (
         <div className="list-pagination__summary shrink-0">
           Showing {start} to {end} of {totalResults} entries{" "}
-          <i className="bi bi-arrow-right ms-2 font-semibold" aria-hidden="true" />
+          <i className="ri-arrow-right-line ms-2 font-semibold" aria-hidden="true" />
         </div>
       ) : null}
       {showPagerControls ? (
@@ -167,6 +168,7 @@ export default function ListPagination({
             </label>
             <input
               id={inputId}
+              name="gotoPage"
               type="number"
               inputMode="numeric"
               min={1}
@@ -175,6 +177,7 @@ export default function ListPagination({
               onChange={(e) => setGotoPageInput(e.currentTarget.value)}
               placeholder={String(page)}
               aria-describedby={hintId}
+              aria-label="Go to page number"
               className="ti-form-control form-control-sm !w-[4.5rem] !py-[0.375rem]"
             />
             <span id={hintId} className="sr-only">
@@ -182,7 +185,7 @@ export default function ListPagination({
             </span>
             <button
               type="submit"
-              className="ti-btn ti-btn-primary ti-btn-sm !mb-0 !py-[0.375rem]"
+              className="ti-btn ti-btn-primary ti-btn-sm !mb-0 !py-[0.375rem] dark:!bg-violet-600 dark:!text-white dark:hover:!bg-violet-500"
             >
               Go
             </button>

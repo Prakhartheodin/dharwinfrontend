@@ -28,7 +28,7 @@ export function getBadgeColorClasses(count: number): string {
     case 'medium':
       return `bg-warning text-white ${ring}`;
     case 'high':
-      return `bg-danger text-white ${ring} shadow-[0_0_0_1px_rgba(230,83,60,0.4)]`;
+      return `bg-[#c5301a] text-white ${ring} shadow-[0_0_0_1px_rgba(197,48,26,0.4)]`;
   }
 }
 
@@ -52,10 +52,10 @@ export function formatCountLocale(count: number): string {
   return count.toLocaleString();
 }
 
-/** Accessible bell label with the full unread count. */
+/** Accessible bell label; uses the same capped display string as the visible badge. */
 export function formatNotificationBellAriaLabel(count: number): string {
   if (count <= 0) return 'Notifications';
-  return `Notifications, ${formatCountLocale(count)} unread`;
+  return `Notifications, ${formatBadgeCount(count)} unread`;
 }
 
 /**

@@ -72,12 +72,12 @@ const Layout = ({ children }: any) => {
                   <Sidebar />
                 </Suspense>
                 <div className='content'>
-                  <div className='main-content pt-4 sm:pt-6' onClick={Bodyclickk}>
+                  <main id="main-content" className='main-content pt-4 sm:pt-6' onClick={Bodyclickk}>
                     <Suspense fallback={null}>
                       <CandidateSopSetupBannerHost />
                     </Suspense>
                     {content}
-                  </div>
+                  </main>
                 </div>
                 <Footer/>
               </div>

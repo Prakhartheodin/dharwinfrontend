@@ -37,14 +37,18 @@ export function ProtectedRoute({ children, redirectTo = ROUTES.signIn }: Protect
       >
         {/* Same brand asset the auth pages use */}
         <img
-          src="/assets/images/logo.png"
+          src="/assets/images/logo-140.webp"
           alt="Dharwin Business Solutions"
           className="select-none"
+          width={200}
+          height={57}
+          decoding="async"
+          fetchPriority="high"
           style={{ width: 200, height: "auto", objectFit: "contain" }}
           onError={(e) => {
             const t = e.target as HTMLImageElement;
             t.onerror = null;
-            t.src = "/assets/images/brand-logos/dharwin-white-logo.png";
+            t.src = "/assets/images/logo.jpeg";
           }}
         />
         {/* Spinner mirrors the login button's spinner; brand green #34B34C */}

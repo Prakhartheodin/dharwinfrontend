@@ -62,3 +62,4 @@ CLAUDE.md
 
 # Editor-local
 .cursor/
+.lighthouse-reports/

@@ -142,6 +142,7 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
       id="candidates-filter-panel"
       role="region"
       aria-hidden={!layoutOpen}
+      {...(!layoutOpen ? { inert: true } : {})}
       tabIndex={-1}
       className={
         'w-full shrink-0 origin-top transform-gpu rounded-b-xl bg-white/98 shadow-[0_28px_60px_-28px_rgba(0,0,0,0.35)] transition-[max-height,opacity] duration-300 ease-out dark:bg-bodybg/98 z-[40] motion-reduce:transition-none ' +

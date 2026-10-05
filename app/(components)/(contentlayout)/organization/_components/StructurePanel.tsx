@@ -17,12 +17,6 @@ import {
   type OrgUnitNode,
   type OrgUnitType,
 } from "@/shared/lib/api/org-structure";
-// Modals only render on interaction — lazy-load them so the page compiles without
-// pulling their (employees/sweetalert2) dependency graphs upfront.
-const OrgUnitModal = dynamic(() => import("./OrgUnitModal"), { ssr: false });
-const AssignHeadModal = dynamic(() => import("./AssignHeadModal"), { ssr: false });
-const AssignToDepartmentModal = dynamic(() => import("./AssignToDepartmentModal"), { ssr: false });
-const ReparentUnitModal = dynamic(() => import("./ReparentUnitModal"), { ssr: false });
 import StructureHistoryPanel from "./StructureHistoryPanel";
 import {
   OrgEmptyState,
@@ -35,6 +29,13 @@ import {
   ORG_UNIT_TYPE_META,
 } from "./org-ui";
 import { useFeaturePermissions } from "@/shared/hooks/use-feature-permissions";
+
+// Modals only render on interaction — lazy-load them so the page compiles without
+// pulling their (employees/sweetalert2) dependency graphs upfront.
+const OrgUnitModal = dynamic(() => import("./OrgUnitModal"), { ssr: false });
+const AssignHeadModal = dynamic(() => import("./AssignHeadModal"), { ssr: false });
+const AssignToDepartmentModal = dynamic(() => import("./AssignToDepartmentModal"), { ssr: false });
+const ReparentUnitModal = dynamic(() => import("./ReparentUnitModal"), { ssr: false });
 
 const PAGE_SIZE = 10;
 const CHECKLIST_DISMISS_KEY = "org-setup-checklist-dismissed";

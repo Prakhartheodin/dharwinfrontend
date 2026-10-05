@@ -3,7 +3,7 @@ import React, { Fragment, useState, useEffect, useMemo } from "react";
 import { connect } from "react-redux";
 import { ThemeChanger } from "../../redux/action";
 import Link from "next/link";
-import { basePath } from "@/next.config";
+import BrandLogos from "@/shared/layout-components/brand/BrandLogos";
 import store from "@/shared/redux/store";
 import SimpleBar from 'simplebar-react';
 import Menuloop from "./menuloop";
@@ -887,14 +887,8 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 			<aside className="app-sidebar" id="sidebar" onMouseOver={() => Onhover()}
 				onMouseLeave={() => Outhover()}>
 				<div className="main-sidebar-header">
-					<Link href="/dashboard" className="header-logo">
-						<img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/logo.png`} alt="logo" className="main-logo desktop-logo" />
-						<img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/icon.png`} alt="logo" className="main-logo toggle-logo" />
-						<img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/logo-dark.png`} alt="logo" className="main-logo desktop-dark" />
-						<img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/icon.png`} alt="logo" className="main-logo toggle-dark" />
-						<img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/logo-dark.png`} alt="logo" className="main-logo desktop-white" />
-						<img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/icon.png`} alt="logo" className="main-logo toggle-white" />
-
+					<Link href="/dashboard" className="header-logo" aria-label="Dharwin Home">
+						<BrandLogos variant="sidebar" />
 					</Link>
 				</div>
 
@@ -1013,6 +1007,7 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 												<li
 													className={`section-group grid overflow-hidden transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none ${isCollapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"}`}
 													aria-hidden={isCollapsed}
+													{...(isCollapsed ? { inert: true } : {})}
 												>
 													<ul className="m-0 min-h-0 list-none overflow-hidden p-0">
 														{itemsJsx}

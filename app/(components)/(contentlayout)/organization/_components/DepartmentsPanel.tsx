@@ -10,9 +10,6 @@ import {
   reactivateDepartment,
   type Department,
 } from "@/shared/lib/api/departments";
-// Lazy-load modals so the page compiles without their dependency graphs upfront.
-const DepartmentModal = dynamic(() => import("./DepartmentModal"), { ssr: false });
-const DepartmentMembersModal = dynamic(() => import("./DepartmentMembersModal"), { ssr: false });
 import {
   OrgEmptyState,
   OrgErrorState,
@@ -23,6 +20,10 @@ import {
   OrgTableActions,
 } from "./org-ui";
 import { useFeaturePermissions } from "@/shared/hooks/use-feature-permissions";
+
+// Lazy-load modals so the page compiles without their dependency graphs upfront.
+const DepartmentModal = dynamic(() => import("./DepartmentModal"), { ssr: false });
+const DepartmentMembersModal = dynamic(() => import("./DepartmentMembersModal"), { ssr: false });
 
 const PAGE_SIZE = 10;
 type StatusFilter = "active" | "all";

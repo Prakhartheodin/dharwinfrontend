@@ -33,7 +33,12 @@ function Menuloop({ local_varaiable ,MenuItems, toggleSidemenu, level , HoverTog
         </span>
         <i className="fe fe-chevron-right side-menu__angle"></i>
       </Link>
-      <ul className={`slide-menu child${level}  ${MenuItems.active ? 'double-menu-active' : ''} ${MenuItems?.dirchange ? "force-left" : ""} `} style={MenuItems.active ? { display: "block" } : { display: "none" }}>
+      <ul
+        className={`slide-menu child${level}  ${MenuItems.active ? 'double-menu-active' : ''} ${MenuItems?.dirchange ? "force-left" : ""} `}
+        style={MenuItems.active ? { display: "block" } : { display: "none" }}
+        aria-hidden={!MenuItems.active}
+        {...(!MenuItems.active ? { inert: true } : {})}
+      >
         {level <= 1 ? <li className="slide side-menu__label1">
           <Link href="#!" scroll={false}>{MenuItems.title}</Link>
         </li> : ""}

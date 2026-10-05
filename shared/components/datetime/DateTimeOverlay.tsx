@@ -1,4 +1,5 @@
 'use client'
+import '@/shared/styles/react-datepicker.css'
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { format } from 'date-fns'

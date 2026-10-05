@@ -1,5 +1,6 @@
 
 "use client"
+import "@/app/vendor-switcher-theme.scss";
 import React, { Fragment } from 'react'
 import { connect } from 'react-redux';
 import { ThemeChanger } from '@/shared/redux/action';

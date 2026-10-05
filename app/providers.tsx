@@ -14,18 +14,13 @@
 
 import { Provider } from "react-redux";
 import { useState } from "react";
-import dynamic from "next/dynamic";
 import store from "@/shared/redux/store";
 import { Initialload } from "@/shared/contextapi";
 import { AuthProvider } from "@/shared/contexts/auth-context";
 import { ChatSocketProvider } from "@/shared/contexts/ChatSocketContext";
 import { NotificationProvider } from "@/shared/contexts/NotificationContext";
-import { NotificationToastStack } from "@/shared/components/NotificationToastStack";
-
-const FloatingChatbot = dynamic(
-  () => import("@/shared/components/FloatingChatbot"),
-  { ssr: false },
-);
+import DeferredNotificationToastStack from "./DeferredNotificationToastStack";
+import DeferredFloatingChatbot from "./DeferredFloatingChatbot";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [pageloading, setpageloading] = useState(false);
@@ -34,11 +29,11 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       <AuthProvider>
         <ChatSocketProvider>
           <NotificationProvider>
-            <NotificationToastStack />
+            <DeferredNotificationToastStack />
             <Initialload.Provider value={{ pageloading, setpageloading }}>
               {children}
             </Initialload.Provider>
-            <FloatingChatbot />
+            <DeferredFloatingChatbot />
           </NotificationProvider>
         </ChatSocketProvider>
       </AuthProvider>

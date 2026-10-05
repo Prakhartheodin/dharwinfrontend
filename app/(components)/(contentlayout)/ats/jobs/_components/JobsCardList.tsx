@@ -3,7 +3,7 @@
 import React from 'react'
 import type { DisplayJob } from '@/shared/lib/ats/jobMappers'
 import { HireForecastChip } from './HireForecastCell'
-import { JobOriginBadge } from './JobPills'
+import { JobOriginBadge, JobStatusBadge } from './JobPills'
 import { JobRowActions } from './JobRowActions'
 
 export interface JobsCardListProps {
@@ -51,7 +51,7 @@ export function JobsCardList({
 }: JobsCardListProps): React.JSX.Element {
   if (rows.length === 0) {
     return (
-      <div className="jobs-list-cards jobs-surface-x flex-1 overflow-y-auto py-6" style={{ minHeight: 0 }}>
+      <div className="jobs-list-cards flex-1 overflow-y-auto py-6" style={{ minHeight: 0 }}>
         <div className="rounded-xl border border-dashed border-defaultborder/60 dark:border-white/10 py-10 px-4 text-center">
           <p className="text-sm text-defaulttextcolor/80 mb-3">{emptyMessage}</p>
           <div className="flex flex-wrap justify-center gap-2">
@@ -72,7 +72,7 @@ export function JobsCardList({
   }
 
   return (
-    <div className="jobs-list-cards jobs-surface-x flex-1 overflow-y-auto py-3 space-y-3" style={{ minHeight: 0 }}>
+    <div className="jobs-list-cards flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
       {rows.map((row: any, i: number) => {
         prepareRow(row)
         const job = row.original as DisplayJob
@@ -84,7 +84,7 @@ export function JobsCardList({
         return (
           <div
             key={row.id || `card-${i}`}
-            className="rounded-xl border border-defaultborder/70 dark:border-white/10 bg-white dark:bg-bodybg shadow-sm hover:shadow transition-shadow p-3.5"
+            className="jobs-list-card rounded-xl border border-defaultborder/70 dark:border-white/10 bg-white dark:bg-bodybg shadow-sm hover:shadow transition-shadow p-3.5 space-y-2.5 min-w-0"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
@@ -115,15 +115,20 @@ export function JobsCardList({
                   </div>
                 )}
               </div>
-              {canDelete && !isSalesAgent ? (
-                <input
-                  className="form-check-input mt-1 shrink-0"
-                  type="checkbox"
-                  checked={selectedRows.has(job.id)}
-                  onChange={() => onRowSelect(job.id)}
-                  aria-label={`Select ${job.jobTitle}`}
-                />
-              ) : null}
+              <div className="flex shrink-0 flex-col items-end gap-2">
+                <JobStatusBadge status={job.status} />
+                {canDelete && !isSalesAgent ? (
+                  <input
+                    id={`jobs-row-select-${job.id}`}
+                    name="selectedJobIds"
+                    className="form-check-input mt-0 shrink-0"
+                    type="checkbox"
+                    checked={selectedRows.has(job.id)}
+                    onChange={() => onRowSelect(job.id)}
+                    aria-label={`Select ${job.jobTitle}`}
+                  />
+                ) : null}
+              </div>
             </div>
             <div className="mt-2.5 flex flex-wrap gap-1.5 text-[0.7rem]">
               {job.salary ? (

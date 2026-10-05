@@ -25,6 +25,10 @@ import {
 } from "@/shared/lib/ats/browseJobsListQuery";
 import { useAuth } from "@/shared/contexts/auth-context";
 import ListPagination from "@/shared/components/ListPagination";
+import OnDemandStylesheet from "@/shared/components/OnDemandStylesheet";
+import { BOOTSTRAP_ICONS_STYLESHEET } from "@/shared/lib/iconStylesheetPaths";
+
+const BOOTSTRAP_ICONS_ON_DEMAND = [BOOTSTRAP_ICONS_STYLESHEET] as const;
 
 const JOB_TYPES = ["Full-time", "Part-time", "Contract", "Temporary", "Internship", "Freelance"];
 const EXPERIENCE_LEVELS = ["Entry Level", "Mid Level", "Senior Level", "Executive"];
@@ -224,6 +228,7 @@ export default function BrowseJobsPage() {
 
   return (
     <Fragment>
+      <OnDemandStylesheet hrefs={BOOTSTRAP_ICONS_ON_DEMAND} />
       <Seo title="Browse Jobs" />
       <div className="container-fluid pt-6">
         <div className="box custom-box mb-4">

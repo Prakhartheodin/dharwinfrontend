@@ -6,8 +6,8 @@ import { CheckIcon, CopyIcon, SparkleIcon } from "./icons";
 // ─── IconButton — header icon (clear / expand / close) ─────────────────────
 
 export function IconButton({
-  children, onClick, label, disabled = false,
-}: { children: ReactNode; onClick: () => void; label: string; disabled?: boolean }) {
+  children, onClick, label, disabled = false, tabIndex,
+}: { children: ReactNode; onClick: () => void; label: string; disabled?: boolean; tabIndex?: number }) {
   return (
     <button
       type="button"
@@ -15,6 +15,7 @@ export function IconButton({
       disabled={disabled}
       aria-label={label}
       title={label}
+      tabIndex={tabIndex}
       className={CONTROL.header}
     >
       {children}

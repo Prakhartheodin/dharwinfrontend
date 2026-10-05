@@ -67,6 +67,16 @@ const SECTION_TITLE =
 const CHIP =
   'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.7rem] font-medium max-w-full'
 
+const JOBS_FILTER_STATUS_ID = 'jobs-filter-status'
+const JOBS_FILTER_JOB_TITLE_ID = 'jobs-filter-job-title'
+const JOBS_FILTER_COMPANY_ID = 'jobs-filter-company'
+const JOBS_FILTER_LOCATION_ID = 'jobs-filter-location'
+const JOBS_FILTER_EXP_MIN_ID = 'jobs-filter-exp-min'
+const JOBS_FILTER_EXP_MAX_ID = 'jobs-filter-exp-max'
+const JOBS_FILTER_SALARY_MIN_ID = 'jobs-filter-salary-min'
+const JOBS_FILTER_SALARY_MAX_ID = 'jobs-filter-salary-max'
+const JOBS_FILTER_POSTED_ON_ID = 'jobs-filter-posted-on'
+
 // Experience dropdown values (years).
 const EXPERIENCE_YEAR_OPTIONS = [0, 1, 2, 3, 5, 7, 10, 15, 20]
 const EXPERIENCE_PRESETS: Array<{ label: string; min: number; max: number }> = [
@@ -360,6 +370,7 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
               </label>
               <select
                 id="jobs-listing-origin"
+                name="listingOrigin"
                 className={SELECT_BASE}
                 value={draftOrigin}
                 onChange={(e) =>
@@ -372,8 +383,12 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
               </select>
             </div>
             <div>
-              <label className={`${SECTION_TITLE} mb-1.5 block`}>Status</label>
+              <label className={`${SECTION_TITLE} mb-1.5 block`} htmlFor={JOBS_FILTER_STATUS_ID}>
+                Status
+              </label>
               <select
+                id={JOBS_FILTER_STATUS_ID}
+                name="status"
                 className={SELECT_BASE}
                 value={draft.status}
                 onChange={(e) => setDraft((prev) => ({ ...prev, status: e.target.value }))}
@@ -396,10 +411,10 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
           </section>
 
           <section>
-            <div className={`${SECTION_TITLE} mb-1.5`}>Posted On</div>
             <YmdFilterDateInput
               label="Posted On"
-              hideLabel
+              inputId={JOBS_FILTER_POSTED_ON_ID}
+              labelClassName={`${SECTION_TITLE} mb-1.5 block`}
               value={draft.postingDate}
               onCommit={(sanitized) =>
                 setDraft((prev) => ({ ...prev, postingDate: sanitized }))
@@ -414,7 +429,9 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
           {/* Job Title */}
           <section>
             <div className="flex items-center justify-between mb-1.5">
-              <label className={SECTION_TITLE}>Job Title</label>
+              <label className={SECTION_TITLE} htmlFor={JOBS_FILTER_JOB_TITLE_ID}>
+                Job Title
+              </label>
               <span className="text-[0.7rem] text-gray-400">{uniqueJobTitles.length} available</span>
             </div>
             <div className="relative">
@@ -424,12 +441,15 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
               />
               <input
                 ref={jobTitleInputRef}
+                id={JOBS_FILTER_JOB_TITLE_ID}
+                name="jobTitleFilter"
                 type="text"
                 className={INPUT_ICON}
                 placeholder="Search job titles…"
                 value={searchJobTitle}
                 autoComplete="off"
                 aria-autocomplete="list"
+                aria-label="Search job titles"
                 onChange={(e) => setSearchJobTitle(e.target.value)}
                 onBlur={() => setTimeout(() => setSearchJobTitle(''), 150)}
               />
@@ -500,7 +520,9 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
           {/* Company */}
           <section>
             <div className="flex items-center justify-between mb-1.5">
-              <label className={SECTION_TITLE}>Company</label>
+              <label className={SECTION_TITLE} htmlFor={JOBS_FILTER_COMPANY_ID}>
+                Company
+              </label>
               <span className="text-[0.7rem] text-gray-400">{uniqueCompanies.length} available</span>
             </div>
             <div className="relative">
@@ -510,12 +532,15 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
               />
               <input
                 ref={companyInputRef}
+                id={JOBS_FILTER_COMPANY_ID}
+                name="companyFilter"
                 type="text"
                 className={INPUT_ICON}
                 placeholder="Search companies…"
                 value={searchCompany}
                 autoComplete="off"
                 aria-autocomplete="list"
+                aria-label="Search companies"
                 onChange={(e) => setSearchCompany(e.target.value)}
                 onBlur={() => setTimeout(() => setSearchCompany(''), 150)}
               />
@@ -586,7 +611,9 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
           {/* Location */}
           <section>
             <div className="flex items-center justify-between mb-1.5">
-              <label className={SECTION_TITLE}>Location</label>
+              <label className={SECTION_TITLE} htmlFor={JOBS_FILTER_LOCATION_ID}>
+                Location
+              </label>
               <span className="text-[0.7rem] text-gray-400">{uniqueLocations.length} available</span>
             </div>
             <div className="relative">
@@ -596,12 +623,15 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
               />
               <input
                 ref={locationInputRef}
+                id={JOBS_FILTER_LOCATION_ID}
+                name="locationFilter"
                 type="text"
                 className={INPUT_ICON}
                 placeholder="Search locations…"
                 value={searchLocation}
                 autoComplete="off"
                 aria-autocomplete="list"
+                aria-label="Search locations"
                 onChange={(e) => setSearchLocation(e.target.value)}
                 onBlur={() => setTimeout(() => setSearchLocation(''), 150)}
               />
@@ -672,7 +702,7 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
           {/* Experience — preset chips + min/max dropdowns */}
           <section className="rounded-xl border border-defaultborder/60 dark:border-white/10 bg-gray-50/60 dark:bg-white/[0.02] p-3">
             <div className="flex items-center justify-between mb-2">
-              <label className={SECTION_TITLE}>Experience</label>
+              <div className={SECTION_TITLE}>Experience</div>
               <span className="text-[0.7rem] font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full">
                 {draft.experience[0]}–{draft.experience[1]} yrs
               </span>
@@ -699,10 +729,15 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
             </div>
             <div className="grid grid-cols-2 gap-2.5">
               <div>
-                <label className="text-[0.7rem] font-medium text-gray-500 dark:text-gray-400 mb-1 block">
+                <label
+                  className="text-[0.7rem] font-medium text-gray-500 dark:text-gray-400 mb-1 block"
+                  htmlFor={JOBS_FILTER_EXP_MIN_ID}
+                >
                   Min Years
                 </label>
                 <select
+                  id={JOBS_FILTER_EXP_MIN_ID}
+                  name="experienceMin"
                   className={SELECT_BASE}
                   value={draft.experience[0]}
                   onChange={(e) => setDraftExperience(0, Number(e.target.value))}
@@ -715,10 +750,15 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
                 </select>
               </div>
               <div>
-                <label className="text-[0.7rem] font-medium text-gray-500 dark:text-gray-400 mb-1 block">
+                <label
+                  className="text-[0.7rem] font-medium text-gray-500 dark:text-gray-400 mb-1 block"
+                  htmlFor={JOBS_FILTER_EXP_MAX_ID}
+                >
                   Max Years
                 </label>
                 <select
+                  id={JOBS_FILTER_EXP_MAX_ID}
+                  name="experienceMax"
                   className={SELECT_BASE}
                   value={draft.experience[1]}
                   onChange={(e) => setDraftExperience(1, Number(e.target.value))}
@@ -736,7 +776,7 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
           {/* Salary — preset chips + min/max inputs with comma formatting */}
           <section className="rounded-xl border border-defaultborder/60 dark:border-white/10 bg-gray-50/60 dark:bg-white/[0.02] p-3">
             <div className="flex items-center justify-between mb-2">
-              <label className={SECTION_TITLE}>Salary Range</label>
+              <div className={SECTION_TITLE}>Salary Range</div>
               <span className="text-[0.7rem] font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full">
                 {draft.salaryNotSpecified
                   ? 'Not specified'
@@ -783,7 +823,10 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
             </div>
             <div className="grid grid-cols-2 gap-2.5">
               <div>
-                <label className="text-[0.7rem] font-medium text-gray-500 dark:text-gray-400 mb-1 block">
+                <label
+                  className="text-[0.7rem] font-medium text-gray-500 dark:text-gray-400 mb-1 block"
+                  htmlFor={JOBS_FILTER_SALARY_MIN_ID}
+                >
                   Min Salary
                 </label>
                 <div className="relative">
@@ -791,6 +834,8 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
                     $
                   </span>
                   <input
+                    id={JOBS_FILTER_SALARY_MIN_ID}
+                    name="salaryMin"
                     type="text"
                     inputMode="numeric"
                     className={`${INPUT_BASE} !pl-6 !pr-2`}
@@ -802,7 +847,10 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
                 </div>
               </div>
               <div>
-                <label className="text-[0.7rem] font-medium text-gray-500 dark:text-gray-400 mb-1 block">
+                <label
+                  className="text-[0.7rem] font-medium text-gray-500 dark:text-gray-400 mb-1 block"
+                  htmlFor={JOBS_FILTER_SALARY_MAX_ID}
+                >
                   Max Salary
                 </label>
                 <div className="relative">
@@ -810,6 +858,8 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
                     $
                   </span>
                   <input
+                    id={JOBS_FILTER_SALARY_MAX_ID}
+                    name="salaryMax"
                     type="text"
                     inputMode="numeric"
                     className={`${INPUT_BASE} !pl-6 !pr-2`}

@@ -13694,6 +13694,14 @@ h6 {
   @apply rotate-90;
 }
 
+/* Module section headers: base .slide__category opacity-50 fails WCAG on #111c43 */
+.app-sidebar .slide__category.nav-module-section {
+  @apply opacity-100;
+}
+.app-sidebar .slide__category.nav-module-section .category-name {
+  @apply text-[#b8c5e0];
+}
+
 #search-modal .search-tags {
   @apply me-2;
 }

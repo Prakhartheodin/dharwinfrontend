@@ -3,6 +3,21 @@
 const nextConfig = {
   reactStrictMode: true,
   trailingSlash: true,
+  compiler: {
+    removeConsole:
+      process.env.NODE_ENV === "production"
+        ? { exclude: ["error", "warn"] }
+        : false,
+  },
+  experimental: {
+    optimizePackageImports: [
+      "@mui/material",
+      "@mui/icons-material",
+      "date-fns",
+      "@tiptap/react",
+      "@tiptap/starter-kit",
+    ],
+  },
   /** Keep production artifacts smaller (no client .map in deploy bundle).
       Server-side source maps are already off by default in production;
       `experimental.serverSourceMaps` was removed from the Next 16 schema
@@ -63,6 +78,20 @@ const nextConfig = {
       // trailingSlash: true redirects /api/v1/foo → /api/v1/foo/; without this, the trailing-slash URL misses the rewrite and returns Next 404 ("Not found")
       { source: "/api/v1/:path*/", destination: `${b}/v1/:path*/` },
       ...oauthCallbacks,
+    ];
+  },
+  /**
+   * Long-cache static assets served by Next (public/ and build output).
+   * User-uploaded files on S3/CloudFront need Cache-Control on the bucket/CDN separately.
+   */
+  async headers() {
+    const longCache = [
+      { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+    ];
+    return [
+      { source: "/assets/:path*", headers: longCache },
+      { source: "/fonts/:path*", headers: longCache },
+      { source: "/_next/static/:path*", headers: longCache },
     ];
   },
 };

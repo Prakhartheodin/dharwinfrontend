@@ -1,18 +1,26 @@
-import { describe, expect, it } from 'vitest'
+﻿import { describe, expect, it } from 'vitest'
 import {
   JOBS_LIST_COL_HIRE_FORECAST_MIN,
   JOBS_LIST_COL_ORIGIN_MIN,
   JOBS_LIST_COL_SALARY_MIN,
   JOBS_LIST_COL_VACANCIES_MIN,
+  JOBS_LIST_MOBILE_VIEWPORT_MAX_WIDTH,
   JOBS_LIST_TABLE_MIN_WIDTH,
   getJobsListLayout,
   isJobsTableColumnVisible,
+  resolveJobsListLayout,
 } from './jobsTableResponsive'
 
 describe('jobsTableResponsive', () => {
   it('switches to cards below table min width', () => {
     expect(getJobsListLayout(JOBS_LIST_TABLE_MIN_WIDTH - 1)).toBe('cards')
     expect(getJobsListLayout(JOBS_LIST_TABLE_MIN_WIDTH)).toBe('table')
+  })
+
+  it('forces cards on narrow viewports regardless of container width', () => {
+    expect(resolveJobsListLayout(1200, JOBS_LIST_MOBILE_VIEWPORT_MAX_WIDTH)).toBe('cards')
+    expect(resolveJobsListLayout(1200, JOBS_LIST_MOBILE_VIEWPORT_MAX_WIDTH + 1)).toBe('table')
+    expect(resolveJobsListLayout(500, JOBS_LIST_MOBILE_VIEWPORT_MAX_WIDTH + 1)).toBe('cards')
   })
 
   it('keeps primary columns visible in the narrowest table layout', () => {

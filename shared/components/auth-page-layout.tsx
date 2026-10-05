@@ -13,14 +13,18 @@ export function AuthPageLayout({ children }: { children: ReactNode }) {
       <div className="hidden lg:block absolute top-0 left-0 bottom-0 w-1/2 max-w-[50vw] overflow-hidden bg-[#FBFBFB]">
         <div className="absolute z-10" style={{ left: 85, top: 63 }}>
           <img
-            src="/assets/images/logo.png"
+            src="/assets/images/logo-140.webp"
             alt="Dharwin Business Solutions"
             className="select-none"
+            width={248}
+            height={72}
+            decoding="async"
+            sizes="248px"
             style={{ width: 248, height: 73.01, objectFit: "contain" }}
             onError={(e) => {
               const t = e.target as HTMLImageElement;
               t.onerror = null;
-              t.src = "/assets/images/brand-logos/dharwin-white-logo.png";
+              t.src = "/assets/images/logo.jpeg";
             }}
           />
         </div>

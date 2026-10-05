@@ -82,7 +82,10 @@ const JobShareModal: React.FC<JobShareModalProps> = ({
 
                   {/* Copy URL Section */}
                   <div>
-                    <label className="form-label mb-2 font-semibold text-sm text-gray-800 dark:text-white">
+                    <label
+                      className="form-label mb-2 font-semibold text-sm text-gray-800 dark:text-white"
+                      htmlFor="jobs-share-public-url"
+                    >
                       Public URL
                     </label>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
@@ -91,6 +94,8 @@ const JobShareModal: React.FC<JobShareModalProps> = ({
                     </p>
                     <div className="flex gap-2">
                       <input
+                        id="jobs-share-public-url"
+                        name="publicUrl"
                         type="text"
                         className="form-control"
                         value={personalLinkLoading ? '' : getJobPublicUrl(shareJob.id)}
@@ -111,9 +116,9 @@ const JobShareModal: React.FC<JobShareModalProps> = ({
 
                   {/* Share Options */}
                   <div>
-                    <label className="form-label mb-3 font-semibold text-sm text-gray-800 dark:text-white">
+                    <p className="form-label mb-3 font-semibold text-sm text-gray-800 dark:text-white">
                       Share via
-                    </label>
+                    </p>
                     <div className="space-y-3">
                       {/*
                         B14 doc: WhatsApp share is a client-only `wa.me/?text=` deep-link.
@@ -148,7 +153,12 @@ const JobShareModal: React.FC<JobShareModalProps> = ({
                               {shareEmailError}
                             </div>
                           ) : null}
+                          <label className="sr-only" htmlFor="jobs-share-email">
+                            Email address
+                          </label>
                           <input
+                            id="jobs-share-email"
+                            name="shareEmail"
                             type="email"
                             className="form-control"
                             placeholder="Enter email address"

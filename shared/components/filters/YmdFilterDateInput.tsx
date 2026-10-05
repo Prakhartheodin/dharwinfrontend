@@ -1,7 +1,8 @@
 "use client";
 
+import "@/shared/styles/react-datepicker.css";
 import dynamic from "next/dynamic";
-import { useId, useRef, useState } from "react";
+import React, { forwardRef, useId, useRef, useState } from "react";
 import Swal from "sweetalert2";
 import { formatYmdLocal, parseYmdLocal } from "@/shared/lib/leave-date-range";
 import {
@@ -11,6 +12,13 @@ import {
 } from "@/shared/lib/ymd-filter-date-input.util";
 
 const DatePicker = dynamic(() => import("react-datepicker").then((mod) => mod.default), { ssr: false });
+
+/** Ensures `id` / `name` land on the real `<input>` so `<label htmlFor>` matches (react-datepicker default can miss this). */
+const YmdPickerInput = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
+  function YmdPickerInput(props, ref) {
+    return <input ref={ref} {...props} />;
+  }
+);
 
 const INVALID_DATE_MESSAGE = "Enter a valid date (dd/mm/yyyy)";
 const INVALID_DATE_POPUP_TITLE = "Date format is wrong";
@@ -204,6 +212,8 @@ export function YmdFilterDateInput({
       </label>
       <DatePicker
         id={inputId}
+        name={inputId}
+        customInput={<YmdPickerInput id={inputId} name={inputId} />}
         selected={selected && !Number.isNaN(selected.getTime()) ? selected : null}
         onChange={handleChange}
         onChangeRaw={handleChangeRaw}

@@ -33,10 +33,9 @@ describe('formatNotificationBellAriaLabel', () => {
     expect(formatNotificationBellAriaLabel(0)).toBe('Notifications');
   });
 
-  it('includes the full locale-formatted unread count', () => {
-    expect(formatNotificationBellAriaLabel(1026)).toBe(
-      `Notifications, ${(1026).toLocaleString()} unread`
-    );
+  it('uses capped badge text in the label when count exceeds 99', () => {
+    expect(formatNotificationBellAriaLabel(1026)).toBe('Notifications, 99+ unread');
+    expect(formatNotificationBellAriaLabel(42)).toBe('Notifications, 42 unread');
   });
 });
 
@@ -66,8 +65,8 @@ describe('getBadgeColorClasses', () => {
     expect(getBadgeColorClasses(42)).toContain('text-white');
   });
 
-  it('uses danger for high unread counts', () => {
-    expect(getBadgeColorClasses(150)).toContain('bg-danger');
+  it('uses high-contrast red for high unread counts', () => {
+    expect(getBadgeColorClasses(150)).toContain('bg-[#c5301a]');
     expect(getBadgeColorClasses(150)).toContain('text-white');
   });
 

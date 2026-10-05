@@ -4,7 +4,6 @@ import React, { Fragment, useEffect, useState, useCallback, useRef } from 'react
 import { ThemeChanger } from "../../redux/action";
 import { connect } from 'react-redux';
 import store from '@/shared/redux/store';
-import { basePath } from '@/next.config';
 import { useAuth } from '@/shared/contexts/auth-context';
 import { useHeaderProfileSummary } from '@/shared/hooks/use-header-profile-summary';
 import { ROUTES } from '@/shared/lib/constants';
@@ -24,6 +23,7 @@ import {
 import { useNotificationContext } from '@/shared/contexts/NotificationContext';
 import { hasPermission } from '@/shared/lib/permissions';
 import { useRouter } from 'next/navigation';
+import BrandLogos from "@/shared/layout-components/brand/BrandLogos";
 
 function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -484,13 +484,8 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
             <div className="header-content-left flex items-center">
               <div className="header-element header-logo-container">
                 <div className="horizontal-logo">
-                  <Link href={ROUTES.defaultAfterLogin} className="header-logo">
-                    <img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/logo.png`} alt="logo" className="desktop-logo" />
-                    <img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/icon.png`} alt="logo" className="toggle-logo" />
-                    <img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/logo-dark.png`} alt="logo" className="desktop-dark" />
-                    <img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/icon.png`} alt="logo" className="toggle-dark" />
-                    <img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/logo-dark.png`} alt="logo" className="desktop-white" />
-                    <img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/icon.png`} alt="logo" className="toggle-white" />
+                  <Link href={ROUTES.defaultAfterLogin} className="header-logo" aria-label="Dharwin Home">
+                    <BrandLogos variant="header" priority />
                   </Link>
                 </div>
               </div>

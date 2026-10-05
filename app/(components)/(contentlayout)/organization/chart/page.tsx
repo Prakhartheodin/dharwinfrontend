@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { OrgErrorState, OrgNavButton, OrgLoadingBlock, OrgPageLayout } from "../_components/org-ui";
+import { getOrgCoverage, getOrgTree, type OrgCoverageSummary, type OrgTree } from "@/shared/lib/api/org-structure";
 
 // Lazy-load the chart so this route compiles fast and the chart (plus its
 // on-demand html-to-image/jspdf export libs) ships as a separate chunk.
@@ -10,7 +11,6 @@ const OrgChart = dynamic(() => import("../_components/OrgChart"), {
   ssr: false,
   loading: () => <OrgLoadingBlock label="Loading chart…" />,
 });
-import { getOrgCoverage, getOrgTree, type OrgCoverageSummary, type OrgTree } from "@/shared/lib/api/org-structure";
 
 function MetricCard({
   label,

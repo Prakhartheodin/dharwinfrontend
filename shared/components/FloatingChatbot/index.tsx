@@ -18,7 +18,7 @@ import {
   isChatbotEnabledForPage,
   type ChatbotConfig,
 } from "@/shared/lib/api/chatbotSettings";
-import ChatMessage from "./ChatMessage";
+import ChatMessageLazy from "./ChatMessageLazy";
 import { ConfirmResolveContext, type ConfirmResolved } from "./renderers/ConfirmBlock";
 import { useDraggableFab } from "./useDraggableFab";
 import {
@@ -386,6 +386,7 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
         role="dialog"
         aria-label="Dharwin Assistant"
         aria-hidden={!isOpen}
+        {...(!isOpen ? { inert: true } : {})}
       >
         {/* Header. The bottom edge only appears once the thread is scrolled
             under it; at rest the header and thread read as one surface. */}
@@ -411,6 +412,7 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
               onClick={clearHistory}
               label="Clear conversation"
               disabled={messages.length === 0 || isLoading}
+              tabIndex={isOpen ? undefined : -1}
             >
               <TrashIcon />
             </IconButton>
@@ -418,10 +420,11 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
             <IconButton
               onClick={() => setViewMode(isFullscreen ? "widget" : "fullscreen")}
               label={isFullscreen ? "Exit full screen" : "Full screen"}
+              tabIndex={isOpen ? undefined : -1}
             >
               {isFullscreen ? <MinimizeIcon /> : <MaximizeIcon />}
             </IconButton>
-            <IconButton onClick={() => setViewMode("closed")} label="Close">
+            <IconButton onClick={() => setViewMode("closed")} label="Close" tabIndex={isOpen ? undefined : -1}>
               <CloseIcon />
             </IconButton>
           </div>
@@ -453,27 +456,28 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
               )}
 
               <div className="flex flex-col gap-5">
-                {messages.map((msg, i) => {
-                  const isLast = i === messages.length - 1;
-                  const status =
-                    msg.role === "assistant" && isLast && isLoading
-                      ? msg.content === "" ? "pending" : "streaming"
-                      : "done";
-                  return (
-                    <ChatMessage
-                      key={msg.id}
-                      role={msg.role}
-                      content={msg.content}
-                      fullscreen={isFullscreen}
-                      blocks={msg.blocks}
-                      entityType={msg.entityType}
-                      queryId={msg.queryId}
-                      onAction={(text) => handleSend(text)}
-                      status={status}
-                      showAuthor={messages[i - 1]?.role !== "assistant"}
-                    />
-                  );
-                })}
+                {isOpen &&
+                  messages.map((msg, i) => {
+                    const isLast = i === messages.length - 1;
+                    const status =
+                      msg.role === "assistant" && isLast && isLoading
+                        ? msg.content === "" ? "pending" : "streaming"
+                        : "done";
+                    return (
+                      <ChatMessageLazy
+                        key={msg.id}
+                        role={msg.role}
+                        content={msg.content}
+                        fullscreen={isFullscreen}
+                        blocks={msg.blocks}
+                        entityType={msg.entityType}
+                        queryId={msg.queryId}
+                        onAction={(text) => handleSend(text)}
+                        status={status}
+                        showAuthor={messages[i - 1]?.role !== "assistant"}
+                      />
+                    );
+                  })}
               </div>
             </div>
           </div>

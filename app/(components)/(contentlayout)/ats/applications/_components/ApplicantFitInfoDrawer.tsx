@@ -93,7 +93,6 @@ export function ApplicantFitInfoDrawer() {
           id="applicant-fit-info-title"
           className="ti-offcanvas-title text-base font-semibold flex items-center gap-2"
         >
-          <i className="ri-sparkling-2-line text-primary text-base" aria-hidden />
           Success & Culture
         </h6>
         <button
@@ -107,15 +106,15 @@ export function ApplicantFitInfoDrawer() {
       </div>
       <div className="ti-offcanvas-body !h-auto !max-h-none min-h-0 flex-1 overflow-y-auto !px-4 !pt-4 !pb-28 space-y-5">
         <div
-          className="rounded-lg border border-primary/25 bg-gradient-to-r from-primary/10 to-primary/5 p-3.5"
+          className="rounded-lg border border-defaultborder/70 bg-gray-50 p-3.5 dark:border-white/10 dark:bg-black/20"
           role="note"
         >
           <div className="flex items-start gap-2.5">
-            <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-              <i className="ri-ai-generate text-base" aria-hidden />
+            <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-defaulttextcolor/10 text-defaulttextcolor/70 dark:bg-white/10 dark:text-white/60">
+              <i className="ri-robot-2-line text-base" aria-hidden />
             </span>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-gray-800 dark:text-white">Calculated with AI</p>
+              <p className="text-sm font-semibold text-gray-800 dark:text-white">AI-assisted scores</p>
               <p className="mt-1 text-xs leading-relaxed text-defaulttextcolor/80">
                 Neither column is typed in by a recruiter. Each row is scored from this job’s JD
                 plus the applicant’s resume skills and profile, then an AI model writes the % /

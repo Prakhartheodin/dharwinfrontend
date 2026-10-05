@@ -1,0 +1,19 @@
+// Theme switcher / landing demo only — not needed on ATS app routes (e.g. /ats/applications/).
+@use "@simonwep/pickr/dist/themes/classic.min.css" as *;
+@use "@simonwep/pickr/dist/themes/monolith.min.css" as *;
+@use "@simonwep/pickr/dist/themes/nano.min.css" as *;
+
+@use "swiper/css" as *;
+@use "swiper/css/pagination" as *;
+@use "swiper/css/navigation" as *;
+@use "swiper/css/effect-coverflow" as *;
+@use "swiper/css/thumbs" as *;
+@use "swiper/css/effect-flip" as *;
+@use "swiper/css/effect-fade" as *;
+@use "swiper/css/effect-cube" as *;
+@use "swiper/css/effect-cards" as *;
+@use "swiper/css/zoom" as *;
+@use "swiper/css/scrollbar" as *;
+@use "swiper/css/free-mode" as *;
+
+@use "react-color-palette/css" as *;

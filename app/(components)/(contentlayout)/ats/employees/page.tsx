@@ -4,6 +4,8 @@ import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } fr
 import { createPortal } from 'react-dom'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
+import { coalesceGet, invalidateCoalescePrefix } from '@/shared/lib/api/coalesceGet'
 import { resolveEmployeeJobTitleLabel } from '@/shared/lib/employee-job-title'
 import CallNowButton from '@/shared/components/CallNowButton'
 import CandidatesFilterPanel from './_components/CandidatesFilterPanel'
@@ -57,7 +59,6 @@ import Swal from 'sweetalert2'
 import { AxiosError } from 'axios'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/shared/contexts/auth-context'
-import CandidateActionModals from './_components/CandidateActionModals'
 import CandidateShareModal from './_components/CandidateShareModal'
 import CandidateAttendanceOverlay from './_components/CandidateAttendanceOverlay'
 import { canEditCandidateJoiningDate, canEditCandidateResignDate, canImpersonateUser } from '@/shared/lib/candidate-permissions'
@@ -71,6 +72,8 @@ import {
   isDayAlreadyOnAllSelected,
   isWeekOffNoOp,
 } from '@/shared/lib/week-off-utils'
+
+const CandidateActionModals = dynamic(() => import('./_components/CandidateActionModals'), { ssr: false })
 
 // Display shape used by the UI (id, name, displayPicture, phone, email, skills, education, experience, bio)
 type CandidateDisplay = ReturnType<typeof mapCandidateToDisplay>
@@ -165,6 +168,16 @@ function resignDateLabel(candidate: CandidateDisplay): string | null {
 /** Stable ref for react-table initialState (avoid new object each render). */
 const EMPLOYEES_TABLE_INITIAL_STATE = { pageIndex: 0, pageSize: 100 }
 
+const EMPLOYEES_LIST_COALESCE_PREFIX = 'employees-list:'
+const EMPLOYEES_LIST_COALESCE_MS = 2_000
+
+function employeesListCoalesceKey(params: Record<string, unknown>): string {
+  const sorted = Object.keys(params).sort()
+  const normalized: Record<string, unknown> = {}
+  for (const k of sorted) normalized[k] = params[k]
+  return `${EMPLOYEES_LIST_COALESCE_PREFIX}${JSON.stringify(normalized)}`
+}
+
 function parseEmployeesListPage(raw: string | null | undefined): number {
   const n = Number.parseInt(String(raw ?? ''), 10)
   return Number.isInteger(n) && n >= 1 ? n : 1
@@ -217,14 +230,20 @@ function CandidateAvatar({ candidate, className = 'w-10 h-10 rounded-full' }: { 
     return (
       <img
         src={imgUrl}
-        alt={candidate.name}
+        alt=""
+        width={40}
+        height={40}
+        sizes="40px"
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
         className={`object-cover flex-shrink-0 ${className}`}
         onError={() => setImgFailed(true)}
       />
     )
   }
   return (
-    <span className={`flex items-center justify-center bg-primary/10 text-primary font-semibold text-sm flex-shrink-0 ${className}`}>
+    <span className={`flex items-center justify-center bg-primary/10 text-[#724bb7] dark:text-purple-300 font-semibold text-sm flex-shrink-0 ${className}`}>
       {initials}
     </span>
   )
@@ -452,9 +471,10 @@ const Candidates = () => {
 
   const [agentOptions, setAgentOptions] = useState<AgentOption[]>([])
   const [agentsLoading, setAgentsLoading] = useState(false)
+  const fetchGenerationRef = useRef(0)
+  const agentsLoadedRef = useRef(false)
 
   const [debouncedEmployeeSearch, setDebouncedEmployeeSearch] = useState('')
-  const prevDebouncedEmployeeSearchRef = useRef(debouncedEmployeeSearch)
   useEffect(() => {
     const t = setTimeout(() => setDebouncedEmployeeSearch(employeeSearch), 400)
     return () => clearTimeout(t)
@@ -535,52 +555,64 @@ const Candidates = () => {
     [filters, debouncedEmployeeSearch, selectedSort]
   )
 
-  const refreshCandidates = useCallback((resetPage = false) => {
-    const page = resetPage ? 1 : apiPage
-    if (resetPage) setApiPage(1)
-    setCandidatesLoading(true)
-    setCandidatesError(null)
-    listCandidates({ ...fetchParams, page })
-      .then((res) => {
-        setCandidates(res.results.map(mapCandidateToDisplay))
-        setTotalResults(res.totalResults ?? res.results.length)
-        setTotalPages(res.totalPages ?? 1)
-      })
-      .catch((err) => {
-        setCandidatesError(err?.message ?? 'Failed to load employees')
-        setCandidates([])
-        setTotalResults(0)
-        setTotalPages(0)
-      })
-      .finally(() => setCandidatesLoading(false))
-  }, [apiPage, fetchParams])
+  const fetchEmployeesList = useCallback(
+    (page: number, opts?: { coalesce?: boolean }) => {
+      const generation = ++fetchGenerationRef.current
+      const params = { ...fetchParams, page }
+      const key = employeesListCoalesceKey(params as Record<string, unknown>)
+      setCandidatesLoading(true)
+      setCandidatesError(null)
+      const request = opts?.coalesce
+        ? coalesceGet(key, () => listCandidates(params), EMPLOYEES_LIST_COALESCE_MS)
+        : listCandidates(params)
+      return request
+        .then((res) => {
+          if (generation !== fetchGenerationRef.current) return
+          setCandidates(res.results.map(mapCandidateToDisplay))
+          setTotalResults(res.totalResults ?? res.results.length)
+          setTotalPages(res.totalPages ?? 1)
+        })
+        .catch((err) => {
+          if (generation !== fetchGenerationRef.current) return
+          setCandidatesError(err?.message ?? 'Failed to load employees')
+          setCandidates([])
+          setTotalResults(0)
+          setTotalPages(0)
+        })
+        .finally(() => {
+          if (generation === fetchGenerationRef.current) setCandidatesLoading(false)
+        })
+    },
+    [fetchParams]
+  )
+
+  const refreshCandidates = useCallback(
+    (resetPage = false) => {
+      invalidateCoalescePrefix(EMPLOYEES_LIST_COALESCE_PREFIX)
+      const page = resetPage ? 1 : apiPage
+      if (resetPage) setApiPage(1)
+      void fetchEmployeesList(page, { coalesce: false })
+    },
+    [apiPage, fetchEmployeesList]
+  )
 
   // Refetch when filters / search / page size / sort-by API param or page number change (explicit deps avoid stale closures on sort dropdown).
   useEffect(() => {
-    refreshCandidates(false)
-  }, [fetchParams, apiPage])
+    void fetchEmployeesList(apiPage, { coalesce: true })
+  }, [fetchParams, apiPage, fetchEmployeesList])
 
   useEffect(() => {
-    if (prevDebouncedEmployeeSearchRef.current === debouncedEmployeeSearch) return
-    prevDebouncedEmployeeSearchRef.current = debouncedEmployeeSearch
-    setApiPage(1)
-  }, [debouncedEmployeeSearch])
-
-  useEffect(() => {
+    if (agentsLoadedRef.current) return
+    agentsLoadedRef.current = true
     setAgentsLoading(true)
     getCandidateFilterAgents()
       .then((d) => setAgentOptions(d.agents ?? []))
-      .catch(() => setAgentOptions([]))
+      .catch(() => {
+        agentsLoadedRef.current = false
+        setAgentOptions([])
+      })
       .finally(() => setAgentsLoading(false))
   }, [])
-
-  const prevFiltersRef = useRef(filters)
-  useEffect(() => {
-    if (prevFiltersRef.current !== filters) {
-      prevFiltersRef.current = filters
-      setApiPage(1)
-    }
-  }, [filters])
 
   // Note: Experience filter sync disabled with server-side pagination (data is paged)
 
@@ -1844,7 +1876,7 @@ const Candidates = () => {
                     </span>
                   )}
                 </div>
-                <div className="max-md:whitespace-normal max-md:break-words text-xs text-gray-500 dark:text-gray-400 md:truncate">
+                <div className="max-md:whitespace-normal max-md:break-words text-xs text-gray-700 dark:text-gray-300 md:truncate">
                   {(candidate._raw?.employeeId) && (
                     <div className="flex items-start gap-1">
                       <i className="ri-id-card-line mt-px shrink-0"></i>
@@ -1939,6 +1971,7 @@ const Candidates = () => {
                   onClick={() => openCandidatePreview(c)}
                   className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-success/10 text-success hover:bg-success hover:text-white"
                   title="View Details"
+                  aria-label={`View details for ${c.name}`}
                 >
                   <i className="ri-eye-line"></i>
                   <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">View Details</span>
@@ -1978,7 +2011,7 @@ const Candidates = () => {
               )}
               {canUpdateEmployee ? (
                 <div className="hs-tooltip ti-main-tooltip">
-                  <Link href={buildEmployeeEditHref(c.id, apiPage)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-info/10 text-info hover:bg-info hover:text-white" title="Edit employee">
+                  <Link href={buildEmployeeEditHref(c.id, apiPage)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-info/10 text-info hover:bg-info hover:text-white" title="Edit employee" aria-label={`Edit ${c.name}`}>
                     <i className="ri-pencil-line"></i>
                     <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Edit employee</span>
                   </Link>
@@ -1997,7 +2030,7 @@ const Candidates = () => {
                 </button>
               </div> */}
               <div className="hs-tooltip ti-main-tooltip">
-                <button type="button" onClick={() => handleShareClick(c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-primary/10 text-primary hover:bg-primary hover:text-white" title="Share profile">
+                <button type="button" onClick={() => handleShareClick(c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-primary/10 text-primary hover:bg-primary hover:text-white" title="Share profile" aria-label={`Share profile for ${c.name}`}>
                   <i className="ri-share-line"></i>
                   <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Share profile</span>
                 </button>
@@ -2008,7 +2041,7 @@ const Candidates = () => {
                   onClick={() => openAttendanceOverlay(c)}
                   className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-purple-500/10 text-purple-500 hover:bg-purple-500 hover:text-white"
                   title="Attendance calendar"
-                  aria-label="View attendance calendar"
+                  aria-label={`View attendance calendar for ${c.name}`}
                 >
                   <i className="ri-calendar-check-line"></i>
                   <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">
@@ -2043,7 +2076,7 @@ const Candidates = () => {
                 </div>
               )}
               <div className="hs-tooltip ti-main-tooltip">
-                <button type="button" onClick={() => handleAddNote(c.id, c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500 hover:text-white" title="Add Note">
+                <button type="button" onClick={() => handleAddNote(c.id, c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500 hover:text-white" title="Add Note" aria-label={`Add note for ${c.name}`}>
                   <i className="ri-file-text-line"></i>
                   <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Add Note</span>
                 </button>
@@ -2061,6 +2094,9 @@ const Candidates = () => {
                       : 'bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-white'
                   }`}
                   title={hasFeedback ? 'View / update feedback' : 'Add feedback'}
+                  aria-label={
+                    hasFeedback ? `View or update feedback for ${c.name}` : `Add feedback for ${c.name}`
+                  }
                 >
                   <i className="ri-feedback-line"></i>
                   <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">
@@ -2145,8 +2181,13 @@ const Candidates = () => {
     )
   }, [agentOptions, searchAgent])
 
+  const setFiltersAndResetPage: typeof setFilters = (action) => {
+    setApiPage(1)
+    setFilters(action)
+  }
+
   const handleMultiSelectChange = (key: 'agentIds', value: string) => {
-    setFilters(prev => {
+    setFiltersAndResetPage((prev) => {
       const currentArray = prev[key]
       const newArray = currentArray.includes(value)
         ? currentArray.filter(item => item !== value)
@@ -2156,13 +2197,14 @@ const Candidates = () => {
   }
 
   const handleRemoveFilter = (key: 'agentIds', value: string) => {
-    setFilters(prev => ({
+    setFiltersAndResetPage((prev) => ({
       ...prev,
       [key]: prev[key].filter(item => item !== value)
     }))
   }
 
   const handleResetFilters = () => {
+    setApiPage(1)
     setFilters({
       agentIds: [],
       employmentStatus: 'current',
@@ -2295,7 +2337,10 @@ const Candidates = () => {
 
   return (
     <Fragment>
-      <Seo title="Employees" />
+      <Seo
+        title="Employees"
+        description="Search, filter, and manage employee records, joining dates, and HR actions in Dharwin ATS."
+      />
       <div className="employees-page-root container-fluid flex max-w-[100vw] flex-col px-3 pt-4 pb-0 sm:px-4 sm:pt-6">
       {!candidatesLoading && candidatesError && (
         <div
@@ -2369,7 +2414,7 @@ const Candidates = () => {
                       )}
                     </span>
                   </div>
-                  <p className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-textmuted dark:text-white/45">
+                  <p className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-gray-600 dark:text-white/65">
                     {employmentScopeLabel}
                     {hasActiveFilters ? ' · filters on' : ''}
                   </p>
@@ -2472,7 +2517,10 @@ const Candidates = () => {
                     className="form-control !h-8 !py-1 !ps-8 !pe-3 !text-[0.75rem] !rounded-lg w-full"
                     placeholder="Search by name or employee ID…"
                     value={employeeSearch}
-                    onChange={(e) => setEmployeeSearch(e.target.value)}
+                    onChange={(e) => {
+                      setEmployeeSearch(e.target.value)
+                      setApiPage(1)
+                    }}
                     aria-label="Search by employee name or ID"
                   />
                 </div>
@@ -2524,7 +2572,7 @@ const Candidates = () => {
               layoutOpen={employeesFilterPanelOpen}
               onCloseLayout={() => setEmployeesFilterPanelOpen(false)}
               filters={filters}
-              setFilters={setFilters}
+              setFilters={setFiltersAndResetPage}
               agentOptions={agentOptions}
               agentsLoading={agentsLoading}
               filteredAgents={filteredAgents}
@@ -2555,7 +2603,7 @@ const Candidates = () => {
                   <div className="absolute inset-y-0 left-0 w-[28%] rounded-e-full bg-gradient-to-r from-primary/30 via-primary to-primary/30 ring-1 ring-primary/25 motion-safe:animate-candidates-load-bar" />
                 </div>
               )}
-              <div className="flex w-full min-w-0 shrink-0 flex-row flex-wrap items-center gap-2 gap-y-2 border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/95 via-white/60 to-transparent px-4 py-3 text-[0.72rem] font-medium text-textmuted dark:from-white/[0.04] dark:via-transparent dark:to-white/[0.02] dark:text-white/55 sm:gap-x-5 sm:px-5">
+              <div className="flex w-full min-w-0 shrink-0 flex-row flex-wrap items-center gap-2 gap-y-2 border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/95 via-white/60 to-transparent px-4 py-3 text-[0.72rem] font-medium text-gray-600 dark:from-white/[0.04] dark:via-transparent dark:to-white/[0.02] dark:text-white/65 sm:gap-x-5 sm:px-5">
                 <span className="inline-flex max-w-full shrink-0 items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/[0.06] px-2.5 py-1 text-emerald-900 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-100/90">
                   <i className="ri-checkbox-blank-circle-fill shrink-0 text-[0.5rem] text-emerald-500" aria-hidden />
                   Active row
@@ -2815,7 +2863,7 @@ const Candidates = () => {
             </div>
             <div className="box-footer shrink-0 border-t border-defaultborder/60 !bg-defaultbackground/60 px-4 py-3.5 dark:!bg-white/[0.03]">
               <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
-                <div className="text-center text-sm text-textmuted dark:text-white/55 sm:text-start">
+                <div className="text-center text-sm font-medium text-gray-700 dark:text-white/80 sm:text-start">
                   Showing{' '}
                   <span className="font-semibold tabular-nums text-defaulttextcolor dark:text-white/90">
                     {totalResults === 0 ? 0 : (apiPage - 1) * pageSize + 1}

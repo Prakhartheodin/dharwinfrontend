@@ -32,9 +32,9 @@ module.exports = {
       full: "9999px",
     },
     fontFamily: {
-      inter: ["Inter", "sans-serif"],
+      inter: ["var(--font-inter)", "Inter", "sans-serif"],
       bootstrap: ["bootstrap-icons"],
-      Montserrat: ["Montserrat","sans-serif"],
+      Montserrat: ["var(--font-montserrat)", "Montserrat", "sans-serif"],
     },
     fontSize: {
       defaultsize: '0.813rem',
