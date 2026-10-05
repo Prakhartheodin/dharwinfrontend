@@ -228,20 +228,11 @@ const Jobs = () => {
   /** Quick search Ã¢â‚¬â€ job name only (toolbar input). */
   const [jobNameSearch, setJobNameSearch] = useState(() => searchParams.get('q')?.trim() || '')
   /**
-   * Toolbar quick-search preview (live, while an option is highlighted) and commit (sticky, once
-   * Tab/Enter/click selects one). Preview always wins while active; falls back to the commit, then
-   * to the plain typed search. Neither is written to `filters`, filter chips, or the URL.
+   * Toolbar quick-search commit (sticky once Tab/Enter/click selects a suggestion). While typing,
+   * the jobs list uses the debounced search string; only a committed scope replaces search with an
+   * exact facet filter. Not written to `filters`, filter chips, or the URL.
    */
-  const [previewScope, setPreviewScope] = useState<JobListQueryScope | null>(null)
   const [committedScope, setCommittedScope] = useState<JobListQueryScope | null>(null)
-  const rawQuickSearchScope = previewScope ?? committedScope
-  const [debouncedQuickSearchScope, setDebouncedQuickSearchScope] = useState<JobListQueryScope | null>(null)
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setDebouncedQuickSearchScope(rawQuickSearchScope)
-    }, 200)
-    return () => window.clearTimeout(timer)
-  }, [rawQuickSearchScope])
   const [filterOptions, setFilterOptions] = useState<JobFilterOptions>({
     titles: [],
     companies: [],
@@ -302,9 +293,9 @@ const Jobs = () => {
       filters,
       salaryBounds: salaryRangesConst,
       experienceBounds: experienceRangesConst,
-      scope: debouncedQuickSearchScope,
+      scope: committedScope,
     }),
-    [currentPage, pageSize, sortBy, debouncedJobNameSearch, listJobOrigin, filters, debouncedQuickSearchScope]
+    [currentPage, pageSize, sortBy, debouncedJobNameSearch, listJobOrigin, filters, committedScope]
   )
 
   const fetchJobs = useCallback(async (signal?: AbortSignal) => {
@@ -370,8 +361,8 @@ const Jobs = () => {
   // twice in dev, so a "skip the first run" flag fires on the second pass and would throw
   // away the page seeded from ?page=.
   const listScopeKey = useMemo(
-    () => JSON.stringify([filters, listJobOrigin, debouncedJobNameSearch, sortBy, pageSize, debouncedQuickSearchScope]),
-    [filters, listJobOrigin, debouncedJobNameSearch, sortBy, pageSize, debouncedQuickSearchScope]
+    () => JSON.stringify([filters, listJobOrigin, debouncedJobNameSearch, sortBy, pageSize, committedScope]),
+    [filters, listJobOrigin, debouncedJobNameSearch, sortBy, pageSize, committedScope]
   )
   const lastListScopeRef = useRef(listScopeKey)
   useEffect(() => {
@@ -1341,7 +1332,6 @@ const Jobs = () => {
               filtersStatus={filters.status}
               listJobOrigin={listJobOrigin}
               jobsListFetching={jobsListFetching}
-              setPreviewScope={setPreviewScope}
               setCommittedScope={setCommittedScope}
               committedScope={committedScope}
               jobsFilterPanelOpen={jobsFilterPanelOpen}
@@ -1372,7 +1362,6 @@ const Jobs = () => {
               setListJobOrigin={setListJobOrigin}
               committedScope={committedScope}
               setCommittedScope={setCommittedScope}
-              setPreviewScope={setPreviewScope}
               salaryRangesConst={salaryRangesConst}
               experienceRangesConst={experienceRangesConst}
               onClearAll={handleResetFilters}

@@ -27,11 +27,11 @@ export interface JobListQueryInput {
   salaryBounds: { min: number; max: number };
   experienceBounds: { min: number; max: number };
   /**
-   * Toolbar quick-search preview/commit scope (a highlighted or selected suggestion). When set,
-   * `search` is dropped for this request and only the matching facet's list (titles/companies/
-   * locations) is replaced with `[scope.value]` — every other filter-panel facet, plus status,
-   * salary, experience and jobOrigin, still applies. Omit or pass null for the normal (no
-   * quick-search scope) behaviour.
+   * Toolbar quick-search commit scope (Tab/Enter/click on a suggestion). When set, `search` is
+   * dropped for this request and only the matching facet's list (titles/companies/locations) is
+   * replaced with `[scope.value]` — every other filter-panel facet, plus status, salary,
+   * experience and jobOrigin, still applies. Omit or pass null to filter by the typed `search`
+   * string instead (including while the suggestion dropdown is open).
    */
   scope?: JobListQueryScope | null;
 }
@@ -145,11 +145,12 @@ export function buildJobListParams(input: JobListQueryInput): JobsListParams {
 
   const scope = input.scope ?? null;
 
-  // A quick-search preview/commit replaces the typed search with an exact facet scope for this
-  // request only — everything else (status, salary, experience, jobOrigin, the panel's own
+  // A committed quick-search scope replaces the typed search with an exact facet filter for this
+  // request — everything else (status, salary, experience, jobOrigin, the panel's own
   // title/company/location picks) stays in effect below.
   if (!scope && input.search?.trim()) {
     params.search = input.search.trim();
+    params.searchFields = "toolbar";
   }
 
   if (input.listJobOrigin === "internal" || input.listJobOrigin === "external") {

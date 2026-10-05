@@ -25,7 +25,6 @@ export interface JobsToolbarProps {
   filtersStatus: string
   listJobOrigin: '' | 'internal' | 'external'
   jobsListFetching: boolean
-  setPreviewScope: React.Dispatch<React.SetStateAction<JobListQueryScope | null>>
   setCommittedScope: React.Dispatch<React.SetStateAction<JobListQueryScope | null>>
   committedScope: JobListQueryScope | null
   jobsFilterPanelOpen: boolean
@@ -57,7 +56,6 @@ export function JobsToolbar({
   filtersStatus,
   listJobOrigin,
   jobsListFetching,
-  setPreviewScope,
   setCommittedScope,
   committedScope,
   jobsFilterPanelOpen,
@@ -100,7 +98,6 @@ export function JobsToolbar({
             status={filtersStatus}
             jobOrigin={listJobOrigin}
             loading={jobsListFetching}
-            onPreview={setPreviewScope}
             onCommit={setCommittedScope}
             committedScope={committedScope}
           />

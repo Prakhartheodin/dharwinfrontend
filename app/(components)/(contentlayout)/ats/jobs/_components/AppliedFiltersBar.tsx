@@ -15,7 +15,6 @@ export interface AppliedFiltersBarProps {
   setListJobOrigin: React.Dispatch<React.SetStateAction<'' | 'internal' | 'external'>>
   committedScope: JobListQueryScope | null
   setCommittedScope: React.Dispatch<React.SetStateAction<JobListQueryScope | null>>
-  setPreviewScope: React.Dispatch<React.SetStateAction<JobListQueryScope | null>>
   salaryRangesConst: { min: number; max: number }
   experienceRangesConst: { min: number; max: number }
   onClearAll: () => void
@@ -29,7 +28,6 @@ export function AppliedFiltersBar({
   setListJobOrigin,
   committedScope,
   setCommittedScope,
-  setPreviewScope,
   salaryRangesConst,
   experienceRangesConst,
   onClearAll,
@@ -56,7 +54,6 @@ export function AppliedFiltersBar({
     setFilters,
     setListJobOrigin,
     setCommittedScope,
-    setPreviewScope,
     salaryMin: salaryRangesConst.min,
     salaryMax: salaryRangesConst.max,
     experienceMin: experienceRangesConst.min,

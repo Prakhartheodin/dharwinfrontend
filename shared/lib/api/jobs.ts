@@ -115,6 +115,8 @@ export interface JobsListParams {
   postingDate?: string;
   createdBy?: string;
   search?: string;
+  /** ATS toolbar quick-search: title/company/location only (matches facet dropdown). */
+  searchFields?: "toolbar" | "full";
   forCandidates?: boolean;
   jobOrigin?: "internal" | "external";
   sortBy?: string;
@@ -158,6 +160,7 @@ function serializeJobsListParams(params?: JobsListParams): Record<string, string
   if (params.postingDate) query.postingDate = params.postingDate;
   if (params.createdBy) query.createdBy = params.createdBy;
   if (params.search) query.search = params.search;
+  if (params.searchFields) query.searchFields = params.searchFields;
   if (params.forCandidates != null) query.forCandidates = params.forCandidates;
   if (params.jobOrigin) query.jobOrigin = params.jobOrigin;
   if (params.sortBy) query.sortBy = params.sortBy;

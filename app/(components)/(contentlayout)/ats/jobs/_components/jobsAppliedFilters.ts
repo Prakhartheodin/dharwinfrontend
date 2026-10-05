@@ -81,7 +81,6 @@ export function removeAppliedFilterChip(
     setFilters: Dispatch<SetStateAction<JobSidebarFilters>>
     setListJobOrigin: Dispatch<SetStateAction<'' | 'internal' | 'external'>>
     setCommittedScope: Dispatch<SetStateAction<JobListQueryScope | null>>
-    setPreviewScope: Dispatch<SetStateAction<JobListQueryScope | null>>
     salaryMin: number
     salaryMax: number
     experienceMin: number
@@ -93,7 +92,6 @@ export function removeAppliedFilterChip(
     setFilters,
     setListJobOrigin,
     setCommittedScope,
-    setPreviewScope,
     salaryMin,
     salaryMax,
     experienceMin,
@@ -103,7 +101,6 @@ export function removeAppliedFilterChip(
 
   if (chipId.startsWith('scope:')) {
     setCommittedScope(null)
-    setPreviewScope(null)
     return
   }
   if (chipId === 'origin') {

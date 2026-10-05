@@ -82,7 +82,8 @@ export interface JobQuickSearchProps {
  * with inline "ghost text" completion. Selecting a suggestion only sets the search text — it never
  * adds a filter-panel chip. The live jobs list is driven by `value` in the parent (debounced there);
  * this component owns only the suggestion dropdown and the inline-completion affordance, and reports
- * highlight/selection scope up via `onPreview`/`onCommit` so the parent can scope the jobs table.
+ * highlight scope up via optional `onPreview`; the jobs table should use typed `value` (debounced
+ * in the parent) until `onCommit` selects a suggestion.
  */
 export default function JobQuickSearch({
   value,
