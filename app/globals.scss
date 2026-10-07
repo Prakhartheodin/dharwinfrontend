@@ -643,7 +643,8 @@ html.swal2-shown {
   min-width: 0 !important;
   overflow: hidden !important;
   padding: inherit !important;
-  border: inherit !important;
+  /* Do not inherit tr status stripe (border-l-emerald); only joining col uses this mixin. */
+  border-left-width: 0 !important;
 }
 
 .employees-data-table {
