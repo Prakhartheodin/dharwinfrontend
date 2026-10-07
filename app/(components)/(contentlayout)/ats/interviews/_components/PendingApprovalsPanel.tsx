@@ -197,7 +197,7 @@ export default function PendingApprovalsPanel({ onDecided }: { onDecided?: () =>
         <div className="min-w-0">
           <h2 id="pending-approvals-title" className="box-title text-sm sm:text-base">
             Pending approvals
-            <span className="badge bg-warning/10 text-warning rounded-full ms-1 text-[0.75rem] align-middle">
+            <span className="badge ms-1.5 inline-flex min-h-[1.25rem] min-w-[1.25rem] items-center justify-center rounded-full bg-warning/15 px-1.5 text-xs font-semibold text-warning align-middle">
               {holds.length}
             </span>
           </h2>
@@ -221,32 +221,32 @@ export default function PendingApprovalsPanel({ onDecided }: { onDecided?: () =>
           const isAi = h.source === "ai_call"
           return (
             <li key={h._id} className="px-3 py-3 sm:px-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:gap-4">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] lg:items-center lg:gap-x-5 lg:gap-y-3">
                 {/* Who */}
-                <div className="flex min-w-0 items-center gap-2.5 lg:w-[26%]">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary">
                     {initialsOf(d.candidateName)}
                   </div>
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-gray-800 dark:text-white" title={d.candidateEmail || undefined}>
+                    <div className="truncate text-sm font-semibold text-gray-800 dark:text-white" title={d.candidateEmail || undefined}>
                       {d.candidateName}
                     </div>
-                    <div className="truncate text-xs text-defaulttextcolor/70">
+                    <div className="truncate text-xs text-defaulttextcolor/70 sm:text-sm">
                       {[d.jobTitle || "No job", roundLabel].filter(Boolean).join(" · ")}
                     </div>
                   </div>
                 </div>
 
                 {/* When */}
-                <div className="min-w-0 flex-1 space-y-1 text-xs text-defaulttextcolor/80">
-                  <div className="flex items-start gap-1.5">
-                    <i className="ri-calendar-line mt-0.5 shrink-0 text-primary" aria-hidden />
-                    <span className="text-sm font-medium text-defaulttextcolor">
+                <div className="min-w-0 space-y-1.5 text-xs text-defaulttextcolor/80 sm:text-sm">
+                  <div className="flex items-start gap-2">
+                    <i className="ri-calendar-line mt-0.5 shrink-0 text-primary text-base" aria-hidden />
+                    <span className="font-medium text-defaulttextcolor">
                       {fmtIn(h.start, VIEWER_OPTS)}
                       <span className="font-normal text-defaulttextcolor/70"> · {h.durationMinutes} min</span>
                     </span>
                   </div>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-1">
                     <span className="inline-flex items-center gap-1.5">
                       <i className="ri-user-voice-line shrink-0 text-info" aria-hidden />
                       with {d.interviewerName}
@@ -261,55 +261,60 @@ export default function PendingApprovalsPanel({ onDecided }: { onDecided?: () =>
                 </div>
 
                 {/* Status + actions */}
-                <div className="flex w-full min-w-0 flex-wrap items-center gap-2 lg:ms-auto lg:w-auto lg:shrink-0 lg:justify-end">
-                  {h.source && (
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.7rem] font-medium ${
-                        isAi
-                          ? "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300"
-                          : "border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                      }`}
-                    >
-                      <i className={isAi ? "ri-robot-2-line" : "ri-links-line"} aria-hidden />
-                      {isAi ? "AI call" : "Booking link"}
-                    </span>
-                  )}
-                  {exp && (
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.7rem] font-medium ${
-                        exp.urgent
-                          ? "border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400"
-                          : "border-gray-500/30 bg-gray-500/10 text-gray-600 dark:text-gray-400"
-                      }`}
-                      title={h.expiresAt ? `Reservation lapses ${fmtIn(h.expiresAt, VIEWER_OPTS)}` : undefined}
-                    >
-                      <i className={exp.urgent ? "ri-alarm-warning-line" : "ri-hourglass-line"} aria-hidden />
-                      {exp.label}
-                    </span>
-                  )}
-                  <div className="ms-auto inline-flex shrink-0 gap-2 lg:ms-2">
+                <div className="flex w-full min-w-0 flex-col gap-3 border-t border-defaultborder/50 pt-3 dark:border-defaultborder/20 md:max-w-md md:ms-auto md:border-t-0 md:pt-0 lg:max-w-none lg:w-auto lg:min-w-[14rem]">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {h.source && (
+                      <span
+                        className={`inline-flex min-h-[1.75rem] items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium sm:text-sm ${
+                          isAi
+                            ? "border-violet-500/35 bg-violet-500/10 text-violet-700 dark:text-violet-300"
+                            : "border-blue-500/35 bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                        }`}
+                      >
+                        <i className={`${isAi ? "ri-robot-2-line" : "ri-links-line"} text-sm`} aria-hidden />
+                        {isAi ? "AI call" : "Booking link"}
+                      </span>
+                    )}
+                    {exp && (
+                      <span
+                        className={`inline-flex min-h-[1.75rem] items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium sm:text-sm ${
+                          exp.urgent
+                            ? "border-red-500/35 bg-red-500/10 text-red-600 dark:text-red-400"
+                            : "border-orange-500/35 bg-orange-500/10 text-orange-700 dark:text-orange-300"
+                        }`}
+                        title={h.expiresAt ? `Reservation lapses ${fmtIn(h.expiresAt, VIEWER_OPTS)}` : undefined}
+                      >
+                        <i
+                          className={`${exp.urgent ? "ri-alarm-warning-line" : "ri-hourglass-line"} text-sm`}
+                          aria-hidden
+                        />
+                        {exp.label}
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-nowrap sm:justify-stretch md:justify-end lg:justify-stretch">
                     <button
                       type="button"
-                      className="ti-btn ti-btn-primary ti-btn-sm !m-0 inline-flex shrink-0 items-center whitespace-nowrap"
+                      className="ti-btn ti-btn-purple-full !m-0 inline-flex min-h-[2.375rem] min-w-0 items-center justify-center gap-1.5 whitespace-nowrap px-3 sm:min-w-[6.5rem]"
                       disabled={!!rowBusy}
                       aria-label={`Approve interview with ${d.candidateName}`}
                       onClick={() => void approve(h)}
                     >
                       <i
-                        className={`${rowBusy === "approve" ? "ri-loader-4-line animate-spin" : "ri-check-line"} me-1`}
+                        className={`${rowBusy === "approve" ? "ri-loader-4-line animate-spin" : "ri-check-line"} text-base`}
                         aria-hidden
                       />
                       {rowBusy === "approve" ? "Approving…" : "Approve"}
                     </button>
                     <button
                       type="button"
-                      className="ti-btn ti-btn-outline-danger ti-btn-sm !m-0 inline-flex shrink-0 items-center whitespace-nowrap"
+                      className="ti-btn ti-btn-outline-danger !m-0 inline-flex min-h-[2.375rem] min-w-0 items-center justify-center gap-1.5 whitespace-nowrap bg-white px-3 dark:bg-bodybg sm:min-w-[6.5rem]"
                       disabled={!!rowBusy}
                       aria-label={`Reject time for ${d.candidateName}`}
                       onClick={() => void reject(h)}
                     >
                       <i
-                        className={`${rowBusy === "reject" ? "ri-loader-4-line animate-spin" : "ri-close-line"} me-1`}
+                        className={`${rowBusy === "reject" ? "ri-loader-4-line animate-spin" : "ri-close-line"} text-base`}
                         aria-hidden
                       />
                       {rowBusy === "reject" ? "Rejecting…" : "Reject"}

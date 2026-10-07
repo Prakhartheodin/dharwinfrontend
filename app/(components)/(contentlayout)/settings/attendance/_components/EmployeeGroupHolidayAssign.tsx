@@ -16,6 +16,9 @@ import {
 } from "@/shared/lib/api/student-groups";
 import { listStudents, type Student } from "@/shared/lib/api/students";
 import { effectiveIsActive } from "@/shared/lib/holidays/effectiveHoliday";
+import { useAuth } from "@/shared/contexts/auth-context";
+import { hasStudentsManage } from "@/shared/lib/attendance-access";
+import { bulkOutcomeIcon, holidaySkippedSummaryHtml } from "@/shared/lib/attendance-bulk-feedback";
 
 const AsyncSelect = dynamic(() => import("react-select/async"), { ssr: false });
 const Select = dynamic(() => import("react-select"), { ssr: false });
@@ -145,6 +148,11 @@ function resolveHolidayObjects(
 }
 
 export default function EmployeeGroupHolidayAssign({ embedded = false }: { embedded?: boolean }) {
+  const { permissions, permissionsLoaded, isAdministrator, isPlatformSuperUser } = useAuth();
+  const canManageGroups =
+    !permissionsLoaded
+      ? null
+      : isPlatformSuperUser || hasStudentsManage(permissions, isAdministrator);
   const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } =
     usePmReactSelectStyles(10060);
   const refDate = useMemo(() => new Date(), []);
@@ -326,6 +334,7 @@ export default function EmployeeGroupHolidayAssign({ embedded = false }: { embed
   const assignedHolidayIdSet = useMemo(() => new Set(assignedHolidayIds), [assignedHolidayIds]);
 
   const openEditModal = useCallback(async () => {
+    if (!canManageGroups) return;
     if (!groupDetails || !selectedGroup?.value) return;
     const studentIds = (groupDetails.students ?? []) as (
       | string
@@ -342,7 +351,7 @@ export default function EmployeeGroupHolidayAssign({ embedded = false }: { embed
       description: groupDetails.description ?? "",
     });
     setShowEditModal(true);
-  }, [groupDetails, selectedGroup?.value, allStudents]);
+  }, [canManageGroups, groupDetails, selectedGroup?.value, allStudents]);
 
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -394,6 +403,7 @@ export default function EmployeeGroupHolidayAssign({ embedded = false }: { embed
     );
 
   const handleAssign = async () => {
+    if (!canManageGroups) return;
     if (!selectedGroup?.value) {
       await Swal.fire({
         icon: "warning",
@@ -421,17 +431,21 @@ export default function EmployeeGroupHolidayAssign({ embedded = false }: { embed
         selectedGroup.value,
         selectedHolidays.map((h) => h.value)
       )) as { message?: string; data?: AssignResult };
-      setAssignmentResult(response.data ?? null);
+      const data = response.data ?? null;
+      setAssignmentResult(data);
+      const skipped = data?.skipped ?? [];
+      const updated = data?.candidatesUpdated ?? 0;
       await Swal.fire({
-        icon: "success",
-        title: "Success",
+        icon: bulkOutcomeIcon(updated, skipped.length),
+        title: skipped.length ? "Completed with skips" : "Success",
         html: `
           <p class="mb-3">${response?.message ?? "Holidays assigned to group successfully"}</p>
           <div class="text-left text-sm space-y-1">
-            <p><strong>Students Updated:</strong> ${response?.data?.candidatesUpdated ?? 0}</p>
-            <p><strong>Holidays Added:</strong> ${response?.data?.holidaysAdded ?? 0}</p>
-            <p><strong>Attendance Records Created:</strong> ${response?.data?.attendanceRecordsCreated ?? 0}</p>
+            <p><strong>Students Updated:</strong> ${updated}</p>
+            <p><strong>Holidays Added:</strong> ${data?.holidaysAdded ?? 0}</p>
+            <p><strong>Attendance Records Created:</strong> ${data?.attendanceRecordsCreated ?? 0}</p>
           </div>
+          ${holidaySkippedSummaryHtml(skipped)}
         `,
         confirmButtonText: "OK",
       });
@@ -448,6 +462,7 @@ export default function EmployeeGroupHolidayAssign({ embedded = false }: { embed
   };
 
   const handleRemove = async () => {
+    if (!canManageGroups) return;
     if (!selectedGroup?.value) {
       await Swal.fire({
         icon: "warning",
@@ -490,17 +505,21 @@ export default function EmployeeGroupHolidayAssign({ embedded = false }: { embed
         selectedGroup.value,
         selectedHolidays.map((h) => h.value)
       )) as { message?: string; data?: RemoveResult };
-      setRemovalResult(response.data ?? null);
+      const data = response.data ?? null;
+      setRemovalResult(data);
+      const skipped = data?.skipped ?? [];
+      const updated = data?.candidatesUpdated ?? 0;
       await Swal.fire({
-        icon: "success",
-        title: "Success",
+        icon: bulkOutcomeIcon(updated, skipped.length),
+        title: skipped.length ? "Completed with skips" : "Success",
         html: `
           <p class="mb-3">${response?.message ?? "Holidays removed from group successfully"}</p>
           <div class="text-left text-sm space-y-1">
-            <p><strong>Students Updated:</strong> ${response?.data?.candidatesUpdated ?? 0}</p>
-            <p><strong>Holidays Removed:</strong> ${response?.data?.holidaysRemoved ?? 0}</p>
-            <p><strong>Attendance Records Deleted:</strong> ${response?.data?.attendanceRecordsDeleted ?? 0}</p>
+            <p><strong>Students Updated:</strong> ${updated}</p>
+            <p><strong>Holidays Removed:</strong> ${data?.holidaysRemoved ?? 0}</p>
+            <p><strong>Attendance Records Deleted:</strong> ${data?.attendanceRecordsDeleted ?? 0}</p>
           </div>
+          ${holidaySkippedSummaryHtml(skipped)}
         `,
         confirmButtonText: "OK",
       });
@@ -531,6 +550,14 @@ export default function EmployeeGroupHolidayAssign({ embedded = false }: { embed
       {error && (
         <div className="rounded-xl border border-danger/30 bg-danger/10 dark:bg-danger/15 px-4 py-3 text-sm text-danger">
           {error}
+        </div>
+      )}
+
+      {canManageGroups === false && (
+        <div className="rounded-xl border border-warning/40 bg-warning/10 dark:bg-warning/15 px-4 py-3 text-sm text-defaulttextcolor/90">
+          <strong className="text-warning">View only.</strong> Assigning or removing holidays for an employee group
+          requires <span className="font-medium">students.manage</span> (same as the API). You can still assign holidays
+          to individuals on the tab above.
         </div>
       )}
 
@@ -586,15 +613,17 @@ export default function EmployeeGroupHolidayAssign({ embedded = false }: { embed
                     {assignedHolidays.length} holiday{assignedHolidays.length === 1 ? "" : "s"}
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={openEditModal}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-defaultborder/80 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors shrink-0"
-                  title="Edit group"
-                >
-                  <i className="ri-edit-line" />
-                  Edit group
-                </button>
+                {canManageGroups && (
+                  <button
+                    type="button"
+                    onClick={openEditModal}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-defaultborder/80 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors shrink-0"
+                    title="Edit group"
+                  >
+                    <i className="ri-edit-line" />
+                    Edit group
+                  </button>
+                )}
               </div>
               {groupDetails.description ? (
                 <p className="text-sm text-defaulttextcolor/70">{groupDetails.description}</p>
@@ -750,6 +779,7 @@ export default function EmployeeGroupHolidayAssign({ embedded = false }: { embed
           type="button"
           onClick={handleAssign}
           disabled={
+            !canManageGroups ||
             assigning ||
             removing ||
             !selectedGroup ||
@@ -772,6 +802,7 @@ export default function EmployeeGroupHolidayAssign({ embedded = false }: { embed
           type="button"
           onClick={handleRemove}
           disabled={
+            !canManageGroups ||
             assigning ||
             removing ||
             !selectedGroup ||

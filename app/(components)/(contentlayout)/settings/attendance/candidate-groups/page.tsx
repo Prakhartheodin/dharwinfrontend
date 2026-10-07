@@ -15,6 +15,7 @@ import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import dynamic from "next/dynamic";
 import { useAuth } from "@/shared/contexts/auth-context";
+import { hasAttendanceAssign, hasStudentsManage } from "@/shared/lib/attendance-access";
 import { usePmReactSelectStyles } from "@/shared/hooks/usePmReactSelectStyles";
 
 const AsyncSelect = dynamic(() => import("react-select/async"), { ssr: false });
@@ -23,10 +24,6 @@ type StudentOption = { value: string; label: string; student: Student };
 type EmployeeLike = { id?: string; _id?: string; user?: { name?: string; email?: string } };
 
 const emptyForm = { name: "", description: "" };
-
-function hasStudentsManagePermission(permissions: string[]): boolean {
-  return permissions.some((p) => p === "students.manage" || p.startsWith("students.manage"));
-}
 
 function groupIdOf(group: StudentGroup): string {
   return group._id ?? group.id ?? "";
@@ -51,7 +48,10 @@ export default function SettingsAttendanceStudentGroupsPage() {
   const { isAdministrator, isPlatformSuperUser, permissions, permissionsLoaded } = useAuth();
   const canManage = !permissionsLoaded
     ? null
-    : isAdministrator || isPlatformSuperUser || hasStudentsManagePermission(permissions);
+    : isPlatformSuperUser || hasStudentsManage(permissions, isAdministrator);
+  const canList = !permissionsLoaded
+    ? null
+    : isPlatformSuperUser || hasAttendanceAssign(permissions, isAdministrator);
   const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } = usePmReactSelectStyles(10200);
   const [groups, setGroups] = useState<StudentGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,8 +114,8 @@ export default function SettingsAttendanceStudentGroupsPage() {
   }, []);
 
   useEffect(() => {
-    if (canManage) fetchGroups(currentPage, nameFilter, sortBy);
-  }, [canManage, currentPage, nameFilter, sortBy, fetchGroups]);
+    if (canList) fetchGroups(currentPage, nameFilter, sortBy);
+  }, [canList, currentPage, nameFilter, sortBy, fetchGroups]);
 
   const closeForm = () => setShowForm(false);
 
@@ -218,7 +218,7 @@ export default function SettingsAttendanceStudentGroupsPage() {
     }
   };
 
-  if (canManage === null) {
+  if (canList === null) {
     return (
       <>
         <Seo title="Employee Groups" />
@@ -236,7 +236,7 @@ export default function SettingsAttendanceStudentGroupsPage() {
     );
   }
 
-  if (!canManage) {
+  if (!canList) {
     return (
       <>
         <Seo title="Employee Groups" />
@@ -247,7 +247,9 @@ export default function SettingsAttendanceStudentGroupsPage() {
                 <i className="ri-error-warning-line text-5xl" />
               </div>
               <h3 className="text-xl font-semibold text-defaulttextcolor dark:text-white mb-2">Access Denied</h3>
-              <p className="text-sm text-defaulttextcolor/80 max-w-md mx-auto">You need permission to manage employee groups.</p>
+              <p className="text-sm text-defaulttextcolor/80 max-w-md mx-auto">
+                You need attendance.assign to view employee groups.
+              </p>
             </div>
           </div>
         </div>
@@ -275,12 +277,20 @@ export default function SettingsAttendanceStudentGroupsPage() {
                 <p className="text-xs text-defaulttextcolor/60 dark:text-white/50 mt-0.5">Create and manage groups for bulk holidays and shifts</p>
               </div>
             </div>
-            <button type="button" onClick={openCreate} className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-primary/90 hover:shadow-md hover:shadow-primary/20 active:scale-[0.98]">
-              <i className="ri-add-line text-base" />
-              Create Group
-            </button>
+            {canManage && (
+              <button type="button" onClick={openCreate} className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-primary/90 hover:shadow-md hover:shadow-primary/20 active:scale-[0.98]">
+                <i className="ri-add-line text-base" />
+                Create Group
+              </button>
+            )}
           </div>
           <div className="px-6 py-6 border-t border-defaultborder/50 space-y-5 bg-gradient-to-b from-slate-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent">
+            {!canManage && (
+              <div className="rounded-xl border border-warning/40 bg-warning/10 dark:bg-warning/15 px-4 py-3 text-sm text-defaulttextcolor/90">
+                <strong className="text-warning">Read-only.</strong> You can browse groups (API: attendance.assign). Creating,
+                editing, or deleting groups requires <span className="font-medium">students.manage</span>.
+              </div>
+            )}
             <p className="text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/60">Filters</p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
@@ -429,7 +439,9 @@ export default function SettingsAttendanceStudentGroupsPage() {
                         <th className="text-start text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70 px-4 py-3">Name</th>
                         <th className="text-start text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70 px-4 py-3">Description</th>
                         <th className="text-start text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70 px-4 py-3">Employees</th>
-                        <th className="text-end text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70 px-4 py-3">Actions</th>
+                        {canManage && (
+                          <th className="text-end text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70 px-4 py-3">Actions</th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -442,10 +454,12 @@ export default function SettingsAttendanceStudentGroupsPage() {
                             <span className="block truncate" title={g.description ?? ""}>{g.description ?? "—"}</span>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">{g.studentCount ?? (g.students ?? []).length}</td>
-                          <td className="text-end px-4 py-3">
-                            <button type="button" onClick={() => handleEdit(g)} className="inline-flex items-center justify-center p-2 rounded-lg text-primary hover:bg-primary/10 transition-colors" aria-label={`Edit ${g.name}`}><i className="ri-edit-line text-lg" /></button>
-                            <button type="button" onClick={() => handleDelete(g)} className="inline-flex items-center justify-center p-2 rounded-lg text-danger hover:bg-danger/10 transition-colors ml-1" aria-label={`Delete ${g.name}`}><i className="ri-delete-bin-line text-lg" /></button>
-                          </td>
+                          {canManage && (
+                            <td className="text-end px-4 py-3">
+                              <button type="button" onClick={() => handleEdit(g)} className="inline-flex items-center justify-center p-2 rounded-lg text-primary hover:bg-primary/10 transition-colors" aria-label={`Edit ${g.name}`}><i className="ri-edit-line text-lg" /></button>
+                              <button type="button" onClick={() => handleDelete(g)} className="inline-flex items-center justify-center p-2 rounded-lg text-danger hover:bg-danger/10 transition-colors ml-1" aria-label={`Delete ${g.name}`}><i className="ri-delete-bin-line text-lg" /></button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>

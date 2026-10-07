@@ -31,6 +31,8 @@ import Swal from "sweetalert2";
 import * as XLSX from "xlsx";
 import dynamic from "next/dynamic";
 import { useAuth } from "@/shared/contexts/auth-context";
+import { hasAttendanceAssign } from "@/shared/lib/attendance-access";
+import { bulkOutcomeIcon, emailSkippedSummaryText } from "@/shared/lib/attendance-bulk-feedback";
 import { SopAssignChecklistNotice, useSopPreselectStudents } from "@/shared/hooks/use-sop-assign-deeplink";
 import { dispatchSopStripRefresh } from "@/shared/lib/sop-strip-preferences";
 import { usePmReactSelectStyles } from "@/shared/hooks/usePmReactSelectStyles";
@@ -71,21 +73,6 @@ type WeekOffData = {
   weekOff: string[];
 };
 
-function hasWeekOffAccess(permissions: string[], isAdministrator: boolean): boolean {
-  if (isAdministrator) return true;
-  const hasStudentsManage = permissions.some(
-    (p) => (p.includes("settings.students") || p === "students.manage") && (p.includes("create") || p.includes("edit") || p.includes("delete") || p.includes("manage"))
-  );
-  const hasAttendanceManage = permissions.some(
-    (p) =>
-      (p.includes("training.attendance") ||
-        p.includes("settings.attendance") ||
-        p === "attendance.manage") &&
-      (p.includes("create") || p.includes("edit") || p.includes("view,create,edit"))
-  );
-  return hasStudentsManage || hasAttendanceManage;
-}
-
 export default function SettingsAttendanceWeekOffPage() {
   const router = useRouter();
   const pathname = usePathname();
@@ -93,8 +80,9 @@ export default function SettingsAttendanceWeekOffPage() {
   const sopQueryString = searchParams.toString();
   const viewMode = parseView(searchParams.get("view"));
   const reviewDay = parseDay(searchParams.get("day"));
-  const { permissions, permissionsLoaded, isAdministrator } = useAuth();
-  const canAccess = hasWeekOffAccess(permissions, isAdministrator);
+  const { permissions, permissionsLoaded, isAdministrator, isPlatformSuperUser } = useAuth();
+  const canAccess =
+    isPlatformSuperUser || (permissionsLoaded && hasAttendanceAssign(permissions, isAdministrator));
   const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } = usePmReactSelectStyles(10060);
   const [people, setPeople] = useState<AssignPersonRow[]>([]);
   const [selectedPeople, setSelectedPeople] = useState<AssignPersonRow[]>([]);
@@ -413,14 +401,39 @@ export default function SettingsAttendanceWeekOffPage() {
         setUpdating(false);
         return;
       }
-      const tasks: Promise<unknown>[] = [];
+      let trainingSaved = false;
       if (studentRows.length) {
-        tasks.push(updateWeekOffCalendar(studentRows.map((r) => r.value), selectedDays));
+        await updateWeekOffCalendar(studentRows.map((r) => r.value), selectedDays);
+        trainingSaved = true;
       }
       if (candidateRows.length) {
-        tasks.push(updateWeekOff(candidateRows.map((r) => r.candidateId), selectedDays));
+        try {
+          await updateWeekOff(candidateRows.map((r) => r.candidateId), selectedDays);
+        } catch (employeeErr: unknown) {
+          const msg =
+            (employeeErr as { response?: { data?: { message?: string } }; message?: string })?.response?.data
+              ?.message ??
+            (employeeErr as { message?: string })?.message ??
+            "Failed to update employees";
+          const partial = trainingSaved
+            ? `Training profiles were saved, but employees were not: ${msg}`
+            : msg;
+          setError(partial);
+          await Swal.fire({
+            icon: "error",
+            title: trainingSaved ? "Partial update" : "Error",
+            text: partial,
+            confirmButtonText: "OK",
+          });
+          if (trainingSaved) {
+            dispatchSopStripRefresh();
+            setRosterRefreshToken((n) => n + 1);
+            await fetchStudentWeekOffs();
+          }
+          setUpdating(false);
+          return;
+        }
       }
-      await Promise.all(tasks);
       await Swal.fire({
         icon: "success",
         title: "Success",
@@ -544,12 +557,17 @@ export default function SettingsAttendanceWeekOffPage() {
         return;
       }
       const result = await importWeekOffBulk(entries);
-      let msg = result.message ?? `Week-off updated for ${result.data?.updatedCount ?? 0} candidate(s).`;
-      if (result.data?.skipped?.length) {
-        msg += ` ${result.data.skipped.length} skipped: ${result.data.skipped.slice(0, 3).map((s) => `${s.email} (${s.reason})`).join("; ")}`;
-        if (result.data.skipped.length > 3) msg += "...";
-      }
-      await Swal.fire({ icon: "success", title: "Import complete", text: msg, confirmButtonText: "OK" });
+      const updated = result.data?.updatedCount ?? 0;
+      const skipped = result.data?.skipped ?? [];
+      let msg = result.message ?? `Week-off updated for ${updated} candidate(s).`;
+      const skipText = emailSkippedSummaryText(skipped);
+      if (skipText) msg += ` ${skipText}`;
+      await Swal.fire({
+        icon: bulkOutcomeIcon(updated, skipped.length),
+        title: skipped.length ? "Import completed with skips" : "Import complete",
+        text: msg,
+        confirmButtonText: "OK",
+      });
       setRosterRefreshToken((n) => n + 1);
     } catch (err: unknown) {
       await Swal.fire({

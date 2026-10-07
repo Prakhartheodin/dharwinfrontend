@@ -15,6 +15,7 @@ import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import * as XLSX from "xlsx";
 import { useAuth } from "@/shared/contexts/auth-context";
+import { hasStudentsManage, hasStudentsRead } from "@/shared/lib/attendance-access";
 import { useDebouncedValue } from "@/app/(components)/(contentlayout)/communication/dialer/_lib/contactSearch";
 
 const TIMEZONES = getAllTimeZones();
@@ -29,17 +30,6 @@ const EXCEL_COLUMNS = [
 const TIME_REG = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 
 type BulkShiftRow = ShiftCreatePayload & { _key?: string };
-
-function hasStudentsManage(permissions: string[], isAdministrator: boolean): boolean {
-  if (isAdministrator) return true;
-  return permissions.some((p) => p === "students.manage" || p.startsWith("students.manage"));
-}
-
-function hasStudentsRead(permissions: string[], isAdministrator: boolean): boolean {
-  if (isAdministrator) return true;
-  if (hasStudentsManage(permissions, isAdministrator)) return true;
-  return permissions.some((p) => p === "students.read" || p.startsWith("students.read"));
-}
 
 export default function SettingsAttendanceManageShiftsPage() {
   const { permissions, permissionsLoaded, isAdministrator } = useAuth();

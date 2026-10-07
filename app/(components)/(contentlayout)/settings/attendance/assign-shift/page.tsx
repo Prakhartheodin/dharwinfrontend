@@ -6,6 +6,10 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { assignShiftToCandidates, getCandidate, listCandidates } from "@/shared/lib/api/candidates";
 import { assignShiftToStudents, getStudent, listStudents } from "@/shared/lib/api/students";
 import {
+  ASSIGN_SHIFT_SHIFTS_READ_MESSAGE,
+  resolveAssignShiftPageGates,
+} from "@/shared/lib/attendance-access";
+import {
   buildMergedAssignPeopleOptions,
   partitionAssignPersonRows,
   type AssignPersonRow,
@@ -37,30 +41,6 @@ function parseView(raw: string | null): ViewMode {
 function errMessage(err: unknown, fallback: string): string {
   const e = err as { response?: { data?: { message?: string } }; message?: string } | undefined;
   return e?.response?.data?.message ?? e?.message ?? fallback;
-}
-
-function hasShiftAssignMutate(
-  permissions: string[],
-  isAdministrator: boolean,
-  isPlatformSuperUser: boolean
-): boolean {
-  if (isAdministrator || isPlatformSuperUser) return true;
-  return permissions.some((p) => p === "students.manage" || p.startsWith("students.manage"));
-}
-
-function hasAttendanceAssign(
-  permissions: string[],
-  isAdministrator: boolean,
-  isPlatformSuperUser: boolean
-): boolean {
-  if (hasShiftAssignMutate(permissions, isAdministrator, isPlatformSuperUser)) return true;
-  return permissions.some(
-    (p) =>
-      p === "attendance.manage" ||
-      p === "training.attendance:view,create,edit" ||
-      ((p.includes("training.attendance") || p.includes("settings.attendance")) &&
-        (p.includes("create") || p.includes("edit") || p.includes("view")))
-  );
 }
 
 function currentShiftId(row: AssignPersonRow): string {
@@ -136,8 +116,18 @@ export default function SettingsAttendanceAssignShiftPage() {
   const viewMode = parseView(searchParams.get("view"));
   const selectedShiftId = searchParams.get("shift")?.trim() ?? "";
   const { permissions, permissionsLoaded, isAdministrator, isPlatformSuperUser } = useAuth();
-  const canAccess = hasAttendanceAssign(permissions, isAdministrator, isPlatformSuperUser);
-  const canMutate = hasShiftAssignMutate(permissions, isAdministrator, isPlatformSuperUser);
+  const {
+    canAccess,
+    canLoadShifts,
+    canReadStudents,
+    canReadEmployees,
+    canMutateStudents,
+    canMutateCandidates,
+    canSearchStudents,
+    canSearchCandidates,
+  } = resolveAssignShiftPageGates(permissions, isAdministrator, isPlatformSuperUser);
+  const canMutate = canMutateStudents || canMutateCandidates;
+  const canSearchPeople = canSearchStudents || canSearchCandidates;
   const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } = usePmReactSelectStyles(10060);
 
   const [people, setPeople] = useState<AssignPersonRow[]>([]);
@@ -192,53 +182,90 @@ export default function SettingsAttendanceAssignShiftPage() {
   }, []);
 
   useEffect(() => {
-    if (canAccess) void fetchShifts();
-  }, [canAccess, fetchShifts]);
+    if (!canAccess) return;
+    if (!canLoadShifts) {
+      setLoadingShifts(false);
+      setShifts([]);
+      setShiftsError(null);
+      return;
+    }
+    void fetchShifts();
+  }, [canAccess, canLoadShifts, fetchShifts]);
 
-  const loadPeopleOptions = useCallback((inputValue: string): Promise<AssignPersonRow[]> => {
-    const needle = (inputValue ?? "").trim();
-    const delay = needle ? PEOPLE_SEARCH_DEBOUNCE_MS : 0;
-    const seq = ++loadSeqRef.current;
-    if (loadTimerRef.current !== undefined) window.clearTimeout(loadTimerRef.current);
-    setPeopleSearching(true);
-    return new Promise((resolve) => {
-      loadTimerRef.current = window.setTimeout(() => {
-        void (async () => {
-          try {
-            const looksLikeEmail = needle.includes("@");
-            const [stuRes, candRes] = await Promise.all([
-              listStudents({
-                limit: PEOPLE_SEARCH_LIMIT,
-                ...(needle ? { search: needle } : {}),
-                sortBy: "user.name:asc",
-              }),
-              listCandidates({
-                limit: PEOPLE_SEARCH_LIMIT,
-                ...(needle ? { search: needle } : {}),
-                ...(looksLikeEmail ? { email: needle } : {}),
-                employmentStatus: "all",
-                sortBy: "fullName:asc",
-              }),
-            ]);
-            if (seq !== loadSeqRef.current) return;
-            const hits = buildMergedAssignPeopleOptions(stuRes.results ?? [], candRes.results ?? []).map(
-              withShiftLabel
-            );
-            const merged = mergePeople([...selectedPeopleRef.current, ...sopInjectedRef.current], hits);
-            setPeople(merged);
-            setError(null);
-            resolve(merged);
-          } catch (err: unknown) {
-            if (seq !== loadSeqRef.current) return;
-            setError(errMessage(err, "Failed to search people"));
-            resolve(mergePeople(selectedPeopleRef.current, sopInjectedRef.current));
-          } finally {
-            if (seq === loadSeqRef.current) setPeopleSearching(false);
-          }
-        })();
-      }, delay);
-    });
-  }, []);
+  const loadPeopleOptions = useCallback(
+    (inputValue: string): Promise<AssignPersonRow[]> => {
+      const needle = (inputValue ?? "").trim();
+      const delay = needle ? PEOPLE_SEARCH_DEBOUNCE_MS : 0;
+      const seq = ++loadSeqRef.current;
+      if (loadTimerRef.current !== undefined) window.clearTimeout(loadTimerRef.current);
+      setPeopleSearching(true);
+      return new Promise((resolve) => {
+        loadTimerRef.current = window.setTimeout(() => {
+          void (async () => {
+            const fallback = mergePeople(selectedPeopleRef.current, sopInjectedRef.current);
+            if (!canSearchStudents && !canSearchCandidates) {
+              if (seq === loadSeqRef.current) {
+                setPeopleSearching(false);
+                setError(null);
+              }
+              resolve(fallback);
+              return;
+            }
+            try {
+              const looksLikeEmail = needle.includes("@");
+              const failures: string[] = [];
+              let studentResults: Awaited<ReturnType<typeof listStudents>>["results"] = [];
+              let candidateResults: Awaited<ReturnType<typeof listCandidates>>["results"] = [];
+
+              if (canSearchStudents) {
+                try {
+                  const stuRes = await listStudents({
+                    limit: PEOPLE_SEARCH_LIMIT,
+                    ...(needle ? { search: needle } : {}),
+                    sortBy: "user.name:asc",
+                  });
+                  studentResults = stuRes.results ?? [];
+                } catch (err: unknown) {
+                  failures.push(errMessage(err, "Failed to search training profiles"));
+                }
+              }
+
+              if (canSearchCandidates) {
+                try {
+                  const candRes = await listCandidates({
+                    limit: PEOPLE_SEARCH_LIMIT,
+                    ...(needle ? { search: needle } : {}),
+                    ...(looksLikeEmail ? { email: needle } : {}),
+                    employmentStatus: "all",
+                    sortBy: "fullName:asc",
+                  });
+                  candidateResults = candRes.results ?? [];
+                } catch (err: unknown) {
+                  failures.push(errMessage(err, "Failed to search employees"));
+                }
+              }
+
+              if (seq !== loadSeqRef.current) return;
+              const hits = buildMergedAssignPeopleOptions(studentResults, candidateResults).map(withShiftLabel);
+              const merged = mergePeople([...selectedPeopleRef.current, ...sopInjectedRef.current], hits);
+              setPeople(merged);
+              if (failures.length === 0) setError(null);
+              else if (failures.length === 1) setError(failures[0]);
+              else setError(failures.join(" · "));
+              resolve(merged);
+            } catch (err: unknown) {
+              if (seq !== loadSeqRef.current) return;
+              setError(errMessage(err, "Failed to search people"));
+              resolve(fallback);
+            } finally {
+              if (seq === loadSeqRef.current) setPeopleSearching(false);
+            }
+          })();
+        }, delay);
+      });
+    },
+    [canSearchStudents, canSearchCandidates]
+  );
 
   useEffect(() => {
     return () => {
@@ -263,6 +290,7 @@ export default function SettingsAttendanceAssignShiftPage() {
     void (async () => {
       try {
         if (sid) {
+          if (!canSearchStudents) return;
           const student = await getStudent(sid);
           if (cancelled) return;
           const row = buildMergedAssignPeopleOptions([student], [])[0];
@@ -270,6 +298,7 @@ export default function SettingsAttendanceAssignShiftPage() {
           return;
         }
         if (cid) {
+          if (!canSearchCandidates) return;
           const candidate = await getCandidate(cid);
           if (cancelled) return;
           const row = buildMergedAssignPeopleOptions([], [candidate])[0];
@@ -282,12 +311,21 @@ export default function SettingsAttendanceAssignShiftPage() {
     return () => {
       cancelled = true;
     };
-  }, [canAccess, sopQueryString, mergeSopPerson]);
+  }, [canAccess, canSearchStudents, canSearchCandidates, sopQueryString, mergeSopPerson]);
 
   useSopPreselectStudents(people, setSelectedPeople, sopQueryString, mergeSopPerson);
 
   const selectedShiftName =
     shifts.find((s) => (s._id ?? s.id) === selectedShiftId)?.name ?? "";
+
+  const selectedAssignableCount = selectedPeople.filter((row) =>
+    row.kind === "student" ? canMutateStudents : canMutateCandidates
+  ).length;
+
+  const rowIsAssignable = (row: AssignPersonRow) =>
+    row.kind === "student"
+      ? canSearchStudents
+      : canSearchCandidates;
 
   const handleAssign = async () => {
     if (!canMutate) return;
@@ -300,12 +338,43 @@ export default function SettingsAttendanceAssignShiftPage() {
       return;
     }
     const { studentRows, candidateRows } = partitionAssignPersonRows(selectedPeople);
-    if (studentRows.length === 0 && candidateRows.length === 0) {
+    const studentsToAssign = canSearchStudents ? studentRows : [];
+    const candidatesToAssign = canSearchCandidates ? candidateRows : [];
+    const skippedStudentCount = canSearchStudents ? 0 : studentRows.length;
+    const skippedCandidateCount = canSearchCandidates ? 0 : candidateRows.length;
+
+    if (studentsToAssign.length === 0 && candidatesToAssign.length === 0) {
+      if (skippedStudentCount > 0 && skippedCandidateCount > 0) {
+        await warnAssign(
+          "Cannot assign",
+          "Selected people need view + assign permissions for training profiles (students.read) and employees (employees.read or candidates.read, plus assign permission)."
+        );
+        return;
+      }
+      if (skippedCandidateCount > 0) {
+        await warnAssign(
+          "Cannot assign employees",
+          canMutateCandidates && !canReadEmployees
+            ? "You can assign employees but need employees.read or candidates.read to select them. Ask an admin for view access."
+            : "You don't have permission to assign shifts to employees. Select training profiles only, or ask an admin for employees.edit or candidates.manage."
+        );
+        return;
+      }
+      if (skippedStudentCount > 0) {
+        await warnAssign(
+          "Cannot assign training profiles",
+          canMutateStudents && !canReadStudents
+            ? "You can assign training profiles but need students.read to select them. Ask an admin for training student view access."
+            : "You don't have permission to assign shifts to training profiles."
+        );
+        return;
+      }
       await warnAssign("Nothing to assign", "Select at least one training profile or employee");
       return;
     }
 
-    const conflicts = selectedPeople.filter((row) => {
+    const assignableSelected = selectedPeople.filter(rowIsAssignable);
+    const conflicts = assignableSelected.filter((row) => {
       const cur = currentShiftId(row);
       return Boolean(cur) && cur !== selectedShiftId;
     });
@@ -316,32 +385,39 @@ export default function SettingsAttendanceAssignShiftPage() {
     let trainingSaved = false;
     try {
       const parts: string[] = [];
-      if (studentRows.length) {
+      if (studentsToAssign.length) {
         await assignShiftToStudents(
-          studentRows.map((r) => r.value),
+          studentsToAssign.map((r) => r.value),
           selectedShiftId
         );
         trainingSaved = true;
-        parts.push(`${studentRows.length} training profile(s)`);
+        parts.push(`${studentsToAssign.length} training profile(s)`);
       }
-      if (candidateRows.length) {
+      if (candidatesToAssign.length) {
         await assignShiftToCandidates(
-          candidateRows.map((r) => r.candidateId),
+          candidatesToAssign.map((r) => r.candidateId),
           selectedShiftId
         );
-        parts.push(`${candidateRows.length} employee(s)`);
+        parts.push(`${candidatesToAssign.length} employee(s)`);
+      }
+      let successText = parts.length ? `Shift assigned: ${parts.join(" · ")}` : "Shift assigned";
+      if (skippedStudentCount > 0) {
+        successText += `. ${skippedStudentCount} training profile row(s) were skipped — missing view or assign permission.`;
+      }
+      if (skippedCandidateCount > 0) {
+        successText += `. ${skippedCandidateCount} employee row(s) were skipped — missing view or assign permission.`;
       }
       await Swal.fire({
-        icon: "success",
-        title: "Success",
-        text: `Shift assigned: ${parts.join(" · ")}`,
+        icon: skippedStudentCount > 0 || skippedCandidateCount > 0 ? "warning" : "success",
+        title: skippedStudentCount > 0 || skippedCandidateCount > 0 ? "Partial assignment" : "Success",
+        text: successText,
         confirmButtonText: "OK",
       });
       dispatchSopStripRefresh();
       setRosterRefreshToken((n) => n + 1);
     } catch (err: unknown) {
       const msg = errMessage(err, "Failed to assign shift");
-      const employeesFailedAfterTraining = trainingSaved && candidateRows.length > 0;
+      const employeesFailedAfterTraining = trainingSaved && candidatesToAssign.length > 0;
       const partial = employeesFailedAfterTraining
         ? `Training profiles were saved, but employees were not: ${msg}`
         : msg;
@@ -388,7 +464,8 @@ export default function SettingsAttendanceAssignShiftPage() {
               </div>
               <h3 className="mb-2 text-xl font-semibold text-defaulttextcolor dark:text-white">Access Denied</h3>
               <p className="mx-auto max-w-md text-sm text-defaulttextcolor/80">
-                You need permission to assign or view shifts.
+                You need attendance.assign permission (students.manage or attendance.manage) to assign shifts or
+                view who is assigned.
               </p>
             </div>
           </div>
@@ -448,7 +525,19 @@ export default function SettingsAttendanceAssignShiftPage() {
               >
                 Select shift <span className="text-danger">*</span>
               </label>
-              {shiftsError ? (
+              {!canLoadShifts ? (
+                <div
+                  className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-defaulttextcolor dark:text-white"
+                  role="status"
+                >
+                  {ASSIGN_SHIFT_SHIFTS_READ_MESSAGE}
+                  {selectedShiftId ? (
+                    <p className="mt-2 text-xs text-defaulttextcolor/70">
+                      A shift is selected from the URL — use the Assigned tab to review assignees for that shift.
+                    </p>
+                  ) : null}
+                </div>
+              ) : shiftsError ? (
                 <div
                   className="flex flex-col gap-3 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger sm:flex-row sm:items-center sm:justify-between"
                   role="alert"
@@ -478,7 +567,7 @@ export default function SettingsAttendanceAssignShiftPage() {
                   ))}
                 </select>
               )}
-              {!loadingShifts && !shiftsError && shifts.length === 0 && (
+              {canLoadShifts && !loadingShifts && !shiftsError && shifts.length === 0 && (
                 <p className="mt-1.5 text-xs text-warning">
                   No active shifts. Create shifts in{" "}
                   <Link href={ROUTES.settingsAttendanceManageShifts} className="font-medium underline">
@@ -560,7 +649,7 @@ export default function SettingsAttendanceAssignShiftPage() {
                       classNamePrefix="react-select"
                       isClearable
                       isSearchable
-                      isDisabled={!canMutate}
+                      isDisabled={!canSearchPeople}
                       filterOption={null}
                       isLoading={peopleSearching}
                       menuPortalTarget={selectMenuPortalTarget}
@@ -569,7 +658,37 @@ export default function SettingsAttendanceAssignShiftPage() {
                     />
                   </div>
                   {selectedPeople.length > 0 && (
-                    <p className="mt-1.5 text-xs text-defaulttextcolor/60">{selectedPeople.length} selected</p>
+                    <p className="mt-1.5 text-xs text-defaulttextcolor/60">
+                      {selectedPeople.length} selected
+                      {!canSearchCandidates && selectedPeople.some((r) => r.kind === "candidate_only")
+                        ? " · employee rows cannot be assigned with your current permissions"
+                        : ""}
+                      {!canSearchStudents && selectedPeople.some((r) => r.kind === "student")
+                        ? " · training profile rows cannot be assigned with your current permissions"
+                        : ""}
+                    </p>
+                  )}
+                  {canMutateStudents && !canReadStudents && (
+                    <p className="mt-1.5 text-xs text-warning">
+                      You can assign shifts to training profiles, but searching them requires students.read (training
+                      student view). Ask an admin for view access.
+                    </p>
+                  )}
+                  {canMutateCandidates && !canReadEmployees && (
+                    <p className="mt-1.5 text-xs text-warning">
+                      You can assign shifts to employees, but searching them requires employees.read or candidates.read.
+                      Ask an admin for view access.
+                    </p>
+                  )}
+                  {canMutateStudents && canReadStudents && !canMutateCandidates && (
+                    <p className="mt-1.5 text-xs text-warning">
+                      You can assign training profiles. Assigning employees requires employees.edit or candidates.manage.
+                    </p>
+                  )}
+                  {!canSearchPeople && (canMutateStudents || canMutateCandidates) && (
+                    <p className="mt-1.5 text-xs text-defaulttextcolor/70">
+                      People search is disabled until you have the read permissions needed for the profiles you can assign.
+                    </p>
                   )}
                 </div>
 
@@ -578,7 +697,7 @@ export default function SettingsAttendanceAssignShiftPage() {
                     <button
                       type="button"
                       onClick={() => void handleAssign()}
-                      disabled={assigning || selectedPeople.length === 0 || !selectedShiftId}
+                      disabled={assigning || selectedAssignableCount === 0 || !selectedShiftId}
                       className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-primary/90 hover:shadow-md disabled:pointer-events-none disabled:opacity-60"
                     >
                       {assigning ? (
@@ -594,7 +713,7 @@ export default function SettingsAttendanceAssignShiftPage() {
                   </div>
                 ) : (
                   <p className="text-xs text-defaulttextcolor/60">
-                    You can view who is assigned. Assigning requires students.manage.
+                    You can view who is assigned. You don&apos;t have permission to assign shifts.
                   </p>
                 )}
               </div>
