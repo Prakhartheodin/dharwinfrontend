@@ -24,6 +24,10 @@ function StatusPill({ lead }: { lead: ReferralLeadRow }) {
   );
 }
 
+function cellTitle(...parts: (string | null | undefined)[]) {
+  return parts.filter(Boolean).join(" · ") || undefined;
+}
+
 function ReferredByBlock({ lead }: { lead: ReferralLeadRow }) {
   if (lead.referralAttributionAnonymised) {
     return <span className="text-slate-400 dark:text-slate-500">Anonymised</span>;
@@ -125,17 +129,17 @@ export function ReferralLeadsTable({
 }: ReferralLeadsTableProps) {
   return (
     <>
-      <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200 dark:border-white/10 min-w-0">
-        <table className="min-w-full text-sm">
+      <div className="referral-leads-desktop-table hidden lg:block rounded-xl border border-slate-200 dark:border-white/10 min-w-0">
+        <table className="w-full table-fixed text-sm">
           <thead>
             <tr className="bg-slate-50 dark:bg-white/5 border-b border-slate-200 dark:border-white/10 text-left text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">
-              <th className="px-4 py-3">Candidate</th>
-              <th className="px-4 py-3">Referred by</th>
-              <th className="px-4 py-3">Link</th>
-              <th className="px-4 py-3">Job</th>
+              <th className="px-4 py-3 min-w-0">Candidate</th>
+              <th className="px-4 py-3 min-w-0">Referred by</th>
+              <th className="hidden xl:table-cell px-4 py-3">Link</th>
+              <th className="px-4 py-3 min-w-0">Job</th>
               <th className="px-4 py-3">Status</th>
-              {featureEnabled && <th className="px-4 py-3">Assigned sales agent</th>}
-              <th className="px-4 py-3">Claimed</th>
+              {featureEnabled && <th className="px-4 py-3 min-w-0">Assigned sales agent</th>}
+              <th className="hidden xl:table-cell px-4 py-3">Claimed</th>
               <th className="px-4 py-3 w-12" aria-label="Actions" />
             </tr>
           </thead>
@@ -155,44 +159,70 @@ export function ReferralLeadsTable({
                 }}
                 onClick={() => onSelect(lead)}
               >
-                <td className="px-4 py-3">
-                  <div className="font-medium text-slate-800 dark:text-white">{lead.fullName}</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400 break-all">{lead.email}</div>
+                <td className="px-4 py-3 min-w-0 align-top">
+                  <div
+                    className="font-medium text-slate-800 dark:text-white truncate"
+                    title={cellTitle(lead.fullName, lead.email)}
+                  >
+                    {lead.fullName}
+                  </div>
+                  {lead.email && (
+                    <div className="text-xs text-slate-500 dark:text-slate-400 truncate" title={lead.email}>
+                      {lead.email}
+                    </div>
+                  )}
                   {lead.joiningDate && (
-                    <div className="text-xs text-slate-400 dark:text-slate-500">Joining: {fmtDate(lead.joiningDate)}</div>
+                    <div className="text-xs text-slate-400 dark:text-slate-500 truncate">
+                      Joining: {fmtDate(lead.joiningDate)}
+                    </div>
                   )}
                 </td>
-                <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                <td className="px-4 py-3 min-w-0 align-top text-slate-700 dark:text-slate-200">
                   {lead.referralAttributionAnonymised ? (
                     <span className="text-slate-400 dark:text-slate-500">Anonymised</span>
                   ) : (
                     <>
-                      {lead.referredBy?.name || "—"}
+                      <div
+                        className="truncate"
+                        title={cellTitle(lead.referredBy?.name, lead.referredBy?.email)}
+                      >
+                        {lead.referredBy?.name || "—"}
+                      </div>
                       {lead.referredBy?.email && (
-                        <div className="text-xs text-slate-500 dark:text-slate-400 break-all">{lead.referredBy.email}</div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400 truncate" title={lead.referredBy.email}>
+                          {lead.referredBy.email}
+                        </div>
                       )}
                     </>
                   )}
                 </td>
-                <td className="px-4 py-3">
+                <td className="hidden xl:table-cell px-4 py-3 align-top">
                   {lead.referralContext ? (
-                    <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-indigo-50 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-200">
+                    <span className="inline-flex max-w-full items-center gap-1 truncate rounded-md px-2 py-0.5 text-xs font-medium bg-indigo-50 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-200">
                       {LINK_TYPE[lead.referralContext] || lead.referralContext}
                     </span>
                   ) : (
                     "—"
                   )}
                 </td>
-                <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{lead.job?.title || "—"}</td>
+                <td className="px-4 py-3 min-w-0 align-top text-slate-600 dark:text-slate-300">
+                  {lead.job?.title ? (
+                    <span className="block truncate xl:whitespace-normal xl:overflow-visible xl:break-words" title={lead.job.title}>
+                      {lead.job.title}
+                    </span>
+                  ) : (
+                    "—"
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   <StatusPill lead={lead} />
                 </td>
                 {featureEnabled && (
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 min-w-0 align-top">
                     <SalesAgentBadge agent={lead.salesAgent} />
                   </td>
                 )}
-                <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                <td className="hidden xl:table-cell px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap align-top">
                   <div>{fmtDate(lead.referredAt || lead.createdAt)}</div>
                   <div className="text-xs text-slate-400 dark:text-slate-500">
                     {fmtTime(lead.referredAt || lead.createdAt)}
@@ -207,7 +237,7 @@ export function ReferralLeadsTable({
         </table>
       </div>
 
-      <div className="referral-leads-list-cards md:hidden flex flex-col gap-3 min-w-0">
+      <div className="referral-leads-list-cards lg:hidden flex flex-col gap-3 min-w-0">
         {list.map((lead) => (
           <LeadCard
             key={lead.id}

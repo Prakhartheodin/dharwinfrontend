@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { ROUTES } from "@/shared/lib/constants";
 import { EMPLOYEE_STATUS_META, LINK_TYPE, getStatusMeta } from "@/shared/lib/ats/referral-leads-constants";
 import type { ReferralLeadRow } from "@/shared/lib/api/referralLeads";
+import { useModalBehavior } from "@/shared/hooks/useModalBehavior";
 import { attributionLabel } from "../utils/referralPermissions.util";
 import { fmtDate, fmtTime, userDisplay } from "../utils/format.util";
 import { SalesAgentBadge } from "./SalesAgentBadge";
@@ -39,44 +39,33 @@ export function ReferralLeadDetailPanel({
   canRevokeAttribution = false,
 }: ReferralLeadDetailPanelProps) {
   const a = attributionLabel(lead);
-
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  // aria-modal="true" promises the rest of the page is inert; without a key handler
-  // the panel could only be dismissed by mouse.
-  useEffect(() => {
-    panelRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const { containerRef, backdropProps, requestClose } = useModalBehavior({ isOpen: true, onClose });
 
   return (
     <div
-      ref={panelRef}
-      tabIndex={-1}
-      className="fixed inset-0 z-50 flex focus:outline-none"
+      className="fixed inset-0 z-50 flex"
       role="dialog"
       aria-modal="true"
       aria-label="Referral detail"
     >
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <aside className="relative ml-auto h-full w-full max-w-md bg-white dark:bg-bodybg2 shadow-2xl flex flex-col overflow-y-auto">
-        <div className="p-5 border-b border-slate-200 dark:border-white/10 flex justify-between items-start">
-          <div>
+      <div className="absolute inset-0 bg-black/40" aria-hidden="true" {...backdropProps} />
+      <aside
+        ref={containerRef}
+        className="relative ml-auto h-full w-full max-w-md bg-white dark:bg-bodybg2 shadow-2xl flex flex-col overflow-y-auto"
+      >
+        <div className="p-5 border-b border-slate-200 dark:border-white/10 flex justify-between items-start gap-3">
+          <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Referral detail</p>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white mt-1">{lead.fullName}</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">{lead.email}</p>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white mt-1 break-words">{lead.fullName}</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 break-all">{lead.email}</p>
           </div>
           <button
             type="button"
-            className="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 text-2xl leading-none"
-            onClick={onClose}
+            className="ti-btn ti-btn-icon ti-btn-light !mb-0 shrink-0 min-h-[44px] min-w-[44px]"
+            onClick={requestClose}
             aria-label="Close"
           >
-            ×
+            <i className="ti ti-x text-[1.125rem]" aria-hidden />
           </button>
         </div>
         <div className="p-5 space-y-4 flex-1">

@@ -1584,33 +1584,19 @@ html.swal2-shown {
 }
 
 .referral-leads-quick-filters-scroll {
-  position: relative;
   min-width: 0;
   max-width: 100%;
-  overflow-x: auto;
-  overflow-y: visible;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-x: contain;
-  scroll-padding-inline: 0.25rem;
-  scrollbar-width: thin;
-
-  @media (max-width: 639px) {
-    margin-inline: -0.125rem;
-    padding-inline: 0.125rem;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-
-    &::-webkit-scrollbar {
-      display: none;
-      width: 0;
-      height: 0;
-    }
-  }
 }
 
 .referral-leads-list-cards {
   min-width: 0;
   max-width: 100%;
+}
+
+.referral-leads-desktop-table {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .external-jobs-page-root .box.custom-box {

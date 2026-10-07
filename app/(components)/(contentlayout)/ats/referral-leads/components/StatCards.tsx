@@ -40,30 +40,33 @@ export function StatCards({ stats, canSeeReferralLeaderboard, featureEnabled = f
       </div>
 
       {featureEnabled && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bodybg2 p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Unassigned</p>
-            <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{stats.unassignedCount ?? 0}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">No assigned sales agent</p>
-          </div>
-          <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bodybg2 p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Referred hires</p>
-            <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300 mt-1">
-              {stats.totalReferredHires ?? stats.hired}
-            </p>
-          </div>
-          <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bodybg2 p-4 shadow-sm sm:col-span-2 lg:col-span-1">
-            <p className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Top sales agent</p>
-            {stats.topSalesAgent ? (
-              <>
-                <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">{stats.topSalesAgent.count}</p>
-                <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 truncate" title={stats.topSalesAgent.name}>
-                  {stats.topSalesAgent.name}
-                </p>
-              </>
-            ) : (
-              <p className="text-2xl font-bold text-slate-400 dark:text-slate-500 mt-1">—</p>
-            )}
+        <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bodybg2 p-4 shadow-sm">
+          <p className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400 mb-3">Sales attribution</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Unassigned</p>
+              <p className="text-xl font-bold text-slate-900 dark:text-white mt-0.5">{stats.unassignedCount ?? 0}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">No assigned sales agent</p>
+            </div>
+            <div className="min-w-0 sm:border-x sm:border-slate-100 sm:px-4 dark:sm:border-white/5">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Referred hires</p>
+              <p className="text-xl font-bold text-emerald-700 dark:text-emerald-300 mt-0.5">
+                {stats.totalReferredHires ?? stats.hired}
+              </p>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Top sales agent</p>
+              {stats.topSalesAgent ? (
+                <>
+                  <p className="text-xl font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">{stats.topSalesAgent.count}</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-300 truncate" title={stats.topSalesAgent.name}>
+                    {stats.topSalesAgent.name}
+                  </p>
+                </>
+              ) : (
+                <p className="text-xl font-bold text-slate-400 dark:text-slate-500 mt-0.5">—</p>
+              )}
+            </div>
           </div>
         </div>
       )}

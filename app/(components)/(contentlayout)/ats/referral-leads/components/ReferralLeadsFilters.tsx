@@ -35,6 +35,7 @@ export function ReferralLeadsFilters({
   // Typing committed straight to the filter state, so every keystroke was a request.
   // Draft locally and commit on a 300ms pause (page.tsx sequences the responses).
   const [searchDraft, setSearchDraft] = useState(filters.search);
+  const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
   useEffect(() => {
     setSearchDraft(filters.search);
   }, [filters.search]);
@@ -64,145 +65,188 @@ export function ReferralLeadsFilters({
 
   const dateRangeError = getReferralLeadsDateRangeError(filters.customFrom, filters.customTo);
 
+  const hasMoreFiltersActive =
+    Boolean(filters.filterReferrer) || Boolean(filters.salesAgentUserId) || filters.unassigned;
+
+  const showOrgMoreFilters = canUseOrgReferralControls;
+
+  useEffect(() => {
+    if (hasMoreFiltersActive) setMoreFiltersOpen(true);
+  }, [hasMoreFiltersActive]);
+
   return (
     <div className="referral-leads-filters-card rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bodybg2 p-3 sm:p-4 mb-4 space-y-3 overflow-visible min-w-0">
       <div className="flex flex-wrap items-end gap-3 min-w-0">
-      <div className="flex-1 min-w-[200px]">
-        <label className="form-label text-xs" htmlFor="referral-leads-search">
-          Search
-        </label>
-        <input
-          id="referral-leads-search"
-          type="search"
-          className={`form-control form-control-sm w-full text-defaulttextcolor dark:text-white ${FILTER_BAR_PLACEHOLDER_CLASS}`}
-          placeholder="Name, email, job…"
-          value={searchDraft}
-          onChange={(e) => setSearchDraft(e.target.value)}
-        />
-      </div>
-      {canUseOrgReferralControls && (
-        <div>
-          <label className="form-label text-xs" htmlFor="referral-leads-referrer">
-            Referrer
+        <div className="flex-1 min-w-[200px]">
+          <label className="form-label text-xs" htmlFor="referral-leads-search">
+            Search
           </label>
-          <select
-            id="referral-leads-referrer"
-            className="form-select form-select-sm min-w-[160px]"
-            value={filters.filterReferrer}
-            onChange={(e) => setFilter("filterReferrer", e.target.value)}
-          >
-            <option value="">All referrers</option>
-            {distinctReferrers.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-      {featureEnabled && canUseOrgReferralControls && (
-        <div className="min-w-[180px]">
-          <label className="form-label text-xs">Assigned sales agent</label>
-          <SalesAgentFilterSelect
-            value={filters.salesAgentUserId}
-            unassigned={filters.unassigned}
-            onChange={({ salesAgentUserId, unassigned }) => {
-              setFilter("unassigned", unassigned);
-              setFilter("salesAgentUserId", salesAgentUserId);
-            }}
+          <input
+            id="referral-leads-search"
+            type="search"
+            className={`form-control form-control-sm w-full text-defaulttextcolor dark:text-white ${FILTER_BAR_PLACEHOLDER_CLASS}`}
+            placeholder="Name, email, job…"
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
           />
         </div>
-      )}
-      <div>
-        <label className="form-label text-xs" htmlFor="referral-leads-link-type">
-          Link type
-        </label>
-        <select
-          id="referral-leads-link-type"
-          className="form-select form-select-sm min-w-[140px]"
-          value={filters.filterType}
-          onChange={(e) => setFilter("filterType", e.target.value)}
-        >
-          <option value="">All types</option>
-          <option value="SHARE_CANDIDATE_ONBOARD">Onboard invite</option>
-          <option value="JOB_APPLY">Job link</option>
-        </select>
-      </div>
-      <div>
-        <label className="form-label text-xs" htmlFor="referral-leads-status">
-          Status
-        </label>
-        <select
-          id="referral-leads-status"
-          className="form-select form-select-sm min-w-[150px]"
-          value={filters.filterStatus}
-          onChange={(e) => setFilter("filterStatus", e.target.value)}
-        >
-          <option value="">All statuses</option>
-          {/* in_review is a legacy alias of interview (same label) — drop it so the dropdown has no duplicate. */}
-          {Object.entries(STATUS_META)
-            .filter(([k]) => k !== "in_review")
-            .map(([k, v]) => (
-              <option key={k} value={k}>
-                {v.label}
-              </option>
-            ))}
-        </select>
-      </div>
-      <div>
-        <label className="form-label text-xs" htmlFor="referral-leads-date-preset">
-          Date range
-        </label>
-        <select
-          id="referral-leads-date-preset"
-          className="form-select form-select-sm min-w-[140px]"
-          value={filters.datePreset}
-          onChange={(e) => {
-            setFilter("datePreset", e.target.value as DatePreset);
-            setFilter("customFrom", "");
-            setFilter("customTo", "");
-          }}
-        >
-          <option value="all">All time</option>
-          <option value="week">Last 7 days</option>
-          <option value="month">Last 30 days</option>
-          <option value="quarter">Last 90 days</option>
-        </select>
-      </div>
-      <YmdFilterDateInput
-        key={`custom-from-${filters.datePreset}-${filters.customFrom}`}
-        label="From"
-        value={filters.customFrom}
-        maxDate={filters.customTo || undefined}
-        rangeError={dateRangeError}
-        onCommit={(sanitized) => commitCustomDate("customFrom", sanitized)}
-      />
-      <YmdFilterDateInput
-        key={`custom-to-${filters.datePreset}-${filters.customTo}`}
-        label="To"
-        inputId={CUSTOM_TO_INPUT_ID}
-        value={filters.customTo}
-        minDate={filters.customFrom || undefined}
-        rangeError={dateRangeError}
-        onCommit={(sanitized) => commitCustomDate("customTo", sanitized)}
-      />
-      {hasActiveFilters && (
-        <div className="shrink-0">
-          <label className="form-label text-xs select-none pointer-events-none opacity-0" aria-hidden>
-            Reset
+        <div>
+          <label className="form-label text-xs" htmlFor="referral-leads-link-type">
+            Link type
           </label>
+          <select
+            id="referral-leads-link-type"
+            className="form-select form-select-sm min-w-[140px]"
+            value={filters.filterType}
+            onChange={(e) => setFilter("filterType", e.target.value)}
+          >
+            <option value="">All types</option>
+            <option value="SHARE_CANDIDATE_ONBOARD">Onboard invite</option>
+            <option value="JOB_APPLY">Job link</option>
+          </select>
+        </div>
+        <div>
+          <label className="form-label text-xs" htmlFor="referral-leads-status">
+            Status
+          </label>
+          <select
+            id="referral-leads-status"
+            className="form-select form-select-sm min-w-[150px]"
+            value={filters.filterStatus}
+            onChange={(e) => setFilter("filterStatus", e.target.value)}
+          >
+            <option value="">All statuses</option>
+            {Object.entries(STATUS_META)
+              .filter(([k]) => k !== "in_review")
+              .map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v.label}
+                </option>
+              ))}
+          </select>
+        </div>
+        {hasActiveFilters && (
+          <div className="shrink-0">
+            <label className="form-label text-xs select-none pointer-events-none opacity-0" aria-hidden>
+              Reset
+            </label>
+            <button
+              type="button"
+              className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-light border border-slate-200/80 dark:border-white/10 shadow-sm hover:border-slate-300 dark:hover:border-white/20 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0"
+              onClick={clearFilters}
+              aria-label="Clear all filters"
+              title="Clear all filters"
+            >
+              <i className="ri-filter-off-line text-[1.125rem] leading-none" aria-hidden />
+            </button>
+          </div>
+        )}
+      </div>
+
+      <fieldset
+        className="rounded-lg border border-slate-100 bg-slate-50/50 p-3 dark:border-white/5 dark:bg-white/[0.02] min-w-0"
+      >
+        <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Date range
+        </legend>
+        <div className="flex flex-wrap items-end gap-3 min-w-0 pt-1">
+          <div>
+            <label className="form-label text-xs" htmlFor="referral-leads-date-preset">
+              Preset
+            </label>
+            <select
+              id="referral-leads-date-preset"
+              className="form-select form-select-sm min-w-[140px]"
+              value={filters.datePreset}
+              onChange={(e) => {
+                setFilter("datePreset", e.target.value as DatePreset);
+                setFilter("customFrom", "");
+                setFilter("customTo", "");
+              }}
+            >
+              <option value="all">All time</option>
+              <option value="week">Last 7 days</option>
+              <option value="month">Last 30 days</option>
+              <option value="quarter">Last 90 days</option>
+            </select>
+          </div>
+          <YmdFilterDateInput
+            key={`custom-from-${filters.datePreset}-${filters.customFrom}`}
+            label="From"
+            value={filters.customFrom}
+            maxDate={filters.customTo || undefined}
+            rangeError={dateRangeError}
+            onCommit={(sanitized) => commitCustomDate("customFrom", sanitized)}
+          />
+          <YmdFilterDateInput
+            key={`custom-to-${filters.datePreset}-${filters.customTo}`}
+            label="To"
+            inputId={CUSTOM_TO_INPUT_ID}
+            value={filters.customTo}
+            minDate={filters.customFrom || undefined}
+            rangeError={dateRangeError}
+            onCommit={(sanitized) => commitCustomDate("customTo", sanitized)}
+          />
+        </div>
+      </fieldset>
+
+      {showOrgMoreFilters && (
+        <div className="min-w-0">
           <button
             type="button"
-            className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-light border border-slate-200/80 dark:border-white/10 shadow-sm hover:border-slate-300 dark:hover:border-white/20"
-            onClick={clearFilters}
-            aria-label="Clear all filters"
-            title="Clear all filters"
+            className="inline-flex min-h-[44px] items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-white sm:min-h-0"
+            aria-expanded={moreFiltersOpen}
+            aria-controls="referral-leads-more-filters"
+            onClick={() => setMoreFiltersOpen((o) => !o)}
           >
-            <i className="ri-filter-off-line text-[1.125rem] leading-none" aria-hidden />
+            <i className={`ri-arrow-${moreFiltersOpen ? "up" : "down"}-s-line text-base`} aria-hidden />
+            More filters
+            {hasMoreFiltersActive && !moreFiltersOpen && (
+              <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold normal-case text-primary">
+                Active
+              </span>
+            )}
           </button>
+          <div
+            id="referral-leads-more-filters"
+            className={`${moreFiltersOpen ? "mt-3 flex flex-wrap items-end gap-3" : "hidden"} min-w-0`}
+          >
+            {canUseOrgReferralControls && (
+              <div>
+                <label className="form-label text-xs" htmlFor="referral-leads-referrer">
+                  Referrer
+                </label>
+                <select
+                  id="referral-leads-referrer"
+                  className="form-select form-select-sm min-w-[160px]"
+                  value={filters.filterReferrer}
+                  onChange={(e) => setFilter("filterReferrer", e.target.value)}
+                >
+                  <option value="">All referrers</option>
+                  {distinctReferrers.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {featureEnabled && canUseOrgReferralControls && (
+              <div className="min-w-[180px]">
+                <label className="form-label text-xs">Assigned sales agent</label>
+                <SalesAgentFilterSelect
+                  value={filters.salesAgentUserId}
+                  unassigned={filters.unassigned}
+                  onChange={({ salesAgentUserId, unassigned }) => {
+                    setFilter("unassigned", unassigned);
+                    setFilter("salesAgentUserId", salesAgentUserId);
+                  }}
+                />
+              </div>
+            )}
+          </div>
         </div>
       )}
-      </div>
 
       {featureEnabled && (
         <div
@@ -229,7 +273,7 @@ export function ReferralLeadsFilters({
                   key={value}
                   type="button"
                   aria-pressed={active}
-                  className={`inline-flex min-h-[44px] shrink-0 items-center whitespace-nowrap rounded-full px-4 py-1.5 text-xs font-medium transition-colors sm:min-h-0 ${
+                  className={`inline-flex min-h-[44px] items-center whitespace-nowrap rounded-full px-4 py-1.5 text-xs font-medium transition-colors sm:min-h-0 ${
                     active
                       ? "bg-primary text-white shadow-sm"
                       : "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"

@@ -108,6 +108,7 @@ export default function ReferralLeadsPage() {
   const [revokeOpen, setRevokeOpen] = useState(false);
   const [backfillOpen, setBackfillOpen] = useState(false);
   const [actionLead, setActionLead] = useState<ReferralLeadRow | null>(null);
+  const [howItWorksOpen, setHowItWorksOpen] = useState(false);
 
   /** Monotonic id: only the newest in-flight list request may write state. */
   const listRequestRef = useRef(0);
@@ -234,13 +235,24 @@ export default function ReferralLeadsPage() {
             </p>
             <h1 className="text-2xl font-bold text-slate-800 dark:text-white mt-1">Referral leads</h1>
             <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">
-              Candidate profiles who arrived through a tracked referral link
-              {canUseOrgReferralControls ? " (organization view)" : " (your referrals)"}
+              Tracked referral candidates
+              {canUseOrgReferralControls ? " — organization view" : " — your referrals only"}
             </p>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-2xl">
-              Each row is an ATS candidate record (same as the Candidates list). It is not a Settings → Users org
-              account; the referrer appears in the Referred by column.
-            </p>
+            <button
+              type="button"
+              className="mt-2 inline-flex min-h-[44px] items-center gap-1 text-xs font-medium text-primary hover:underline sm:min-h-0"
+              aria-expanded={howItWorksOpen}
+              onClick={() => setHowItWorksOpen((o) => !o)}
+            >
+              <i className={`ri-arrow-${howItWorksOpen ? "up" : "down"}-s-line`} aria-hidden />
+              How this list works
+            </button>
+            {howItWorksOpen && (
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-2xl">
+                Each row is an ATS candidate (same as Candidates). It is not a Settings → Users org account; the
+                referrer is shown in Referred by.
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             {featureEnabled && canManageAttribution && (
