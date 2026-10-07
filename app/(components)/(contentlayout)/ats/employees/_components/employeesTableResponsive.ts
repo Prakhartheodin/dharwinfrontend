@@ -2,7 +2,7 @@
 export const EMPLOYEES_LIST_TABLE_MIN_WIDTH = 640
 
 /** Progressive column reveal (container inline-size, px). */
-export const EMPLOYEES_COL_JOINING_MIN = 880
+export const EMPLOYEES_COL_JOINING_MIN = 760
 
 export type EmployeesListLayout = 'cards' | 'table'
 
