@@ -52,8 +52,10 @@ export interface JobsTableProps {
 const thBase =
   'jobs-table-th px-3 py-2.5 text-left text-[0.6875rem] font-semibold uppercase tracking-[0.06em] text-gray-600 dark:text-gray-400'
 const tdBase = 'px-3 py-2.5 align-middle'
+const headerRowInnerClass =
+  'inline-flex min-h-9 items-center gap-1.5 min-w-0 max-w-full'
 const sortBtnClass =
-  'inline-flex min-h-9 items-center gap-1.5 min-w-0 max-w-full rounded-md px-1 -mx-1 text-left font-semibold uppercase tracking-[0.06em] text-inherit hover:bg-gray-100/80 dark:hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40'
+  `${headerRowInnerClass} rounded-md px-1 -mx-1 text-left font-semibold uppercase tracking-[0.06em] text-inherit hover:bg-gray-100/80 dark:hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40`
 
 export function JobsTable({
   getTableProps,
@@ -180,7 +182,7 @@ export function JobsTable({
                         aria-label="Select all on page"
                       />
                     ) : column.id === 'hireForecast' ? (
-                      column.render('Header')
+                      <div className={headerRowInnerClass}>{column.render('Header')}</div>
                     ) : clickableHeader ? (
                       <button
                         type="button"
@@ -198,7 +200,7 @@ export function JobsTable({
                         {sortIcon}
                       </button>
                     ) : (
-                      <div className="flex items-center gap-1.5 min-w-0">
+                      <div className={headerRowInnerClass}>
                         <span className="min-w-0 truncate">{column.render('Header')}</span>
                         {sortIcon}
                       </div>
