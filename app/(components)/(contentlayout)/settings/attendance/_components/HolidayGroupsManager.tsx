@@ -23,7 +23,7 @@ import {
 } from "@/shared/lib/attendance-assign-people-options";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
-import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-access";
+import { useAttendanceSettingsAccess } from "@/shared/hooks/use-attendance-admin-access";
 import { usePmReactSelectStyles } from "@/shared/hooks/usePmReactSelectStyles";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
@@ -43,7 +43,7 @@ const pageStyles = (
  *                 the Assign Holidays "Group Assignment" tab.
  */
 export default function HolidayGroupsManager({ embedded = false }: { embedded?: boolean }) {
-  const isAdmin = useAttendanceAdminAccess();
+  const isAdmin = useAttendanceSettingsAccess("admin");
   const { menuPortalTarget } = usePmReactSelectStyles(10160);
 
   // Theme-aware react-select styles: primary-tint chips + clear typeahead, both light/dark.

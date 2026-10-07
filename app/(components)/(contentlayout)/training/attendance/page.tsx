@@ -7,6 +7,7 @@ import * as attendanceApi from "@/shared/lib/api/attendance";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
 import { useAuth } from "@/shared/contexts/auth-context";
+import { hasStudentsManage } from "@/shared/lib/attendance-access";
 import { downloadCsv } from "@/shared/lib/csv-export";
 import AdminTrackView from "./_components/AdminTrackView";
 import AttendanceDashboard from "./_components/AttendanceDashboard";
@@ -134,13 +135,14 @@ function getLocalDateKey(isoDateStr: string): string {
 }
 
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAY_NAME_MAP = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 /** Calendar year dropdown range (inclusive) */
 const CALENDAR_YEAR_START = 2020;
 const CALENDAR_YEAR_END = 2150;
 
 export default function AttendanceTracking() {
-  const { user, isPlatformSuperUser } = useAuth();
+  const { user, isPlatformSuperUser, permissions, permissionsLoaded, isAdministrator } = useAuth();
   const [myStudentId, setMyStudentId] = useState<string | null>(null);
   const [isUserBased, setIsUserBased] = useState(false);
   const [myWeekOff, setMyWeekOff] = useState<string[]>([]);
@@ -324,7 +326,7 @@ export default function AttendanceTracking() {
     update();
     const id = setInterval(update, ELAPSED_UPDATE_MS);
     return () => clearInterval(id);
-  }, [status?.isPunchedIn, status?.record?.punchIn, autoWarningShown]);
+  }, [status, autoWarningShown]);
 
   useEffect(() => {
     if (status?.isPunchedIn === false && prevPunchedInRef.current === true) { setToastMessage("You have been punched out."); setAutoWarningShown(false); }
@@ -436,7 +438,11 @@ export default function AttendanceTracking() {
       return;
     }
     if (!user?.roleIds?.length) {
-      setCanTrackAll(false);
+      if (permissionsLoaded) {
+        setCanTrackAll(hasStudentsManage(permissions, isAdministrator));
+      } else {
+        setCanTrackAll(false);
+      }
       return;
     }
     let cancelled = false;
@@ -451,15 +457,27 @@ export default function AttendanceTracking() {
         role.permissions?.forEach((p) => perms.add(p));
         if (role.name === "Administrator") admin = true;
       });
-      const hasStudentsManage = Array.from(perms).some((p) => p === "students.manage" || p.startsWith("students.manage"));
-      const canSeeAdminTrack = admin || hasStudentsManage;
+      const roleStudentsManage = Array.from(perms).some((p) => p === "students.manage" || p.startsWith("students.manage"));
+      const authStudentsManage =
+        permissionsLoaded && hasStudentsManage(permissions, isAdministrator);
+      const canSeeAdminTrack = admin || roleStudentsManage || authStudentsManage;
       if (!cancelled) {
         setCanTrackAll(canSeeAdminTrack);
-        setCanPunchOutOthers(admin || hasStudentsManage || Array.from(perms).some((p) => p === "attendance.manage" || p === "training.attendance:view,create,edit" || (p.includes("training.attendance") && (p.includes("create") || p.includes("edit")))));
+        setCanPunchOutOthers(
+          admin ||
+            roleStudentsManage ||
+            authStudentsManage ||
+            Array.from(perms).some(
+              (p) =>
+                p === "attendance.manage" ||
+                p === "training.attendance:view,create,edit" ||
+                (p.includes("training.attendance") && (p.includes("create") || p.includes("edit")))
+            )
+        );
       }
     }).catch(() => { if (!cancelled) { setCanTrackAll(false); setCanPunchOutOthers(false); } });
     return () => { cancelled = true; };
-  }, [user?.roleIds, myStudentId, isPlatformSuperUser]);
+  }, [user, myStudentId, isPlatformSuperUser, permissions, permissionsLoaded, isAdministrator]);
 
   useEffect(() => {
     if (myStudentId !== null || !canTrackAll) return;
@@ -627,8 +645,6 @@ export default function AttendanceTracking() {
   const isCandidateOnly = canPunch && !canTrackAll;
 
   /* Calendar */
-  const DAY_NAME_MAP = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
   const getMyAttendanceCalendarData = useCallback((): Array<{ day: number; date: Date; present: boolean; incomplete: boolean; holiday: boolean; leave: boolean; leaveType: string; absent: boolean; weekOff: boolean; durationLabel: string; holidayName: string }> => {
     const year = myCalendarYear; const month = myCalendarMonth;
     const firstDay = new Date(year, month, 1); const startDayOfWeek = firstDay.getDay();

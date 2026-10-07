@@ -760,7 +760,15 @@ export default function InterviewsClient() {
       .then((m) => {
         if (!cancelled) {
           setEditMeeting(m)
-          setEditEmailInvites(Array.isArray(m?.emailInvites) ? m.emailInvites : [])
+          const hostEmails = new Set(
+            (m?.hosts ?? [])
+              .map((h) => h.email?.trim().toLowerCase())
+              .filter(Boolean)
+          )
+          const invites = Array.isArray(m?.emailInvites) ? m.emailInvites : []
+          setEditEmailInvites(
+            invites.filter((em) => !hostEmails.has(String(em).trim().toLowerCase()))
+          )
           // Load candidate-specific jobs when the meeting is fetched
           const candId = m?.candidate?.id
           if (candId) {
@@ -3196,7 +3204,21 @@ export default function InterviewsClient() {
                       { label: 'Interview type', value: editMeeting.interviewType },
                       { label: 'Job / Position', value: editMeeting.jobPosition },
                       { label: 'Candidate', value: editMeeting.candidate?.name || editMeeting.candidate?.email },
-                      { label: 'Agent', value: editMeeting.recruiter?.name || editMeeting.recruiter?.email },
+                      {
+                        label: (editMeeting.hosts?.length ?? 0) > 1 ? 'Hosts' : 'Host',
+                        value: editMeeting.hosts?.length
+                          ? editMeeting.hosts
+                              .map((h) => {
+                                const name = (h.nameOrRole || '').trim()
+                                const email = (h.email || '').trim()
+                                if (name && email) return `${name} (${email})`
+                                return name || email
+                              })
+                              .filter(Boolean)
+                              .join(', ')
+                          : undefined,
+                      },
+                      { label: 'Recruiter', value: editMeeting.recruiter?.name || editMeeting.recruiter?.email },
                       { label: 'Description', value: editMeeting.description },
                     ]}
                     invites={editEmailInvites}
@@ -3328,12 +3350,32 @@ export default function InterviewsClient() {
                     </select>
                   </div>
                   <div>
-                    <span className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Agent</span>
+                    <span className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                      {(editMeeting.hosts?.length ?? 0) > 1 ? 'Host(s)' : 'Host'}
+                    </span>
+                    <p className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg bg-gray-50 text-textmuted dark:bg-black/20 dark:text-white/70 whitespace-pre-wrap">
+                      {editMeeting.hosts?.length
+                        ? editMeeting.hosts
+                            .map((h) => {
+                              const name = (h.nameOrRole || '').trim()
+                              const email = (h.email || '').trim()
+                              if (name && email) return `${name} (${email})`
+                              return name || email || '—'
+                            })
+                            .join('\n')
+                        : '—'}
+                    </p>
+                    <p className="mt-1 text-xs text-textmuted dark:text-white/50">
+                      Interview host on the meeting record. Invitations are sent to hosts automatically.
+                    </p>
+                  </div>
+                  <div>
+                    <span className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Recruiter</span>
                     <p className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg bg-gray-50 text-textmuted dark:bg-black/20 dark:text-white/70">
                       {editMeeting.recruiter?.name || editMeeting.recruiter?.email || '—'}
                     </p>
                     <p className="mt-1 text-xs text-textmuted dark:text-white/50">
-                      Derived from the candidate when the interview was created.
+                      Owning recruiter on the meeting record. For interviews approved from a candidate slot, this is who approved; the interviewer is listed under Host.
                     </p>
                   </div>
                   <div>

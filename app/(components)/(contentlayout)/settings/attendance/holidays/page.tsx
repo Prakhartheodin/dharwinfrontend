@@ -11,7 +11,7 @@ import {
 import { getAllHolidayGroups } from "@/shared/lib/api/holiday-groups";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
-import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-access";
+import { useAttendanceSettingsAccess } from "@/shared/hooks/use-attendance-admin-access";
 import { useDebouncedValue } from "@/app/(components)/(contentlayout)/communication/dialer/_lib/contactSearch";
 import { YmdFilterDateInput } from "@/shared/components/filters/YmdFilterDateInput";
 import { getReferralLeadsDateRangeError, getYmdDateRangeIncompleteError } from "@/shared/lib/ymd-filter-date-input.util";
@@ -39,7 +39,7 @@ const pageStyles = (
 );
 
 export default function SettingsAttendanceHolidaysPage() {
-  const isAdmin = useAttendanceAdminAccess();
+  const isAdmin = useAttendanceSettingsAccess("admin");
   const [allHolidays, setAllHolidays] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

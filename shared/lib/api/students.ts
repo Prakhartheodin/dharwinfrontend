@@ -393,7 +393,7 @@ export interface WeekOffUpdateResponse {
 }
 
 /**
- * Update week-off calendar for multiple students (requires students.manage).
+ * Update week-off calendar for multiple students (requires attendance.assign).
  */
 export async function updateWeekOffCalendar(
   studentIds: string[],

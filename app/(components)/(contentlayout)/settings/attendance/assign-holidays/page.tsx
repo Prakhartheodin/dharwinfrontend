@@ -23,10 +23,23 @@ import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-ac
 import { SopAssignChecklistNotice, useSopPreselectStudents } from "@/shared/hooks/use-sop-assign-deeplink";
 import { dispatchSopStripRefresh } from "@/shared/lib/sop-strip-preferences";
 import { usePmReactSelectStyles } from "@/shared/hooks/usePmReactSelectStyles";
+import { bulkOutcomeIcon, holidaySkippedSummaryHtml } from "@/shared/lib/attendance-bulk-feedback";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
 const SELECT_ALL_STUDENTS_VALUE = "__all_students__";
+
+function formatAssignHolidayDate(dateString: string) {
+  try {
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  } catch {
+    return dateString;
+  }
+}
 
 type AssignmentMode = "individual" | "group";
 
@@ -134,16 +147,14 @@ export default function SettingsAttendanceAssignHolidaysPage() {
       })
       .map((h) => ({
         value: String(h._id ?? h.id ?? ""),
-        label: `${h.title} (${formatDate(h.date)})`,
+        label: `${h.title} (${formatAssignHolidayDate(h.date)})`,
         holiday: h,
       }))
       .filter((o) => o.value);
-    const existingIds = new Set(selectedHolidays.map((x) => x.value));
-    const merged = [
-      ...selectedHolidays,
-      ...autoSelected.filter((o) => !existingIds.has(o.value)),
-    ];
-    setSelectedHolidays(merged);
+    setSelectedHolidays((prev) => {
+      const existingIds = new Set(prev.map((x) => x.value));
+      return [...prev, ...autoSelected.filter((o) => !existingIds.has(o.value))];
+    });
   }, [selectedPeople, holidays]);
 
   const handleAssign = async () => {
@@ -186,17 +197,21 @@ export default function SettingsAttendanceAssignHolidaysPage() {
       }
       const holidayIds = selectedHolidays.map((h) => h.value);
       const response = await assignHolidaysToStudents(studentIds, holidayIds);
-      setAssignmentResult(response.data ?? null);
+      const data = response.data ?? null;
+      setAssignmentResult(data);
+      const skipped = data?.skipped ?? [];
+      const updated = data?.candidatesUpdated ?? 0;
       await Swal.fire({
-        icon: "success",
-        title: "Success",
+        icon: bulkOutcomeIcon(updated, skipped.length),
+        title: skipped.length ? "Completed with skips" : "Success",
         html: `
           <p class="mb-3">${response?.message ?? "Holidays assigned successfully"}</p>
           <div class="text-left text-sm space-y-1">
-            <p><strong>Students Updated:</strong> ${response?.data?.candidatesUpdated ?? 0}</p>
-            <p><strong>Holidays Added:</strong> ${response?.data?.holidaysAdded ?? 0}</p>
-            <p><strong>Attendance Records Created:</strong> ${response?.data?.attendanceRecordsCreated ?? 0}</p>
+            <p><strong>Students Updated:</strong> ${updated}</p>
+            <p><strong>Holidays Added:</strong> ${data?.holidaysAdded ?? 0}</p>
+            <p><strong>Attendance Records Created:</strong> ${data?.attendanceRecordsCreated ?? 0}</p>
           </div>
+          ${holidaySkippedSummaryHtml(skipped)}
         `,
         confirmButtonText: "OK",
       });
@@ -266,17 +281,21 @@ export default function SettingsAttendanceAssignHolidaysPage() {
       }
       const holidayIds = selectedHolidays.map((h) => h.value);
       const response = await removeHolidaysFromStudents(studentIds, holidayIds);
-      setRemovalResult(response.data ?? null);
+      const data = response.data ?? null;
+      setRemovalResult(data);
+      const skipped = data?.skipped ?? [];
+      const updated = data?.candidatesUpdated ?? 0;
       await Swal.fire({
-        icon: "success",
-        title: "Success",
+        icon: bulkOutcomeIcon(updated, skipped.length),
+        title: skipped.length ? "Completed with skips" : "Success",
         html: `
           <p class="mb-3">${response?.message ?? "Holidays removed successfully"}</p>
           <div class="text-left text-sm space-y-1">
-            <p><strong>Students Updated:</strong> ${response?.data?.candidatesUpdated ?? 0}</p>
-            <p><strong>Holidays Removed:</strong> ${response?.data?.holidaysRemoved ?? 0}</p>
-            <p><strong>Attendance Records Deleted:</strong> ${response?.data?.attendanceRecordsDeleted ?? 0}</p>
+            <p><strong>Students Updated:</strong> ${updated}</p>
+            <p><strong>Holidays Removed:</strong> ${data?.holidaysRemoved ?? 0}</p>
+            <p><strong>Attendance Records Deleted:</strong> ${data?.attendanceRecordsDeleted ?? 0}</p>
           </div>
+          ${holidaySkippedSummaryHtml(skipped)}
         `,
         confirmButtonText: "OK",
       });
@@ -300,18 +319,6 @@ export default function SettingsAttendanceAssignHolidaysPage() {
     setRemovalResult(null);
     setError(null);
   };
-
-  function formatDate(dateString: string) {
-    try {
-      return new Date(dateString).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-    } catch {
-      return dateString;
-    }
-  }
 
   const personOptionsWithSelectAll =
     people.length > 0
@@ -481,7 +488,7 @@ export default function SettingsAttendanceAssignHolidaysPage() {
                             setSelectedHolidays(
                               holidays.map((h) => ({
                                 value: String(h._id ?? h.id ?? ""),
-                                label: `${h.title} (${formatDate(h.date)})`,
+                                label: `${h.title} (${formatAssignHolidayDate(h.date)})`,
                                 holiday: h,
                               }))
                             );
@@ -522,8 +529,8 @@ export default function SettingsAttendanceAssignHolidaysPage() {
                               onChange={(e) => {
                                 if (e.target.checked) {
                                   const dateLabel = holiday.endDate
-                                    ? `${formatDate(holiday.date)} – ${formatDate(holiday.endDate)}`
-                                    : formatDate(holiday.date);
+                                    ? `${formatAssignHolidayDate(holiday.date)} – ${formatAssignHolidayDate(holiday.endDate)}`
+                                    : formatAssignHolidayDate(holiday.date);
                                   setSelectedHolidays((prev) => [
                                     ...prev,
                                     { value: hid, label: `${holiday.title} (${dateLabel})`, holiday },
@@ -544,8 +551,8 @@ export default function SettingsAttendanceAssignHolidaysPage() {
                               ) : null}
                               <div className="text-sm text-defaulttextcolor/70">
                                 {holiday.endDate
-                                  ? `${formatDate(holiday.date)} – ${formatDate(holiday.endDate)}`
-                                  : formatDate(holiday.date)}
+                                  ? `${formatAssignHolidayDate(holiday.date)} – ${formatAssignHolidayDate(holiday.endDate)}`
+                                  : formatAssignHolidayDate(holiday.date)}
                               </div>
                             </div>
                             {isSelected && (
@@ -608,6 +615,11 @@ export default function SettingsAttendanceAssignHolidaysPage() {
                     <p><strong>Students Updated:</strong> {assignmentResult.candidatesUpdated}</p>
                     <p><strong>Holidays Added:</strong> {assignmentResult.holidaysAdded ?? 0}</p>
                     <p><strong>Attendance Records Created:</strong> {assignmentResult.attendanceRecordsCreated ?? 0}</p>
+                    {(assignmentResult.skipped?.length ?? 0) > 0 && (
+                      <p className="text-warning">
+                        <strong>Skipped:</strong> {assignmentResult.skipped!.length} item(s) — see dialog for details.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -622,6 +634,11 @@ export default function SettingsAttendanceAssignHolidaysPage() {
                     <p><strong>Students Updated:</strong> {removalResult.candidatesUpdated}</p>
                     <p><strong>Holidays Removed:</strong> {removalResult.holidaysRemoved ?? 0}</p>
                     <p><strong>Attendance Records Deleted:</strong> {removalResult.attendanceRecordsDeleted ?? 0}</p>
+                    {(removalResult.skipped?.length ?? 0) > 0 && (
+                      <p className="text-warning">
+                        <strong>Skipped:</strong> {removalResult.skipped!.length} item(s) — see dialog for details.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
