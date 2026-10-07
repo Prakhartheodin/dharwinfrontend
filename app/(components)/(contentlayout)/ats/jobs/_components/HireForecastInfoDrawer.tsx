@@ -52,14 +52,14 @@ export function openHireForecastInfo(): void {
  */
 export function HireForecastColumnHeader() {
   return (
-    <div className="flex items-center gap-1.5 min-w-0">
-      <span className="tabletitle">Time to hire</span>
-      <span className="inline-flex items-center rounded border border-primary/30 bg-primary/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-primary">
+    <div className="inline-flex min-w-0 items-center gap-1.5">
+      <span className="min-w-0 truncate">Time to hire</span>
+      <span className="inline-flex shrink-0 items-center rounded border border-primary/30 bg-primary/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-primary">
         AI
       </span>
       <button
         type="button"
-        className="inline-flex h-8 w-8 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
         aria-label="How Time to hire is calculated with AI"
         title="How AI calculates Time to hire"
         onClick={(event) => {
