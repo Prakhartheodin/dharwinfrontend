@@ -7,6 +7,7 @@ import type { ReferralLeadRow } from "@/shared/lib/api/referralLeads";
 import { getSalesAgentHistory } from "../api/salesAgentAttribution";
 import { useSalesAgentAttribution } from "../hooks/useSalesAgentAttribution";
 import { SalesAgentBadge } from "../components/SalesAgentBadge";
+import { useModalBehavior } from "@/shared/hooks/useModalBehavior";
 
 interface ChangeSalesAgentModalProps {
   lead: ReferralLeadRow;
@@ -28,6 +29,7 @@ export function ChangeSalesAgentModal({ lead, isOpen, canUnassign = false, onClo
   const [notes, setNotes] = useState("");
   const [revokeMode, setRevokeMode] = useState(false);
   const [revokeReason, setRevokeReason] = useState("");
+  const { containerRef, backdropProps, requestClose } = useModalBehavior({ isOpen, onClose });
   const [attributionId, setAttributionId] = useState(lead.salesAgentCurrentAttributionId || "");
 
   const fetchAgents = useCallback(async (search: string) => {
@@ -118,10 +120,20 @@ export function ChangeSalesAgentModal({ lead, isOpen, canUnassign = false, onClo
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white dark:bg-bodybg2 rounded-xl border border-slate-200 dark:border-white/10 p-6 max-w-md w-full shadow-xl max-h-[90vh] overflow-y-auto">
-        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Change sales agent</h3>
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="change-sales-agent-title"
+      {...backdropProps}
+    >
+      <div
+        ref={containerRef}
+        className="relative bg-white dark:bg-bodybg2 rounded-xl border border-slate-200 dark:border-white/10 p-6 max-w-md w-full shadow-xl max-h-[90vh] overflow-y-auto"
+      >
+        <h3 id="change-sales-agent-title" className="text-lg font-semibold text-slate-900 dark:text-white">
+          Change sales agent
+        </h3>
         <div className="mt-3 rounded-lg border border-slate-200 dark:border-white/10 p-3">
           <div className="mb-1 flex items-start justify-between gap-2">
             <p className="text-xs text-slate-500 dark:text-slate-400 m-0">Current assigned sales agent</p>
@@ -232,7 +244,7 @@ export function ChangeSalesAgentModal({ lead, isOpen, canUnassign = false, onClo
             </>
           ) : (
             <>
-              <button type="button" className="ti-btn ti-btn-light" onClick={onClose}>Cancel</button>
+              <button type="button" className="ti-btn ti-btn-light" onClick={requestClose}>Cancel</button>
               <button
                 type="button"
                 className="ti-btn ti-btn-primary disabled:opacity-60"

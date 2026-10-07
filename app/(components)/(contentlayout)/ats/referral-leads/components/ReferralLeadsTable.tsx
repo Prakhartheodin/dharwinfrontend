@@ -16,13 +16,14 @@ function StatusPill({ lead }: { lead: ReferralLeadRow }) {
   const m = getStatusMeta(lead.referralPipelineStatus);
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium"
-      style={{ background: m.bg, color: m.color }}
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${m.badgeClass}`}
     >
       {m.label}
     </span>
   );
 }
+
+const rowCellProps = "cursor-pointer align-top";
 
 function cellTitle(...parts: (string | null | undefined)[]) {
   return parts.filter(Boolean).join(" · ") || undefined;
@@ -129,7 +130,7 @@ export function ReferralLeadsTable({
 }: ReferralLeadsTableProps) {
   return (
     <>
-      <div className="referral-leads-desktop-table hidden lg:block rounded-xl border border-slate-200 dark:border-white/10 min-w-0">
+      <div className="referral-leads-desktop-table hidden xl:block rounded-xl border border-slate-200 dark:border-white/10 min-w-0">
         <table className="w-full table-fixed text-sm">
           <thead>
             <tr className="bg-slate-50 dark:bg-white/5 border-b border-slate-200 dark:border-white/10 text-left text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">
@@ -147,19 +148,12 @@ export function ReferralLeadsTable({
             {list.map((lead) => (
               <tr
                 key={lead.id}
-                tabIndex={0}
-                role="button"
-                aria-label={`Open details for ${lead.fullName || lead.email || "referral lead"}`}
-                className="border-b border-slate-100 dark:border-white/5 hover:bg-slate-50/80 dark:hover:bg-white/5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset"
-                onKeyDown={(e) => {
-                  if (e.key !== "Enter" && e.key !== " ") return;
-                  if (e.target !== e.currentTarget) return;
-                  e.preventDefault();
-                  onSelect(lead);
-                }}
-                onClick={() => onSelect(lead)}
+                className="border-b border-slate-100 dark:border-white/5 hover:bg-slate-50/80 dark:hover:bg-white/5"
               >
-                <td className="px-4 py-3 min-w-0 align-top">
+                <td
+                  className={`px-4 py-3 min-w-0 ${rowCellProps}`}
+                  onClick={() => onSelect(lead)}
+                >
                   <div
                     className="font-medium text-slate-800 dark:text-white truncate"
                     title={cellTitle(lead.fullName, lead.email)}
@@ -177,7 +171,10 @@ export function ReferralLeadsTable({
                     </div>
                   )}
                 </td>
-                <td className="px-4 py-3 min-w-0 align-top text-slate-700 dark:text-slate-200">
+                <td
+                  className={`px-4 py-3 min-w-0 text-slate-700 dark:text-slate-200 ${rowCellProps}`}
+                  onClick={() => onSelect(lead)}
+                >
                   {lead.referralAttributionAnonymised ? (
                     <span className="text-slate-400 dark:text-slate-500">Anonymised</span>
                   ) : (
@@ -196,7 +193,10 @@ export function ReferralLeadsTable({
                     </>
                   )}
                 </td>
-                <td className="hidden xl:table-cell px-4 py-3 align-top">
+                <td
+                  className={`hidden xl:table-cell px-4 py-3 ${rowCellProps}`}
+                  onClick={() => onSelect(lead)}
+                >
                   {lead.referralContext ? (
                     <span className="inline-flex max-w-full items-center gap-1 truncate rounded-md px-2 py-0.5 text-xs font-medium bg-indigo-50 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-200">
                       {LINK_TYPE[lead.referralContext] || lead.referralContext}
@@ -205,7 +205,10 @@ export function ReferralLeadsTable({
                     "—"
                   )}
                 </td>
-                <td className="px-4 py-3 min-w-0 align-top text-slate-600 dark:text-slate-300">
+                <td
+                  className={`px-4 py-3 min-w-0 text-slate-600 dark:text-slate-300 ${rowCellProps}`}
+                  onClick={() => onSelect(lead)}
+                >
                   {lead.job?.title ? (
                     <span className="block truncate xl:whitespace-normal xl:overflow-visible xl:break-words" title={lead.job.title}>
                       {lead.job.title}
@@ -214,15 +217,21 @@ export function ReferralLeadsTable({
                     "—"
                   )}
                 </td>
-                <td className="px-4 py-3">
+                <td className={`px-4 py-3 ${rowCellProps}`} onClick={() => onSelect(lead)}>
                   <StatusPill lead={lead} />
                 </td>
                 {featureEnabled && (
-                  <td className="px-4 py-3 min-w-0 align-top">
+                  <td
+                    className={`px-4 py-3 min-w-0 ${rowCellProps}`}
+                    onClick={() => onSelect(lead)}
+                  >
                     <SalesAgentBadge agent={lead.salesAgent} />
                   </td>
                 )}
-                <td className="hidden xl:table-cell px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap align-top">
+                <td
+                  className={`hidden xl:table-cell px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap ${rowCellProps}`}
+                  onClick={() => onSelect(lead)}
+                >
                   <div>{fmtDate(lead.referredAt || lead.createdAt)}</div>
                   <div className="text-xs text-slate-400 dark:text-slate-500">
                     {fmtTime(lead.referredAt || lead.createdAt)}
@@ -237,7 +246,7 @@ export function ReferralLeadsTable({
         </table>
       </div>
 
-      <div className="referral-leads-list-cards lg:hidden flex flex-col gap-3 min-w-0">
+      <div className="referral-leads-list-cards xl:hidden flex flex-col gap-3 min-w-0">
         {list.map((lead) => (
           <LeadCard
             key={lead.id}

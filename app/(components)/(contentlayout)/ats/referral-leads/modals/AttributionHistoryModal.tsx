@@ -9,6 +9,7 @@ import {
 import { getApiErrorMessage } from "@/shared/lib/api/client";
 import { getSalesAgentHistory, type AttributionRow } from "../api/salesAgentAttribution";
 import { fmtDate, fmtTime, userDisplay } from "../utils/format.util";
+import { useModalBehavior } from "@/shared/hooks/useModalBehavior";
 
 type HistoryTab = "referrer" | "salesAgent";
 
@@ -47,6 +48,7 @@ export function AttributionHistoryModal({
   const [salesLoaded, setSalesLoaded] = useState(false);
   const [salesCursor, setSalesCursor] = useState<string | null>(null);
   const [salesHasMore, setSalesHasMore] = useState(false);
+  const { containerRef, backdropProps, requestClose } = useModalBehavior({ isOpen, onClose });
 
   const loadReferrerHistory = useCallback(async () => {
     setReferrerLoading(true);
@@ -110,12 +112,16 @@ export function AttributionHistoryModal({
     : [{ id: "referrer", label: "Referrer overrides" }];
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} role="presentation" />
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="attribution-history-title"
+      {...backdropProps}
+    >
       <div
+        ref={containerRef}
         className="relative flex max-h-[min(90vh,640px)] w-full max-w-2xl flex-col rounded-xl border border-slate-200 bg-white shadow-xl dark:border-white/10 dark:bg-bodybg2"
-        role="dialog"
-        aria-labelledby="attribution-history-title"
       >
         <div className="shrink-0 border-b border-slate-200 p-4 dark:border-white/10">
           <div className="flex items-start justify-between gap-3">
@@ -128,7 +134,7 @@ export function AttributionHistoryModal({
                 {lead.email ? ` · ${lead.email}` : ""}
               </p>
             </div>
-            <button type="button" className="ti-btn ti-btn-light ti-btn-sm shrink-0" onClick={onClose}>
+            <button type="button" className="ti-btn ti-btn-light ti-btn-sm shrink-0" onClick={requestClose}>
               Close
             </button>
           </div>

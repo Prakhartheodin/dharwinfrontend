@@ -213,12 +213,14 @@ export default function BrowseJobDetailsPage() {
     return (
       <>
         <Seo title="Job Details" />
-        <div className="min-h-screen bg-[#f4f2ee] dark:bg-[#0f0e0d] -mx-6">
+        <div className="min-w-0 overflow-x-clip">
+          <div className="min-h-screen bg-[#f4f2ee] dark:bg-[#0f0e0d] -mx-6">
           <div className="flex w-full flex-col items-center justify-center px-4 py-24 gap-4">
             <div className="h-10 w-10 rounded-full border-2 border-teal-600/25 border-t-teal-600 dark:border-teal-400/20 dark:border-t-teal-400 animate-spin" />
             <span className="font-Montserrat text-sm font-medium text-stone-500 dark:text-stone-400">
               Loading role details…
             </span>
+          </div>
           </div>
         </div>
       </>
@@ -229,7 +231,8 @@ export default function BrowseJobDetailsPage() {
     return (
       <>
         <Seo title="Job Not Found" />
-        <div className="min-h-screen bg-[#f4f2ee] dark:bg-[#0f0e0d] -mx-6">
+        <div className="min-w-0 overflow-x-clip">
+          <div className="min-h-screen bg-[#f4f2ee] dark:bg-[#0f0e0d] -mx-6">
           <div className="w-full px-4 py-12 sm:py-16 lg:mx-auto lg:max-w-[560px]">
             <div className="rounded-3xl border border-stone-200/90 bg-white/90 px-8 py-14 text-center shadow-sm dark:border-white/10 dark:bg-bodybg/80">
               <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-stone-100 dark:bg-white/10">
@@ -249,6 +252,7 @@ export default function BrowseJobDetailsPage() {
                 Browse open roles
               </Link>
             </div>
+          </div>
           </div>
         </div>
       </>
@@ -346,7 +350,8 @@ export default function BrowseJobDetailsPage() {
   return (
     <Fragment>
       <Seo title={job.title} />
-      <div className="min-h-screen bg-[#f4f2ee] dark:bg-[#0f0e0d] -mx-6">
+      <div className="min-w-0 overflow-x-clip">
+        <div className="min-h-screen bg-[#f4f2ee] dark:bg-[#0f0e0d] -mx-6">
         <div
           className="pointer-events-none fixed inset-0 opacity-[0.35] dark:opacity-[0.12]"
           style={{
@@ -431,7 +436,7 @@ export default function BrowseJobDetailsPage() {
                       {job.status}
                     </span>
                   </div>
-                  <h1 className="font-Montserrat text-3xl font-bold leading-tight tracking-tight text-stone-900 dark:text-white sm:text-4xl sm:leading-[1.15]">
+                  <h1 className="font-Montserrat text-3xl font-bold leading-tight tracking-tight text-stone-900 dark:text-white break-words sm:text-4xl sm:leading-[1.15]">
                     {job.title}
                   </h1>
                   <p className="mt-3 text-lg text-stone-600 dark:text-stone-400">{job.organisation?.name}</p>
@@ -439,8 +444,8 @@ export default function BrowseJobDetailsPage() {
                   <dl className="mt-6 grid gap-3 sm:grid-cols-2">
                     <div className="flex items-start gap-2 rounded-xl bg-stone-50/90 px-3 py-2.5 dark:bg-white/[0.04]">
                       <dt className="sr-only">Location</dt>
-                      <dd className="flex items-center gap-2 text-sm font-medium text-stone-800 dark:text-stone-200">
-                        <i className="ri-map-pin-2-fill text-teal-600 dark:text-teal-400" aria-hidden />
+                      <dd className="flex min-w-0 items-center gap-2 break-words text-sm font-medium text-stone-800 dark:text-stone-200">
+                        <i className="ri-map-pin-2-fill shrink-0 text-teal-600 dark:text-teal-400" aria-hidden />
                         {job.location}
                       </dd>
                     </div>
@@ -597,6 +602,7 @@ export default function BrowseJobDetailsPage() {
           </>
         ) : null}
         {confirmDialog}
+        </div>
       </div>
     </Fragment>
   );

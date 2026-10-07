@@ -5,6 +5,7 @@ import { listUsers } from "@/shared/lib/api/users";
 import type { User } from "@/shared/lib/types";
 import type { ReferralLeadRow } from "@/shared/lib/api/referralLeads";
 import { useSalesAgentAttribution } from "../hooks/useSalesAgentAttribution";
+import { useModalBehavior } from "@/shared/hooks/useModalBehavior";
 
 interface AssignSalesAgentModalProps {
   lead: ReferralLeadRow;
@@ -26,6 +27,7 @@ export function AssignSalesAgentModal({ lead, isOpen, onClose, onSaved }: Assign
   const [assignedDate, setAssignedDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   const candidateLevelFrozen = Boolean(lead.salesAgentJobScope === "job" && lead.salesAgent);
+  const { containerRef, backdropProps, requestClose } = useModalBehavior({ isOpen, onClose });
 
   const fetchAgents = useCallback(async (search: string) => {
     setAgentLoading(true);
@@ -94,10 +96,20 @@ export function AssignSalesAgentModal({ lead, isOpen, onClose, onSaved }: Assign
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white dark:bg-bodybg2 rounded-xl border border-slate-200 dark:border-white/10 p-6 max-w-md w-full shadow-xl max-h-[90vh] overflow-y-auto">
-        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Assign sales agent</h3>
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="assign-sales-agent-title"
+      {...backdropProps}
+    >
+      <div
+        ref={containerRef}
+        className="relative bg-white dark:bg-bodybg2 rounded-xl border border-slate-200 dark:border-white/10 p-6 max-w-md w-full shadow-xl max-h-[90vh] overflow-y-auto"
+      >
+        <h3 id="assign-sales-agent-title" className="text-lg font-semibold text-slate-900 dark:text-white">
+          Assign sales agent
+        </h3>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
           Assign an assigned sales agent to {lead.fullName}. The assigning user is you; the target is the sales agent
           selected below.
@@ -188,7 +200,7 @@ export function AssignSalesAgentModal({ lead, isOpen, onClose, onSaved }: Assign
           {error && <p className="text-sm text-danger m-0">{error}</p>}
         </div>
         <div className="mt-6 flex justify-end gap-2">
-          <button type="button" className="ti-btn ti-btn-light" onClick={onClose}>Cancel</button>
+          <button type="button" className="ti-btn ti-btn-light" onClick={requestClose}>Cancel</button>
           <button type="button" className="ti-btn ti-btn-primary disabled:opacity-60" disabled={isMutating || !agentUserId} onClick={() => void onSubmit()}>
             {isMutating ? "Saving…" : "Save assignment"}
           </button>

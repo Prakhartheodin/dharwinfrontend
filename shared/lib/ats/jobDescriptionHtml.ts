@@ -475,7 +475,8 @@ export const JOB_DESCRIPTION_PROSE_CLASS =
 
 /** Candidate browse job detail: editorial reading column (serif body, distinct section hierarchy). */
 export const BROWSE_JOB_DETAIL_PROSE_CLASS =
-  "job-description-content prose prose-lg dark:prose-invert max-w-none w-full " +
+  "job-description-content prose prose-lg dark:prose-invert max-w-none w-full min-w-0 break-words " +
+  "[&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_img]:max-w-full [&_img]:h-auto [&_pre]:max-w-full [&_pre]:overflow-x-auto " +
   "font-serif text-stone-700 dark:text-stone-300 " +
   "prose-headings:font-Montserrat prose-headings:font-semibold prose-headings:tracking-tight prose-headings:text-stone-900 dark:prose-headings:text-stone-100 " +
   "prose-h2:text-xl prose-h2:mt-10 prose-h2:mb-4 prose-h2:pb-2 prose-h2:border-b prose-h2:border-stone-200/90 dark:prose-h2:border-white/10 first:prose-h2:mt-0 " +

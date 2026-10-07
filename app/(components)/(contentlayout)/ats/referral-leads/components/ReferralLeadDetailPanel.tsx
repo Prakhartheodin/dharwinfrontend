@@ -99,8 +99,7 @@ export function ReferralLeadDetailPanel({
               const m = getStatusMeta(lead.referralPipelineStatus);
               return (
                 <span
-                  className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
-                  style={{ background: m.bg, color: m.color }}
+                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${m.badgeClass}`}
                 >
                   {m.label}
                 </span>
@@ -115,8 +114,7 @@ export function ReferralLeadDetailPanel({
                 const m = EMPLOYEE_STATUS_META[lead.employeeStatus === "resigned" ? "resigned" : "active"];
                 return (
                   <span
-                    className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
-                    style={{ background: m.bg, color: m.color }}
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${m.badgeClass}`}
                   >
                     {m.label}
                   </span>

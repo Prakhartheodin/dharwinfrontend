@@ -3,7 +3,7 @@
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import React, { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import React, { Fragment, useCallback, useEffect, useRef, useState, useTransition } from "react";
 import {
   getPublicJobs,
   getJobAlertPreference,
@@ -72,6 +72,8 @@ export default function BrowseJobsPage() {
   const [jobAlertsOn, setJobAlertsOn] = useState(false);
   const [jobAlertsSaving, setJobAlertsSaving] = useState(false);
   const [jobTypesOpen, setJobTypesOpen] = useState(false);
+  const [pendingJobId, setPendingJobId] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevDebouncedSearchRef = useRef(initial.search);
@@ -203,6 +205,21 @@ export default function BrowseJobsPage() {
     setPage(1);
   };
 
+  const navigateToJob = useCallback(
+    (jobId: string) => {
+      if (!jobId || pendingJobId) return;
+      setPendingJobId(jobId);
+      startTransition(() => {
+        router.push(`/ats/browse-jobs/${jobId}`);
+      });
+    },
+    [pendingJobId, router]
+  );
+
+  useEffect(() => {
+    setPendingJobId(null);
+  }, [pathname]);
+
   const handleJobAlertsToggle = async () => {
     if (!user || jobAlertsSaving) return;
     const next = !jobAlertsOn;
@@ -230,10 +247,11 @@ export default function BrowseJobsPage() {
     <Fragment>
       <OnDemandStylesheet hrefs={BOOTSTRAP_ICONS_ON_DEMAND} />
       <Seo title="Browse Jobs" />
-      <div className="container-fluid pt-6">
-        <div className="box custom-box mb-4">
-          <div className="box-body">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end pb-3 mb-3 border-b border-defaultborder/60 dark:border-defaultborder/10">
+      <div className="browse-jobs-page-root min-w-0 max-w-full overflow-x-clip">
+        <div className="container-fluid min-w-0 w-full max-w-full pt-6">
+        <div className="box custom-box mb-4 min-w-0">
+          <div className="box-body min-w-0">
+            <div className="flex min-w-0 flex-col flex-wrap gap-3 sm:flex-row sm:items-center sm:justify-end pb-3 mb-3 border-b border-defaultborder/60 dark:border-defaultborder/10">
               {user ? (
                 <button
                   type="button"
@@ -273,7 +291,7 @@ export default function BrowseJobsPage() {
                 </span>
               )}
             </div>
-            <div className="grid grid-cols-12 gap-4 items-start">
+            <div className="grid min-w-0 grid-cols-12 gap-4 items-start [&>*]:min-w-0">
               <div className="lg:col-span-3 col-span-12">
                 <label className="form-label">Search</label>
                 <input
@@ -420,7 +438,7 @@ export default function BrowseJobsPage() {
             </div>
           </div>
         ) : (
-          <div className="space-y-0 overflow-hidden rounded-lg border border-defaultborder dark:border-defaultborder/10 bg-white dark:bg-bodybg shadow-sm">
+          <div className="min-w-0 space-y-3 xl:space-y-0 overflow-x-clip xl:rounded-lg xl:border xl:border-defaultborder dark:xl:border-defaultborder/10 xl:bg-white dark:xl:bg-bodybg xl:shadow-sm">
             {jobs.map((job, index) => {
               const id = job.id ?? "";
               const companyInitial = (job.organisation?.name || "J").charAt(0).toUpperCase();
@@ -434,7 +452,7 @@ export default function BrowseJobsPage() {
                   </span>
                 ),
                 job.location && (
-                  <span key="loc" className="inline-flex items-center gap-1">
+                  <span key="loc" className="inline-flex min-w-0 max-w-full items-center gap-1 break-words">
                     <i className="bi bi-geo-alt text-[0.75rem] opacity-70" />
                     {job.location}
                   </span>
@@ -467,21 +485,32 @@ export default function BrowseJobsPage() {
                   </span>
                 ),
               ].filter(Boolean);
+              const isRowNavigating = pendingJobId === id;
               return (
                 <Link
                   key={id}
                   href={`/ats/browse-jobs/${id}`}
                   prefetch={true}
                   onMouseEnter={() => router.prefetch(`/ats/browse-jobs/${id}`)}
-                  className={"block group transition-colors duration-150 " + (index > 0 ? "border-t border-defaultborder dark:border-defaultborder/10" : "")}
+                  onClick={(e) => {
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                    e.preventDefault();
+                    navigateToJob(id);
+                  }}
+                  aria-busy={isRowNavigating}
+                  className={
+                    "block min-w-0 max-w-full group transition-colors duration-150 rounded-lg border border-defaultborder dark:border-defaultborder/10 bg-white dark:bg-bodybg shadow-sm xl:rounded-none xl:border-0 xl:shadow-none xl:bg-transparent " +
+                    (index > 0 ? "xl:border-t xl:border-defaultborder dark:xl:border-defaultborder/10" : "") +
+                    (isRowNavigating ? " pointer-events-none opacity-80" : "")
+                  }
                 >
-                  <div className="flex flex-wrap sm:flex-nowrap items-stretch sm:items-center gap-4 px-4 sm:px-5 py-4 hover:bg-defaultborder/5 dark:hover:bg-white/5">
+                  <div className="flex min-w-0 max-w-full flex-wrap items-stretch gap-4 px-4 sm:px-5 py-4 hover:bg-defaultborder/5 dark:hover:bg-white/5 xl:flex-nowrap xl:items-center">
                     <div className="shrink-0 w-12 h-12 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-semibold text-base">
                       {companyInitial}
                     </div>
                     <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h5 className="font-semibold text-[1rem] text-defaulttextcolor dark:text-white group-hover:text-primary transition-colors mb-0">
+                        <h5 className="font-semibold text-[1rem] text-defaulttextcolor dark:text-white group-hover:text-primary transition-colors mb-0 break-words min-w-0">
                           {job.title}
                         </h5>
                         {job.vacancyFilled ? (
@@ -507,7 +536,7 @@ export default function BrowseJobsPage() {
                       <p className="text-[0.8125rem] text-defaulttextcolor/70 dark:text-white/60">
                         {job.organisation?.name}
                       </p>
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.8125rem] text-defaulttextcolor/70 dark:text-white/55">
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[0.8125rem] text-defaulttextcolor/70 dark:text-white/55">
                         {metaParts.map((part, i) => (
                           <Fragment key={i}>
                             {i > 0 && <span className="text-defaulttextcolor/30 dark:text-white/30">·</span>}
@@ -528,10 +557,28 @@ export default function BrowseJobsPage() {
                         </div>
                       )}
                     </div>
-                    <div className="shrink-0 w-full sm:w-auto sm:self-center">
-                      <span className="ti-btn ti-btn-primary ti-btn-sm inline-flex flex-shrink-0 items-center justify-center gap-1.5 whitespace-nowrap !py-2 !px-5 !min-w-[8.5rem] group-hover:opacity-90 transition-opacity">
-                        View & Apply
-                        <i className="bi bi-arrow-right text-[0.875rem] shrink-0" aria-hidden />
+                    <div className="w-full min-w-0 shrink-0 basis-full self-stretch xl:basis-auto xl:w-auto xl:self-center">
+                      <span
+                        className={`ti-btn ti-btn-primary-full !mb-0 inline-flex !h-auto !w-full max-w-full flex-shrink-0 items-center justify-center gap-1.5 whitespace-nowrap text-[0.8rem] font-medium !min-h-11 !py-2.5 !px-5 xl:!w-auto xl:!min-w-[8.5rem] group-hover:opacity-90 transition-opacity${
+                          isRowNavigating ? " !cursor-wait" : ""
+                        }`}
+                        aria-live={isRowNavigating ? "polite" : undefined}
+                      >
+                        {isRowNavigating ? (
+                          <>
+                            <span
+                              className="spinner-border spinner-border-sm shrink-0 motion-reduce:!animate-none"
+                              role="status"
+                              aria-hidden="true"
+                            />
+                            <span>Loading…</span>
+                          </>
+                        ) : (
+                          <>
+                            View & Apply
+                            <i className="bi bi-arrow-right text-[0.875rem] shrink-0" aria-hidden />
+                          </>
+                        )}
                       </span>
                     </div>
                   </div>
@@ -542,7 +589,7 @@ export default function BrowseJobsPage() {
         )}
 
         {!loading && totalResults > 0 && (
-          <div className="mt-6 w-full border-t border-defaultborder dark:border-defaultborder/10 pt-4 pb-5 sm:pb-6">
+          <div className="mt-6 w-full min-w-0 border-t border-defaultborder dark:border-defaultborder/10 pt-4 pb-5 sm:pb-6">
             <ListPagination
               page={page}
               totalPages={totalPages}
@@ -552,9 +599,13 @@ export default function BrowseJobsPage() {
               ariaLabel="Browse jobs page navigation"
               gotoInputId="browse-jobs-goto-page"
               hideWhenSinglePage
+              touchFriendly
+              showPageSize={false}
+              className="applications-list-pagination"
             />
           </div>
         )}
+        </div>
       </div>
     </Fragment>
   );

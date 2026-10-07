@@ -233,8 +233,11 @@ export function ReferralLeadsFilters({
             )}
             {featureEnabled && canUseOrgReferralControls && (
               <div className="min-w-[180px]">
-                <label className="form-label text-xs">Assigned sales agent</label>
+                <label className="form-label text-xs" htmlFor="referral-leads-sales-agent-filter">
+                  Assigned sales agent
+                </label>
                 <SalesAgentFilterSelect
+                  id="referral-leads-sales-agent-filter"
                   value={filters.salesAgentUserId}
                   unassigned={filters.unassigned}
                   onChange={({ salesAgentUserId, unassigned }) => {

@@ -32,7 +32,7 @@ import { StatCards } from "./components/StatCards";
 import { StaleDataBanner } from "./components/StaleDataBanner";
 import { ReferralLeadsFilters } from "./components/ReferralLeadsFilters";
 import { ReferralLeadsTable } from "./components/ReferralLeadsTable";
-import { ReferralLeadsPagination } from "./components/ReferralLeadsPagination";
+import ListPagination from "@/shared/components/ListPagination";
 import { ReferralLeadDetailPanel } from "./components/ReferralLeadDetailPanel";
 import { OverrideAttributionModal } from "./modals/OverrideAttributionModal";
 import { AttributionHistoryModal } from "./modals/AttributionHistoryModal";
@@ -225,28 +225,34 @@ export default function ReferralLeadsPage() {
   return (
     <React.Fragment>
       <Seo title="Referral leads" />
-      <div className="referral-leads-page-root container-fluid w-full min-w-0 max-w-[1600px] mx-auto overflow-x-hidden px-3 pt-4 pb-8 sm:px-4 md:px-6 sm:pt-6">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+      <div className="referral-leads-page-root min-w-0 max-w-full overflow-x-clip">
+        <div className="container-fluid w-full min-w-0 pt-4 pb-8 sm:pt-6">
+        <div className="flex min-w-0 flex-col flex-wrap gap-3 sm:flex-row sm:items-start sm:justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Referral leads</h1>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex min-w-0 flex-wrap gap-2">
             {featureEnabled && canManageAttribution && (
               <button
                 type="button"
                 onClick={() => setBackfillOpen(true)}
-                className="ti-btn ti-btn-success !py-2"
+                className="ti-btn ti-btn-success !mb-0 !h-auto !min-h-11 shrink-0 whitespace-nowrap"
               >
                 Add referred employee
               </button>
             )}
-            <button type="button" onClick={() => void refresh()} className="ti-btn ti-btn-primary !py-2" disabled={loading}>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              className="ti-btn ti-btn-primary !mb-0 !h-auto !min-h-11 shrink-0 whitespace-nowrap"
+              disabled={loading}
+            >
               Refresh
             </button>
             <button
               type="button"
               onClick={() => void onExport()}
-              className="ti-btn ti-btn-light border border-slate-200 dark:border-white/10 !py-2"
+              className="ti-btn ti-btn-light border border-slate-200 dark:border-white/10 !mb-0 !h-auto !min-h-11 shrink-0 whitespace-nowrap"
             >
               Export Excel
             </button>
@@ -279,13 +285,22 @@ export default function ReferralLeadsPage() {
         />
 
         {error && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+          <div
+            className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200"
+            role="alert"
+            aria-live="assertive"
+          >
             {error}
           </div>
         )}
 
         {loading && list.length === 0 && (
-          <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bodybg2 p-12 text-center text-slate-500">
+          <div
+            className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bodybg2 p-12 text-center text-slate-500"
+            role="status"
+            aria-busy="true"
+            aria-live="polite"
+          >
             Loading referral leads…
           </div>
         )}
@@ -334,16 +349,24 @@ export default function ReferralLeadsPage() {
                 setOverrideOpen(true);
               }}
             />
-            <ReferralLeadsPagination
-              page={page}
-              totalPages={totalPages}
-              total={total}
-              pageSize={PAGE_SIZE}
-              disabled={loading}
-              onPageChange={setPage}
-            />
+            <div className="mt-4 w-full min-w-0 border-t border-slate-200 dark:border-white/10 pt-4">
+              <ListPagination
+                page={page}
+                totalPages={totalPages}
+                totalResults={total}
+                pageSize={PAGE_SIZE}
+                onPageChange={setPage}
+                ariaLabel="Referral leads page navigation"
+                gotoInputId="referral-leads-goto-page"
+                hideWhenSinglePage
+                touchFriendly
+                showPageSize={false}
+                className="applications-list-pagination"
+              />
+            </div>
           </div>
         )}
+        </div>
       </div>
 
       {selected && !overrideOpen && !assignOpen && !changeOpen && !revokeOpen && !historyOpen && (

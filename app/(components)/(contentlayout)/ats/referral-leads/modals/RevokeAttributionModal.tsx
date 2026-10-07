@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { ReferralLeadRow } from "@/shared/lib/api/referralLeads";
 import { useSalesAgentAttribution } from "../hooks/useSalesAgentAttribution";
 import { SalesAgentBadge } from "../components/SalesAgentBadge";
+import { useModalBehavior } from "@/shared/hooks/useModalBehavior";
 
 interface RevokeAttributionModalProps {
   lead: ReferralLeadRow;
@@ -16,6 +17,7 @@ export function RevokeAttributionModal({ lead, isOpen, onClose, onSaved }: Revok
   const { revoke, isMutating, error, staleConflict, clearStaleConflict } = useSalesAgentAttribution();
   const [revokeReason, setRevokeReason] = useState("");
   const [attributionId, setAttributionId] = useState(lead.salesAgentCurrentAttributionId || "");
+  const { containerRef, backdropProps, requestClose } = useModalBehavior({ isOpen, onClose });
 
   useEffect(() => {
     if (!isOpen) return;
@@ -48,10 +50,20 @@ export function RevokeAttributionModal({ lead, isOpen, onClose, onSaved }: Revok
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white dark:bg-bodybg2 rounded-xl border border-slate-200 dark:border-white/10 p-6 max-w-md w-full shadow-xl">
-        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Revoke sales agent attribution</h3>
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="revoke-attribution-title"
+      {...backdropProps}
+    >
+      <div
+        ref={containerRef}
+        className="relative bg-white dark:bg-bodybg2 rounded-xl border border-slate-200 dark:border-white/10 p-6 max-w-md w-full shadow-xl"
+      >
+        <h3 id="revoke-attribution-title" className="text-lg font-semibold text-slate-900 dark:text-white">
+          Revoke sales agent attribution
+        </h3>
         <div className="mt-3 rounded-lg border border-slate-200 dark:border-white/10 p-3">
           <SalesAgentBadge
             agent={lead.salesAgent}
@@ -74,7 +86,7 @@ export function RevokeAttributionModal({ lead, isOpen, onClose, onSaved }: Revok
           {error && <p className="text-sm text-danger m-0">{error}</p>}
         </div>
         <div className="mt-6 flex justify-end gap-2">
-          <button type="button" className="ti-btn ti-btn-light" onClick={onClose}>Cancel</button>
+          <button type="button" className="ti-btn ti-btn-light" onClick={requestClose}>Cancel</button>
           <button
             type="button"
             className="ti-btn ti-btn-danger disabled:opacity-60"

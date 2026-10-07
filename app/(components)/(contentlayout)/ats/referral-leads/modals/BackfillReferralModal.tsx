@@ -7,6 +7,7 @@ import { listJobs } from "@/shared/lib/api/jobs";
 import type { User } from "@/shared/lib/types";
 import type { ReferralLeadRow } from "@/shared/lib/api/referralLeads";
 import { useSalesAgentAttribution } from "../hooks/useSalesAgentAttribution";
+import { useModalBehavior } from "@/shared/hooks/useModalBehavior";
 
 interface BackfillReferralModalProps {
   isOpen: boolean;
@@ -60,6 +61,7 @@ function avatarTone(seed: string): string {
 
 export function BackfillReferralModal({ isOpen, onClose, onSaved }: BackfillReferralModalProps) {
   const { backfill, isMutating, error } = useSalesAgentAttribution();
+  const { containerRef, backdropProps, requestClose } = useModalBehavior({ isOpen, onClose });
 
   const [employeeId, setEmployeeId] = useState("");
   const [employeeLabel, setEmployeeLabel] = useState("");
@@ -219,13 +221,19 @@ export function BackfillReferralModal({ isOpen, onClose, onSaved }: BackfillRefe
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 animate-[fadeIn_.18s_ease-out]">
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/55 backdrop-blur-sm p-4 animate-[fadeIn_.18s_ease-out]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="backfill-referral-title"
+      {...backdropProps}
+    >
       <style jsx>{`
         @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
         @keyframes popIn { from { opacity: 0; transform: translateY(8px) scale(.98) } to { opacity: 1; transform: translateY(0) scale(1) } }
       `}</style>
-      <div className="absolute inset-0 bg-slate-950/55 backdrop-blur-sm" onClick={onClose} />
       <div
+        ref={containerRef}
         className="relative w-full max-w-lg max-h-[92vh] flex flex-col rounded-2xl border border-slate-200/80 bg-white shadow-2xl shadow-slate-900/10 dark:border-white/10 dark:bg-bodybg2"
         style={{ animation: "popIn .22s cubic-bezier(.2,.8,.2,1)" }}
       >
@@ -234,7 +242,7 @@ export function BackfillReferralModal({ isOpen, onClose, onSaved }: BackfillRefe
             <i className="ri-user-add-line text-lg leading-none" />
           </span>
           <div className="min-w-0 flex-1">
-            <h3 className="text-base font-semibold tracking-tight text-slate-900 dark:text-white">
+            <h3 id="backfill-referral-title" className="text-base font-semibold tracking-tight text-slate-900 dark:text-white">
               Add referred employee
             </h3>
             <p className="mt-0.5 text-[13px] leading-relaxed text-slate-500 dark:text-slate-400">
@@ -244,7 +252,7 @@ export function BackfillReferralModal({ isOpen, onClose, onSaved }: BackfillRefe
           <button
             type="button"
             aria-label="Close"
-            onClick={onClose}
+            onClick={requestClose}
             className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/5 dark:hover:text-white"
           >
             <i className="ri-close-line text-lg leading-none" />
@@ -439,7 +447,7 @@ export function BackfillReferralModal({ isOpen, onClose, onSaved }: BackfillRefe
             {completedSteps}/{totalRequired} required
           </span>
           <div className="flex items-center gap-2">
-            <button type="button" className="ti-btn ti-btn-light" onClick={onClose}>
+            <button type="button" className="ti-btn ti-btn-light" onClick={requestClose}>
               Cancel
             </button>
             <button

@@ -5,6 +5,7 @@ import { listUsers } from "@/shared/lib/api/users";
 import type { User } from "@/shared/lib/types";
 
 interface SalesAgentFilterSelectProps {
+  id: string;
   value: string;
   unassigned: boolean;
   onChange: (next: { salesAgentUserId: string; unassigned: boolean }) => void;
@@ -16,7 +17,7 @@ const labelOf = (u: User) => u.name?.trim() || u.email || u.id;
  * Single searchable dropdown for the "Assigned sales agent" filter: the search box lives inside the
  * open panel (no separate field). Server-searches active sales agents as you type.
  */
-export function SalesAgentFilterSelect({ value, unassigned, onChange }: SalesAgentFilterSelectProps) {
+export function SalesAgentFilterSelect({ id, value, unassigned, onChange }: SalesAgentFilterSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<User[]>([]);
@@ -86,6 +87,7 @@ export function SalesAgentFilterSelect({ value, unassigned, onChange }: SalesAge
   return (
     <div className="relative" ref={rootRef}>
       <button
+        id={id}
         type="button"
         className="form-select form-select-sm w-full text-start"
         aria-haspopup="listbox"
