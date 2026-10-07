@@ -108,8 +108,6 @@ export default function ReferralLeadsPage() {
   const [revokeOpen, setRevokeOpen] = useState(false);
   const [backfillOpen, setBackfillOpen] = useState(false);
   const [actionLead, setActionLead] = useState<ReferralLeadRow | null>(null);
-  const [howItWorksOpen, setHowItWorksOpen] = useState(false);
-
   /** Monotonic id: only the newest in-flight list request may write state. */
   const listRequestRef = useRef(0);
   const skipFetchForClampRef = useRef(false);
@@ -230,29 +228,7 @@ export default function ReferralLeadsPage() {
       <div className="referral-leads-page-root container-fluid w-full min-w-0 max-w-[1600px] mx-auto overflow-x-hidden px-3 pt-4 pb-8 sm:px-4 md:px-6 sm:pt-6">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              ATS / Referral leads
-            </p>
-            <h1 className="text-2xl font-bold text-slate-800 dark:text-white mt-1">Referral leads</h1>
-            <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">
-              Tracked referral candidates
-              {canUseOrgReferralControls ? " — organization view" : " — your referrals only"}
-            </p>
-            <button
-              type="button"
-              className="mt-2 inline-flex min-h-[44px] items-center gap-1 text-xs font-medium text-primary hover:underline sm:min-h-0"
-              aria-expanded={howItWorksOpen}
-              onClick={() => setHowItWorksOpen((o) => !o)}
-            >
-              <i className={`ri-arrow-${howItWorksOpen ? "up" : "down"}-s-line`} aria-hidden />
-              How this list works
-            </button>
-            {howItWorksOpen && (
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-2xl">
-                Each row is an ATS candidate (same as Candidates). It is not a Settings → Users org account; the
-                referrer is shown in Referred by.
-              </p>
-            )}
+            <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Referral leads</h1>
           </div>
           <div className="flex flex-wrap gap-2">
             {featureEnabled && canManageAttribution && (
